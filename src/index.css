@@ -1,0 +1,245 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 262.1 83.3% 57.8%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 262.1 83.3% 57.8%;
+  --radius: 0.5rem;
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent;
+  }
+}
+
+/* ====== ESCONDER SCROLLBAR HORIZONTAL DOS CARROSSEIS ====== */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  /* IE e Edge antigos */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+/* Hide metadata line only in the home page banner */
+.home-hero .hero-meta {
+  display: none;
+}
+
+/* Mobile-first hero styles */
+@media (max-width: 768px) {
+
+  /* Hero container - full width background image */
+  .home-hero {
+    position: relative;
+    width: 100%;
+    min-height: 65vh;
+    overflow: hidden;
+    margin-top: 0.5rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  /* ⚠️ REGRA QUE TAVA QUEBRANDO O HERO FOI REMOVIDA:
+     .home-hero > .relative.w-full { display:none } 
+     Ela escondia o componente inteiro no mobile com o novo Hero. */
+
+  /* Caso ainda exista o wrapper antigo em algum lugar, mantém compatibilidade,
+     mas isso aqui não interfere no novo Hero baseado em Tailwind. */
+  .home-hero .mobile-hero-content-wrapper {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 65vh;
+  }
+
+  /* Background image - covers entire hero */
+  .hero-background {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 0;
+  }
+
+  /* Dark overlay for text readability */
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top,
+        rgba(0, 0, 0, 0.85) 20%,
+        rgba(0, 0, 0, 0.2) 80%);
+    z-index: 1;
+  }
+
+  /* Content wrapper - positioned over image */
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    height: 100%;
+    gap: 8px;
+    padding: 24px 16px 48px;
+  }
+
+  /* Title styling */
+  .hero-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: white;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  /* Description styling */
+  .hero-description {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+    max-height: 3.2em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    margin: 0;
+  }
+
+  /* Buttons container */
+  .hero-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  /* Primary button (Assistir Agora) */
+  .hero-buttons .bg-purple-600 {
+    background-color: #6d28d9;
+    color: white;
+  }
+
+  .hero-buttons .bg-purple-600:active {
+    background-color: #5b21b6;
+  }
+
+  /* Secondary button (Ver Detalhes) */
+  .hero-buttons .border-slate-700 {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .hero-buttons .border-slate-700:active {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Hide poster card on mobile */
+  .hero-poster {
+    display: none;
+  }
+
+  /* Carousel indicators/bullets positioning */
+  .hero-indicators {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+  }
+
+  .hero-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .hero-indicator.active {
+    background-color: white;
+    width: 24px;
+    border-radius: 4px;
+  }
+
+  /* Mobile Carousel Arrows */
+  .mobile-hero-nav {
+    display: flex !important;
+  }
+}
+
+/* Desktop - keep original behavior */
+@media (min-width: 769px) {
+
+  /* Hides the mobile-specific hero antigo, se ainda existir */
+  .home-hero .mobile-hero-content-wrapper {
+    display: none;
+  }
+
+  .mobile-hero-nav {
+    display: none !important;
+  }
+}
+
+/* ===== Player de vídeo - página de watch ===== */
+
+/* Desktop / geral: 16:9 padrão */
+.watch-player-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  /* 16:9 */
+}
+
+/* Mobile: deixa o player bem mais alto (quase tela cheia) */
+@media (max-width: 768px) {
+  .watch-player-wrapper {
+    padding-bottom: 0;
+    height: calc(100vh - 120px);
+    /* altura da tela menos header/botão */
+  }
+
+  .watch-player-wrapper iframe {
+    width: 100%;
+    height: 100%;
+  }
+}
