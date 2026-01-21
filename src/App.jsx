@@ -59,7 +59,7 @@ function DeviceGuard({ children }) {
   const forceLogout = async (reason) => {
     try {
       await supabase.auth.signOut();
-    } catch { }
+    } catch {}
     navigate(`/login?reason=${reason}`, { replace: true });
   };
 
@@ -146,8 +146,7 @@ function DeviceGuard({ children }) {
           )
           .subscribe();
 
-        // ✅ (ADICIONADO) Heartbeat agressivo: mantém sessão "viva"
-        // Isso ajuda MUITO no caso de ficar assistindo/parado (mobile costuma "dormir" o realtime)
+        // ✅ Heartbeat agressivo: mantém sessão "viva"
         heartbeatIntervalId = setInterval(async () => {
           try {
             if (cancelled) return;
@@ -169,7 +168,7 @@ function DeviceGuard({ children }) {
           }
         }, 3000);
 
-        // ✅ (AJUSTE) Fallback mais rápido: se realtime falhar, derruba em no máximo 3s
+        // ✅ Fallback rápido
         checkIntervalId = setInterval(checkOnce, 3000);
       } catch (e) {
         console.error('[single-device] setup exception:', e);
@@ -184,8 +183,6 @@ function DeviceGuard({ children }) {
       if (heartbeatIntervalId) clearInterval(heartbeatIntervalId);
       if (channel) supabase.removeChannel(channel);
     };
-    // ✅ ALTERAÇÃO: removi location.pathname das deps para NÃO desmontar/recriar canal a cada navegação
-    // Mantém o realtime estável e contínuo
   }, [authLoading, user, navigate]);
 
   return children;
@@ -207,7 +204,23 @@ function App() {
               {/* 🔓 CATÁLOGO PÚBLICO */}
               <Route
                 path="/"
-                element={<Dashboard searchQuery={searchQuery} setSearchQuery={setSearchQuery} />}
+                element={
+                  <Dashboard
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                  />
+                }
+              />
+
+              {/* ✅ (ADICIONADO) Alias pra evitar bugs de código antigo que manda pra /dashboard */}
+              <Route
+                path="/dashboard"
+                element={
+                  <Dashboard
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                  />
+                }
               />
 
               {/* Landing */}
@@ -225,10 +238,40 @@ function App() {
               <Route path="/dorama/:id/watch" element={<DoramaWatch />} />
 
               {/* Categorias (mantidas protegidas, igual antes) */}
-              <Route path="/exclusivos" element={<ProtectedRoute><ExclusiveDoramas /></ProtectedRoute>} />
-              <Route path="/novos" element={<ProtectedRoute><NewDoramas /></ProtectedRoute>} />
-              <Route path="/recomendados" element={<ProtectedRoute><RecommendedDoramas /></ProtectedRoute>} />
-              <Route path="/dublados" element={<ProtectedRoute><DubbedDoramas /></ProtectedRoute>} />
+              <Route
+                path="/exclusivos"
+                element={
+                  <ProtectedRoute>
+                    <ExclusiveDoramas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/novos"
+                element={
+                  <ProtectedRoute>
+                    <NewDoramas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/recomendados"
+                element={
+                  <ProtectedRoute>
+                    <RecommendedDoramas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dublados"
+                element={
+                  <ProtectedRoute>
+                    <DubbedDoramas />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* ✅ Planos */}
               <Route
                 path="/plans"
                 element={
@@ -239,8 +282,22 @@ function App() {
               />
 
               {/* Checkout */}
-              <Route path="/checkout/sucesso" element={<ProtectedRoute><CheckoutSuccess /></ProtectedRoute>} />
-              <Route path="/checkout/cancelado" element={<ProtectedRoute><CheckoutCanceled /></ProtectedRoute>} />
+              <Route
+                path="/checkout/sucesso"
+                element={
+                  <ProtectedRoute>
+                    <CheckoutSuccess />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/checkout/cancelado"
+                element={
+                  <ProtectedRoute>
+                    <CheckoutCanceled />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Outros */}
               <Route path="/teste-bunny" element={<TesteBunny />} />
@@ -248,9 +305,30 @@ function App() {
               {/* ADMIN */}
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
-              <Route path="/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
-              <Route path="/admin/doramas" element={<AdminRoute><AdminDoramas /></AdminRoute>} />
-              <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+              <Route
+                path="/admin/analytics"
+                element={
+                  <AdminRoute>
+                    <AdminAnalytics />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/doramas"
+                element={
+                  <AdminRoute>
+                    <AdminDoramas />
+                  </AdminRoute>
+                }
+              />
+              <Route
+                path="/admin/users"
+                element={
+                  <AdminRoute>
+                    <AdminUsers />
+                  </AdminRoute>
+                }
+              />
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
