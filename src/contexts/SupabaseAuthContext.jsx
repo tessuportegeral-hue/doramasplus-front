@@ -10,17 +10,32 @@ import { supabase } from '@/lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
+// =========================
+// ✅ CONFIG
+// =========================
+
+// 🔥 EMERGÊNCIA: deixa FALSE pra NÃO aplicar 1 sessão (estabiliza login)
+const ENABLE_SINGLE_SESSION = false;
+
+// ✅ chave do localStorage (não muda)
 const LOCAL_SESSION_KEY = 'dp_session_id';
+
+// ✅ tempo de verificação (ms)
 const SESSION_POLL_MS = 5000;
+
+// ✅ só considera conflito se falhar X vezes seguidas
 const FAIL_THRESHOLD = 2;
+
+// ✅ tempo de “graça” após login/refresh (ms)
 const GRACE_AFTER_LOGIN_MS = 1500;
 
+// ✅ tempo de sync do premium (ms)
 const PREMIUM_POLL_MS = 2500;
+
+// ✅ por quanto tempo tentar sincronizar premium após login/checkout (ms)
 const PREMIUM_POLL_MAX_MS = 60_000;
 
-// =========================
-// helpers de sessionId
-// =========================
+// ✅ cria um session_id robusto
 const generateSessionId = () => {
   try {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -30,37 +45,32 @@ const generateSessionId = () => {
     .slice(2)}`;
 };
 
-// Retorna { ok: boolean, value: string }
-const safeGetLocalSessionId = () => {
+const getLocalSessionId = () => {
   try {
-    const v = localStorage.getItem(LOCAL_SESSION_KEY);
-    return { ok: true, value: v || '' };
+    return localStorage.getItem(LOCAL_SESSION_KEY) || '';
   } catch {
-    return { ok: false, value: '' };
+    return '';
   }
 };
 
-// Tenta setar e confirma leitura (pra detectar storage instável)
-const safeEnsureLocalSessionId = () => {
+const setLocalSessionId = (value) => {
   try {
-    let sid = localStorage.getItem(LOCAL_SESSION_KEY) || '';
-    if (!sid) {
-      sid = generateSessionId();
-      localStorage.setItem(LOCAL_SESSION_KEY, sid);
-    }
-    // confirma que persistiu
-    const check = localStorage.getItem(LOCAL_SESSION_KEY) || '';
-    if (!check || check !== sid) return { ok: false, value: '' };
-    return { ok: true, value: sid };
-  } catch {
-    return { ok: false, value: '' };
-  }
-};
-
-const safeClearLocalSessionId = () => {
-  try {
-    localStorage.removeItem(LOCAL_SESSION_KEY);
+    if (!value) localStorage.removeItem(LOCAL_SESSION_KEY);
+    else localStorage.setItem(LOCAL_SESSION_KEY, value);
   } catch {}
+};
+
+// (novo) detecta se localStorage é confiável (alguns navegadores/webviews quebram)
+const isStorageReliable = () => {
+  try {
+    const k = '__dp_test_storage__';
+    localStorage.setItem(k, '1');
+    const ok = localStorage.getItem(k) === '1';
+    localStorage.removeItem(k);
+    return ok;
+  } catch {
+    return false;
+  }
 };
 
 export const AuthProvider = ({ children }) => {
@@ -71,12 +81,13 @@ export const AuthProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [checkingPremium, setCheckingPremium] = useState(true);
 
-  // “estado informativo” da regra 1 sessão (sem derrubar ninguém)
+  // ✅ estado da sessão única (não derruba ninguém)
   const [checkingSession, setCheckingSession] = useState(false);
 
   // refs
   const pollRef = useRef(null);
   const activeUserIdRef = useRef(null);
+
   const sessionFailCountRef = useRef(0);
 
   // premium refs
@@ -84,20 +95,16 @@ export const AuthProvider = ({ children }) => {
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
 
-  // throttles
-  const lastSeenUpdateAtRef = useRef(0);
+  // timeouts (evita duplicar timers)
+  const timersRef = useRef([]);
 
-  // timeouts (pra limpar)
-  const timeoutsRef = useRef([]);
-
-  const clearAllTimeouts = useCallback(() => {
-    const arr = timeoutsRef.current || [];
-    arr.forEach((t) => {
+  const clearTimers = useCallback(() => {
+    (timersRef.current || []).forEach((t) => {
       try {
         clearTimeout(t);
       } catch {}
     });
-    timeoutsRef.current = [];
+    timersRef.current = [];
   }, []);
 
   const stopSessionPolling = useCallback(() => {
@@ -118,7 +125,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // =========================
-  // PREMIUM
+  // PREMIUM (mantido)
   // =========================
   const checkPremiumStatus = useCallback(
     async (userId) => {
@@ -204,22 +211,30 @@ export const AuthProvider = ({ children }) => {
   );
 
   // =========================
-  // 1 SESSÃO (SAFE MODE)
+  // 1 SESSÃO POR VEZ
+  // (mantido, mas com proteção + NUNCA dá signOut automático)
   // =========================
 
-  // registra sessão (upsert) — só se storage OK
   const registerSingleSession = useCallback(async (userId) => {
-    if (!userId) return { storageOk: false };
+    if (!ENABLE_SINGLE_SESSION) return;
+    if (!userId) return;
 
-    // se storage não é confiável, NÃO aplica regra
-    const ensured = safeEnsureLocalSessionId();
-    if (!ensured.ok || !ensured.value) return { storageOk: false };
+    // se storage é instável, não aplica regra
+    if (!isStorageReliable()) return;
+
+    setCheckingSession(true);
 
     try {
+      let sid = getLocalSessionId();
+      if (!sid) {
+        sid = generateSessionId();
+        setLocalSessionId(sid);
+      }
+
       const { error } = await supabase.from('user_sessions').upsert(
         {
           user_id: userId,
-          session_id: ensured.value,
+          session_id: sid,
           updated_at: new Date().toISOString(),
           last_seen: new Date().toISOString(),
           user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
@@ -228,103 +243,93 @@ export const AuthProvider = ({ children }) => {
       );
 
       if (error) throw error;
-
-      return { storageOk: true };
     } catch (err) {
       console.error('Error registering single session:', err);
-      // falha de rede/banco não pode derrubar ninguém
-      return { storageOk: true };
+    } finally {
+      setCheckingSession(false);
     }
   }, []);
 
-  // verifica sessão — NUNCA derruba (só retorna ok/false)
-  const verifySingleSession = useCallback(async (userId) => {
-    if (!userId) return { ok: true, enforced: false };
+  const verifySingleSession = useCallback(
+    async (userId) => {
+      if (!ENABLE_SINGLE_SESSION) return true;
+      if (!userId) return true;
 
-    const local = safeGetLocalSessionId();
-    if (!local.ok) {
-      // storage não disponível → não aplica regra
-      return { ok: true, enforced: false };
-    }
+      // se storage é instável, não aplica regra
+      if (!isStorageReliable()) return true;
 
-    const sid = local.value || '';
-    if (!sid) {
-      // storage “vazio” → melhor NÃO aplicar regra (evita loop)
-      return { ok: true, enforced: false };
-    }
+      try {
+        const sid = getLocalSessionId();
+        if (!sid) {
+          // se não tem sid, registra e segue sem punir
+          await registerSingleSession(userId);
+          return true;
+        }
 
-    try {
-      const { data, error } = await supabase
-        .from('user_sessions')
-        .select('session_id')
-        .eq('user_id', userId)
-        .maybeSingle();
+        const { data, error } = await supabase
+          .from('user_sessions')
+          .select('session_id')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (!data?.session_id) {
-        // não existe registro ainda → tenta registrar, mas sem travar
-        await registerSingleSession(userId);
-        return { ok: true, enforced: true };
-      }
+        if (!data?.session_id) {
+          await registerSingleSession(userId);
+          return true;
+        }
 
-      if (data.session_id !== sid) {
-        // conflito detectado
-        return { ok: false, enforced: true };
-      }
+        if (data.session_id !== sid) {
+          return false;
+        }
 
-      // atualiza last_seen com throttle (ex.: a cada 30s)
-      const now = Date.now();
-      if (now - (lastSeenUpdateAtRef.current || 0) > 30_000) {
-        lastSeenUpdateAtRef.current = now;
+        // best-effort last_seen (se falhar não derruba)
         supabase
           .from('user_sessions')
           .update({ last_seen: new Date().toISOString() })
           .eq('user_id', userId)
           .then(() => {})
           .catch(() => {});
-      }
 
-      return { ok: true, enforced: true };
-    } catch (err) {
-      console.error('Error verifying single session:', err);
-      // erro de rede/banco → não aplica punição
-      return { ok: true, enforced: true };
-    }
-  }, [registerSingleSession]);
+        return true;
+      } catch (err) {
+        console.error('Error verifying single session:', err);
+        return true;
+      }
+    },
+    [registerSingleSession]
+  );
 
   const startSessionPolling = useCallback(
     async (userId) => {
+      if (!ENABLE_SINGLE_SESSION) return;
       if (!userId) return;
+
+      // se storage é instável, não aplica regra
+      if (!isStorageReliable()) return;
 
       activeUserIdRef.current = userId;
       sessionFailCountRef.current = 0;
 
-      stopSessionPolling();
-      setCheckingSession(true);
-
-      // registra 1x no começo (se der)
       await registerSingleSession(userId);
+
+      stopSessionPolling();
 
       pollRef.current = setInterval(async () => {
         const currentUserId = activeUserIdRef.current;
         if (!currentUserId) return;
 
-        const res = await verifySingleSession(currentUserId);
+        const ok = await verifySingleSession(currentUserId);
 
-        // se não está “enforced”, não tem o que fiscalizar
-        if (res.enforced === false) {
-          sessionFailCountRef.current = 0;
-          return;
-        }
-
-        if (!res.ok) {
+        if (!ok) {
           sessionFailCountRef.current += 1;
 
+          // ✅ IMPORTANTE: NÃO derruba usuário.
+          // Só para o polling se detectar conflito real várias vezes.
           if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
-            // SAFE MODE: NÃO derruba o usuário.
-            // Só para o polling (evita loop) e deixa o login viver.
             stopSessionPolling();
+            // opcional: você pode limpar o sid local pra não ficar insistindo
+            // setLocalSessionId('');
           }
         } else {
           sessionFailCountRef.current = 0;
@@ -356,28 +361,27 @@ export const AuthProvider = ({ children }) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 
-        clearAllTimeouts();
-        stopSessionPolling();
-        stopPremiumPolling();
+        clearTimers();
 
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
 
-          // premium
           checkPremiumStatus(currentUser.id);
           startPremiumPolling(currentUser.id);
 
-          // sessão (safe)
+          // ✅ grace period
           const t = setTimeout(() => {
             startSessionPolling(currentUser.id);
           }, GRACE_AFTER_LOGIN_MS);
-          timeoutsRef.current.push(t);
+          timersRef.current.push(t);
         } else {
-          activeUserIdRef.current = null;
           setIsPremium(false);
           isPremiumRef.current = false;
           setCheckingPremium(false);
           setCheckingSession(false);
+          activeUserIdRef.current = null;
+          stopSessionPolling();
+          stopPremiumPolling();
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -386,33 +390,33 @@ export const AuthProvider = ({ children }) => {
 
     initSession();
 
-    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
 
       const currentUser = session?.user ?? null;
-
       setSession(session ?? null);
       setUser(currentUser);
 
-      clearAllTimeouts();
-      stopSessionPolling();
-      stopPremiumPolling();
+      clearTimers();
 
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
 
-        // premium
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
-        const t3 = setTimeout(() => startSessionPolling(currentUser.id), GRACE_AFTER_LOGIN_MS);
+        const t3 = setTimeout(
+          () => startSessionPolling(currentUser.id),
+          GRACE_AFTER_LOGIN_MS
+        );
 
-        timeoutsRef.current.push(t1, t2, t3);
+        timersRef.current.push(t1, t2, t3);
       } else {
         activeUserIdRef.current = null;
-
-        // não precisa limpar storage sempre (mas pode)
-        safeClearLocalSessionId();
-
+        stopSessionPolling();
+        stopPremiumPolling();
+        setLocalSessionId('');
         setIsPremium(false);
         isPremiumRef.current = false;
         setCheckingPremium(false);
@@ -422,14 +426,12 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     });
 
-    const subscription = data?.subscription;
-
     return () => {
       isMounted = false;
       try {
-        subscription?.unsubscribe?.();
+        subscription.unsubscribe();
       } catch {}
-      clearAllTimeouts();
+      clearTimers();
       stopSessionPolling();
       stopPremiumPolling();
     };
@@ -439,12 +441,10 @@ export const AuthProvider = ({ children }) => {
     startSessionPolling,
     stopSessionPolling,
     stopPremiumPolling,
-    clearAllTimeouts,
+    clearTimers,
   ]);
 
-  // =========================
-  // foco/visibilidade → sync premium
-  // =========================
+  // ✅ quando usuário volta pra aba/janela, sincroniza premium
   useEffect(() => {
     const onFocus = async () => {
       const uid = activeUserIdRef.current;
@@ -479,6 +479,7 @@ export const AuthProvider = ({ children }) => {
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
       checkPremiumStatus(user.id);
+
       if (isPremiumRef.current === false) {
         startPremiumPolling(user.id);
       }
@@ -496,6 +497,9 @@ export const AuthProvider = ({ children }) => {
     refreshPremiumStatus,
 
     checkingSession,
+
+    // só pra debug
+    singleSessionEnabled: ENABLE_SINGLE_SESSION,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -503,6 +507,8 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 };
