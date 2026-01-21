@@ -10,26 +10,26 @@ import { supabase } from '@/lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
-// ✅ chave do device (usado no Dashboard.jsx também)
-const DEVICE_KEY = 'dp_device_id';
+// ✅ chave do localStorage (não muda)
+const LOCAL_SESSION_KEY = 'dp_session_id';
 
-// ✅ tempo de verificação (ms)
+// ✅ tempo de verificação (ms) — ajustado para 5s
 const SESSION_POLL_MS = 5000;
 
-// ✅ só derruba se falhar X vezes seguidas (evita falso positivo)
+// ✅ (novo) só derruba se falhar X vezes seguidas (evita falso positivo)
 const FAIL_THRESHOLD = 2;
 
-// ✅ tempo de “graça” após login/refresh de sessão (ms)
+// ✅ (novo) tempo de “graça” após login/refresh de sessão (ms)
 const GRACE_AFTER_LOGIN_MS = 1500;
 
-// ✅ tempo de sync do premium (ms)
+// ✅ (novo) tempo de sync do premium (ms)
 const PREMIUM_POLL_MS = 2500;
 
-// ✅ por quanto tempo tentar sincronizar premium após login/checkout (ms)
+// ✅ (novo) por quanto tempo tentar sincronizar premium após login/checkout (ms)
 const PREMIUM_POLL_MAX_MS = 60_000;
 
-// ✅ gera id robusto
-const generateId = () => {
+// ✅ cria um session_id robusto
+const generateSessionId = () => {
   try {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   } catch {}
@@ -38,29 +38,19 @@ const generateId = () => {
     .slice(2)}`;
 };
 
-const getLocal = (key) => {
+const getLocalSessionId = () => {
   try {
-    return localStorage.getItem(key) || '';
+    return localStorage.getItem(LOCAL_SESSION_KEY) || '';
   } catch {
     return '';
   }
 };
 
-const setLocal = (key, value) => {
+const setLocalSessionId = (value) => {
   try {
-    if (!value) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
+    if (!value) localStorage.removeItem(LOCAL_SESSION_KEY);
+    else localStorage.setItem(LOCAL_SESSION_KEY, value);
   } catch {}
-};
-
-// ✅ garante device_id no navegador (NUNCA deixa vazio)
-const ensureDeviceId = () => {
-  let did = getLocal(DEVICE_KEY);
-  if (!did) {
-    did = generateId();
-    setLocal(DEVICE_KEY, did);
-  }
-  return did;
 };
 
 export const AuthProvider = ({ children }) => {
@@ -71,17 +61,14 @@ export const AuthProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [checkingPremium, setCheckingPremium] = useState(true);
 
-  // ✅ estado da checagem de sessão única
-  const [checkingSession, setCheckingSession] = useState(false);
-
   // refs pra controlar interval/estado sem bug de render
   const pollRef = useRef(null);
   const activeUserIdRef = useRef(null);
 
-  // ✅ contador de falhas seguidas (pra evitar derrubar por lag)
+  // ✅ (novo) contador de falhas seguidas (pra evitar derrubar por lag)
   const sessionFailCountRef = useRef(0);
 
-  // ✅ refs do sync premium
+  // ✅ (novo) refs do sync premium
   const premiumPollRef = useRef(null);
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
@@ -94,6 +81,7 @@ export const AuthProvider = ({ children }) => {
     sessionFailCountRef.current = 0;
   }, []);
 
+  // ✅ (novo) para o sync premium
   const stopPremiumPolling = useCallback(() => {
     if (premiumPollRef.current) {
       clearInterval(premiumPollRef.current);
@@ -136,7 +124,10 @@ export const AuthProvider = ({ children }) => {
         setIsPremium(hasActiveSub);
         isPremiumRef.current = hasActiveSub;
 
-        if (hasActiveSub) stopPremiumPolling();
+        // ✅ se virou premium, para o polling automático
+        if (hasActiveSub) {
+          stopPremiumPolling();
+        }
       } catch (err) {
         console.error('Error checking premium status:', err);
         setIsPremium(false);
@@ -148,6 +139,7 @@ export const AuthProvider = ({ children }) => {
     [stopPremiumPolling]
   );
 
+  // ✅ (novo) começa um “auto-sync” do premium por um tempo (resolve Pix liberar na hora)
   const startPremiumPolling = useCallback(
     async (userId) => {
       if (!userId) return;
@@ -189,21 +181,24 @@ export const AuthProvider = ({ children }) => {
   );
 
   // =========================
-  // ✅ 1 DISPOSITIVO POR VEZ (DEVICE_ID)
+  // ✅ 1 SESSÃO POR VEZ (SESSION_ID)
   // =========================
 
-  const registerSingleDevice = useCallback(async (userId) => {
+  // cria/garante session_id local + grava no banco (upsert)
+  const registerSingleSession = useCallback(async (userId) => {
     if (!userId) return;
 
-    setCheckingSession(true);
-
     try {
-      const deviceId = ensureDeviceId();
+      let sid = getLocalSessionId();
+      if (!sid) {
+        sid = generateSessionId();
+        setLocalSessionId(sid);
+      }
 
       const { error } = await supabase.from('user_sessions').upsert(
         {
           user_id: userId,
-          device_id: deviceId,
+          session_id: sid,
           updated_at: new Date().toISOString(),
           last_seen: new Date().toISOString(),
           user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
@@ -213,39 +208,39 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
     } catch (err) {
-      console.error('Error registering single device:', err);
-    } finally {
-      setCheckingSession(false);
+      console.error('Error registering single session:', err);
     }
   }, []);
 
-  const verifySingleDevice = useCallback(
+  // verifica se a sessão local ainda é a "dona" no banco
+  const verifySingleSession = useCallback(
     async (userId) => {
       if (!userId) return true;
 
       try {
-        const deviceId = ensureDeviceId();
+        const sid = getLocalSessionId();
+        if (!sid) {
+          await registerSingleSession(userId);
+          return true;
+        }
 
         const { data, error } = await supabase
           .from('user_sessions')
-          .select('device_id')
+          .select('session_id')
           .eq('user_id', userId)
           .maybeSingle();
 
         if (error) throw error;
 
-        // se não tem registro ainda, registra e não derruba
-        if (!data?.device_id) {
-          await registerSingleDevice(userId);
+        if (!data?.session_id) {
+          await registerSingleSession(userId);
           return true;
         }
 
-        // se divergir, outro device assumiu
-        if (data.device_id !== deviceId) {
+        if (data.session_id !== sid) {
           return false;
         }
 
-        // heartbeat
         await supabase
           .from('user_sessions')
           .update({ last_seen: new Date().toISOString() })
@@ -253,22 +248,21 @@ export const AuthProvider = ({ children }) => {
 
         return true;
       } catch (err) {
-        console.error('Error verifying single device:', err);
-        // em erro, NÃO derruba (evita falso positivo)
-        return true;
+        console.error('Error verifying single session:', err);
+        return true; // em erro, não derruba
       }
     },
-    [registerSingleDevice]
+    [registerSingleSession]
   );
 
-  const startDevicePolling = useCallback(
+  const startSessionPolling = useCallback(
     async (userId) => {
       if (!userId) return;
 
       activeUserIdRef.current = userId;
       sessionFailCountRef.current = 0;
 
-      await registerSingleDevice(userId);
+      await registerSingleSession(userId);
 
       stopSessionPolling();
 
@@ -276,19 +270,16 @@ export const AuthProvider = ({ children }) => {
         const currentUserId = activeUserIdRef.current;
         if (!currentUserId) return;
 
-        const ok = await verifySingleDevice(currentUserId);
+        const ok = await verifySingleSession(currentUserId);
 
         if (!ok) {
           sessionFailCountRef.current += 1;
 
           if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
             stopSessionPolling();
+            setLocalSessionId('');
             try {
               await supabase.auth.signOut();
-            } catch {}
-            // opcional: redireciona com motivo
-            try {
-              window.location.href = '/login?reason=other_device';
             } catch {}
           }
         } else {
@@ -296,7 +287,7 @@ export const AuthProvider = ({ children }) => {
         }
       }, SESSION_POLL_MS);
     },
-    [registerSingleDevice, stopSessionPolling, verifySingleDevice]
+    [registerSingleSession, stopSessionPolling, verifySingleSession]
   );
 
   // =========================
@@ -308,9 +299,6 @@ export const AuthProvider = ({ children }) => {
     const initSession = async () => {
       try {
         setLoading(true);
-
-        // ✅ garante device_id já no boot
-        ensureDeviceId();
 
         const {
           data: { session },
@@ -332,13 +320,12 @@ export const AuthProvider = ({ children }) => {
           startPremiumPolling(currentUser.id);
 
           setTimeout(() => {
-            startDevicePolling(currentUser.id);
+            startSessionPolling(currentUser.id);
           }, GRACE_AFTER_LOGIN_MS);
         } else {
           setIsPremium(false);
           isPremiumRef.current = false;
           setCheckingPremium(false);
-          setCheckingSession(false);
           activeUserIdRef.current = null;
           stopSessionPolling();
           stopPremiumPolling();
@@ -355,9 +342,6 @@ export const AuthProvider = ({ children }) => {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
 
-      // ✅ garante device_id sempre que muda auth
-      ensureDeviceId();
-
       const currentUser = session?.user ?? null;
       setSession(session ?? null);
       setUser(currentUser);
@@ -365,20 +349,25 @@ export const AuthProvider = ({ children }) => {
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
 
-        setTimeout(() => checkPremiumStatus(currentUser.id), 0);
-        setTimeout(() => startPremiumPolling(currentUser.id), 0);
+        setTimeout(() => {
+          checkPremiumStatus(currentUser.id);
+        }, 0);
 
         setTimeout(() => {
-          startDevicePolling(currentUser.id);
+          startPremiumPolling(currentUser.id);
+        }, 0);
+
+        setTimeout(() => {
+          startSessionPolling(currentUser.id);
         }, GRACE_AFTER_LOGIN_MS);
       } else {
         activeUserIdRef.current = null;
         stopSessionPolling();
         stopPremiumPolling();
+        setLocalSessionId('');
         setIsPremium(false);
         isPremiumRef.current = false;
         setCheckingPremium(false);
-        setCheckingSession(false);
       }
 
       setLoading(false);
@@ -395,7 +384,7 @@ export const AuthProvider = ({ children }) => {
   }, [
     checkPremiumStatus,
     startPremiumPolling,
-    startDevicePolling,
+    startSessionPolling,
     stopSessionPolling,
     stopPremiumPolling,
   ]);
@@ -451,8 +440,6 @@ export const AuthProvider = ({ children }) => {
     isPremium,
     checkingPremium,
     refreshPremiumStatus,
-
-    checkingSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
