@@ -13,20 +13,16 @@ const SubscriptionPlans = () => {
   const [loadingPlan, setLoadingPlan] = useState(null);
 
   // ✅ (NOVO) META PIXEL - InitiateCheckout (mínimo e seguro)
-  // - Gera event_id para deduplicação futura (Purchase via CAPI no webhook)
-  // - Salva no localStorage apenas para debug/uso futuro
   const fireInitiateCheckout = ({ planType, planName, value }) => {
     try {
       const eventId = `ic_${planType}_${Date.now()}_${Math.random()
         .toString(16)
         .slice(2)}`;
 
-      // ✅ guarda o último event id (útil pra debug)
       try {
         localStorage.setItem('dp_last_initiatecheckout_event_id', eventId);
       } catch {}
 
-      // ✅ guarda dados do plano para a página /obrigado disparar Purchase depois
       try {
         localStorage.setItem(
           'dp_last_checkout',
@@ -60,6 +56,36 @@ const SubscriptionPlans = () => {
     }
   };
 
+  // ✅ helper: transforma erro da function em mensagem melhor
+  const getInvokeErrorMessage = (error, fallback) => {
+    try {
+      const status = error?.context?.status;
+      const name = error?.name;
+      const message = error?.message;
+
+      // Alguns erros vem com contexto mais rico
+      const ctx = error?.context;
+      const ctxMsg =
+        (typeof ctx?.body === 'string' && ctx.body) ||
+        (typeof ctx?.error === 'string' && ctx.error) ||
+        null;
+
+      const parts = [];
+      if (status) parts.push(`HTTP ${status}`);
+      if (name) parts.push(name);
+      if (message) parts.push(message);
+
+      const base = parts.length ? parts.join(' • ') : fallback;
+
+      // Se tiver corpo/erro no contexto, anexa um pedaço
+      if (ctxMsg) return `${base} • ${String(ctxMsg).slice(0, 180)}`;
+
+      return base || fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
   // ✅ STRIPE (mantém do jeito que já está)
   const handleSubscribe = async (planType) => {
     if (loadingPlan) return;
@@ -76,16 +102,12 @@ const SubscriptionPlans = () => {
     setLoadingPlan(planType);
 
     try {
-      // ✅ (NOVO) dispara InitiateCheckout no clique do Cartão também
+      // ✅ dispara InitiateCheckout no clique do Cartão também
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
       const value = planType === 'quarterly' ? 43.9 : 15.9;
 
-      fireInitiateCheckout({
-        planType,
-        planName,
-        value,
-      });
+      fireInitiateCheckout({ planType, planName, value });
 
       // 1) sessão ao vivo
       const { data: s, error: sErr } = await supabase.auth.getSession();
@@ -113,11 +135,16 @@ const SubscriptionPlans = () => {
       );
 
       if (error) {
-        console.error('Supabase function error:', error);
-        throw new Error(error.message || 'Erro ao comunicar com o servidor');
+        console.error('[create-checkout-session] error object:', error);
+        const msg = getInvokeErrorMessage(
+          error,
+          'Erro ao comunicar com o servidor (Stripe)'
+        );
+        throw new Error(msg);
       }
 
       if (!data?.url) {
+        console.error('[create-checkout-session] data sem url:', data);
         throw new Error('URL de checkout não retornada');
       }
 
@@ -163,21 +190,16 @@ const SubscriptionPlans = () => {
         return;
       }
 
-      // ✅ (NOVO) dispara InitiateCheckout no clique do Pix
+      // ✅ dispara InitiateCheckout no clique do Pix
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
       const value = planType === 'quarterly' ? 43.9 : 15.9;
 
-      const event_id = fireInitiateCheckout({
-        planType,
-        planName,
-        value,
-      });
+      const event_id = fireInitiateCheckout({ planType, planName, value });
 
       const { data, error } = await supabase.functions.invoke(
         'infinitepay-create-checkout',
         {
-          // ✅ (NOVO) envia event_id para o backend salvar no pix_payments
           body: { plan: planType, event_id },
           headers: {
             Authorization: `Bearer ${token}`,
@@ -186,11 +208,16 @@ const SubscriptionPlans = () => {
       );
 
       if (error) {
-        console.error('InfinitePay function error:', error);
-        throw new Error(error.message || 'Erro ao comunicar com o servidor');
+        console.error('[infinitepay-create-checkout] error object:', error);
+        const msg = getInvokeErrorMessage(
+          error,
+          'Erro ao comunicar com o servidor (Pix)'
+        );
+        throw new Error(msg);
       }
 
       if (!data?.url) {
+        console.error('[infinitepay-create-checkout] data sem url:', data);
         throw new Error('URL do Pix não retornada');
       }
 
@@ -207,10 +234,8 @@ const SubscriptionPlans = () => {
     }
   };
 
-  // ✅ Loading
   const isLoading = !!loadingPlan;
 
-  // ✅ WHATSAPP (SUPORTE) — ADIÇÃO
   const whatsappLink =
     'https://wa.me/5518996796654?text=' +
     encodeURIComponent('Ola estou com uma Duvida. Você pode me Ajudar?');
@@ -281,7 +306,6 @@ const SubscriptionPlans = () => {
                 ))}
               </ul>
 
-              {/* STRIPE */}
               <Button
                 onClick={() => handleSubscribe('monthly')}
                 disabled={isLoading}
@@ -294,7 +318,6 @@ const SubscriptionPlans = () => {
                 )}
               </Button>
 
-              {/* PIX INFINITEPAY */}
               <Button
                 onClick={() => handlePix('monthly')}
                 disabled={isLoading}
@@ -350,7 +373,6 @@ const SubscriptionPlans = () => {
                 ))}
               </ul>
 
-              {/* STRIPE */}
               <Button
                 onClick={() => handleSubscribe('quarterly')}
                 disabled={isLoading}
@@ -363,7 +385,6 @@ const SubscriptionPlans = () => {
                 )}
               </Button>
 
-              {/* PIX INFINITEPAY */}
               <Button
                 onClick={() => handlePix('quarterly')}
                 disabled={isLoading}
@@ -378,7 +399,6 @@ const SubscriptionPlans = () => {
             </motion.div>
           </div>
 
-          {/* ✅ BLOCO PIX (mantém visual, agora 100% automático) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -398,7 +418,6 @@ const SubscriptionPlans = () => {
             </p>
           </motion.div>
 
-          {/* ✅ WHATSAPP – DÚVIDAS / SUPORTE (ADIÇÃO) */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
