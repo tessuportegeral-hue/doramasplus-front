@@ -53,6 +53,19 @@ const setLocalSessionId = (value) => {
   } catch {}
 };
 
+// ✅ (NOVO) testa se o localStorage está persistindo de verdade
+const canPersistLocalSessionId = () => {
+  try {
+    const testKey = `${LOCAL_SESSION_KEY}__test`;
+    localStorage.setItem(testKey, '1');
+    const ok = localStorage.getItem(testKey) === '1';
+    localStorage.removeItem(testKey);
+    return ok;
+  } catch {
+    return false;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
@@ -189,10 +202,17 @@ export const AuthProvider = ({ children }) => {
     if (!userId) return;
 
     try {
+      // ✅ se localStorage não é confiável nesse navegador, NÃO aplica regra
+      if (!canPersistLocalSessionId()) return;
+
       let sid = getLocalSessionId();
       if (!sid) {
         sid = generateSessionId();
         setLocalSessionId(sid);
+
+        // ✅ garante que persistiu de verdade
+        const saved = getLocalSessionId();
+        if (saved !== sid) return; // não persistiu -> não aplica regra
       }
 
       const { error } = await supabase.from('user_sessions').upsert(
@@ -218,11 +238,12 @@ export const AuthProvider = ({ children }) => {
       if (!userId) return true;
 
       try {
+        // ✅ se localStorage não é confiável nesse navegador, NÃO aplica regra
+        if (!canPersistLocalSessionId()) return true;
+
         const sid = getLocalSessionId();
-        if (!sid) {
-          await registerSingleSession(userId);
-          return true;
-        }
+        // sid vazio/curto = não confiável -> não aplica regra
+        if (!sid || sid.length < 10) return true;
 
         const { data, error } = await supabase
           .from('user_sessions')
@@ -276,11 +297,10 @@ export const AuthProvider = ({ children }) => {
           sessionFailCountRef.current += 1;
 
           if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
+            // ✅ MUDANÇA CRÍTICA: NÃO derruba mais (pra voltar online agora)
+            // Só para o polling pra não ficar batendo.
             stopSessionPolling();
-            setLocalSessionId('');
-            try {
-              await supabase.auth.signOut();
-            } catch {}
+            console.warn('[single-session] detectou outra sessão, polling parado (sem logout).');
           }
         } else {
           sessionFailCountRef.current = 0;
