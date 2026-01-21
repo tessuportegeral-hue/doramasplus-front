@@ -18,7 +18,9 @@ const Landing = () => {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate('/dashboard');
+      // ✅ ÚNICA ALTERAÇÃO: você não tem rota "/dashboard" no App.jsx.
+      // O Dashboard fica em "/", então redireciona pra "/".
+      navigate('/');
       return;
     }
 
@@ -26,11 +28,11 @@ const Landing = () => {
       try {
         setLoading(true);
         const { data, error } = await supabase
-            .from('doramas')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(6);
-            
+          .from('doramas')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(6);
+
         if (error) throw error;
         setFeaturedDoramas(data || []);
       } catch (error) {
@@ -42,7 +44,7 @@ const Landing = () => {
     };
 
     if (!isAuthenticated) {
-        loadFeatured();
+      loadFeatured();
     }
   }, [navigate, isAuthenticated, authLoading]);
 
@@ -63,7 +65,10 @@ const Landing = () => {
     <>
       <Helmet>
         <title>DoramaStream - Assista seus Dramas Asiáticos Favoritos</title>
-        <meta name="description" content="Assista aos melhores doramas coreanos e asiáticos online. Descubra novos shows, assista seus favoritos e nunca perca um episódio." />
+        <meta
+          name="description"
+          content="Assista aos melhores doramas coreanos e asiáticos online. Descubra novos shows, assista seus favoritos e nunca perca um episódio."
+        />
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -72,7 +77,7 @@ const Landing = () => {
         {/* Hero Section */}
         <section className="relative pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 via-slate-950 to-slate-950 pointer-events-none" />
-          
+
           <div className="container mx-auto relative z-10">
             <div className="max-w-4xl mx-auto text-center">
               <motion.div
@@ -84,20 +89,27 @@ const Landing = () => {
                   Assista aos Seus
                   <span className="block text-purple-500 mt-2">Doramas Favoritos</span>
                 </h1>
-                
+
                 <p className="text-lg sm:text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
                   Streaming ilimitado de dramas coreanos e asiáticos. Novos episódios adicionados semanalmente. Assista onde e quando quiser.
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Link to="/signup">
-                    <Button size="lg" className="bg-purple-600 hover:bg-purple-700 text-lg px-8 py-6 rounded-full font-semibold shadow-lg hover:shadow-purple-500/25 transition-all">
+                    <Button
+                      size="lg"
+                      className="bg-purple-600 hover:bg-purple-700 text-lg px-8 py-6 rounded-full font-semibold shadow-lg hover:shadow-purple-500/25 transition-all"
+                    >
                       <Play className="w-5 h-5 mr-2 fill-white" />
                       Começar a Assistir Grátis
                     </Button>
                   </Link>
                   <Link to="/login">
-                    <Button size="lg" variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800 text-lg px-8 py-6 rounded-full">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="border-slate-700 text-slate-300 hover:bg-slate-800 text-lg px-8 py-6 rounded-full"
+                    >
                       Entrar
                     </Button>
                   </Link>
@@ -127,9 +139,7 @@ const Landing = () => {
               viewport={{ once: true }}
               className="text-center mb-12"
             >
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                Adicionados Recentemente
-              </h2>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Adicionados Recentemente</h2>
               <p className="text-slate-400 max-w-2xl mx-auto">
                 Confira os últimos lançamentos que acabaram de chegar na plataforma
               </p>
@@ -151,14 +161,16 @@ const Landing = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12 text-slate-500">
-                Nenhum dorama encontrado no momento.
-              </div>
+              <div className="text-center py-12 text-slate-500">Nenhum dorama encontrado no momento.</div>
             )}
 
             <div className="text-center mt-12">
               <Link to="/signup">
-                <Button size="lg" variant="secondary" className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700">
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
+                >
                   Ver Catálogo Completo
                 </Button>
               </Link>
@@ -175,9 +187,7 @@ const Landing = () => {
               </div>
               <span className="text-xl font-bold text-white">DoramaStream</span>
             </div>
-            <p className="text-slate-500 text-sm">
-              © {new Date().getFullYear()} DoramaStream. Todos os direitos reservados.
-            </p>
+            <p className="text-slate-500 text-sm">© {new Date().getFullYear()} DoramaStream. Todos os direitos reservados.</p>
           </div>
         </footer>
       </div>
@@ -195,7 +205,7 @@ const StatsCard = ({ icon, value, label, delay }) => (
   >
     <div className="flex justify-center mb-4">
       <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400">
-        {React.cloneElement(icon, { className: "w-6 h-6" })}
+        {React.cloneElement(icon, { className: 'w-6 h-6' })}
       </div>
     </div>
     <div className="text-3xl font-bold text-white mb-1">{value}</div>
