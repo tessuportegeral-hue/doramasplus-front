@@ -374,22 +374,6 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     }
   };
 
-  const setStoredDeviceId = (value) => {
-    try {
-      if (!value) localStorage.removeItem(DEVICE_KEY);
-      else localStorage.setItem(DEVICE_KEY, value);
-    } catch {}
-  };
-
-  const generateDeviceId = () => {
-    try {
-      if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-    } catch {}
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random()
-      .toString(16)
-      .slice(2)}`;
-  };
-
   const [doramas, setDoramas] = useState({
     featured: [],
     new: [],
@@ -501,19 +485,20 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     checkEverSubscribed();
   }, [authLoading, user]);
 
-  // ✅✅✅ (CORRIGIDO) ENFORCE: 1 dispositivo por vez (SEM LOOP DE LOGOUT)
+  // ✅✅✅ (ADICIONADO) ENFORCE: 1 dispositivo por vez
   useEffect(() => {
     const enforceSingleDevice = async () => {
       try {
         if (typeof window === "undefined") return;
         if (authLoading || !user) return;
 
-        let localDeviceId = getStoredDeviceId();
+        const localDeviceId = getStoredDeviceId();
 
-        // ✅ se não existir device_id local, cria (não desloga!)
+        // Se não existir device_id no aparelho, força relogar (pra gerar certinho no login)
         if (!localDeviceId) {
-          localDeviceId = generateDeviceId();
-          setStoredDeviceId(localDeviceId);
+          await supabase.auth.signOut();
+          window.location.href = "/login?reason=device";
+          return;
         }
 
         const { data, error } = await supabase
@@ -527,26 +512,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           return; // não derruba em erro pra evitar falso positivo
         }
 
-        // ✅ se não existe device_id ainda no banco, grava o primeiro (primeiro device vira o “dono”)
-        if (!data?.device_id) {
-          const { error: upErr } = await supabase
-            .from("user_sessions")
-            .upsert(
-              {
-                user_id: user.id,
-                device_id: localDeviceId,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id" }
-            );
+        // Se não existe registro ainda, não derruba (usuário antigo). No próximo login entra na regra.
+        if (!data?.device_id) return;
 
-          if (upErr) {
-            console.error("[single-device] erro ao salvar device_id:", upErr);
-          }
-          return;
-        }
-
-        // ✅ se o device não bate, derruba (aí sim bloqueia compartilhamento)
+        // Se o device não bate, derruba
         if (data.device_id !== localDeviceId) {
           await supabase.auth.signOut();
           window.location.href = "/login?reason=other_device";
