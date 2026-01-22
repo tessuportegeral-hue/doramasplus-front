@@ -19,9 +19,7 @@ export default function ComoFunciona() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <h1 style={styles.h1}>
-          Como fazer o teste grátis no DoramasPlus 💜
-        </h1>
+        <h1 style={styles.h1}>Como fazer o teste grátis no DoramasPlus 💜</h1>
 
         <p style={styles.p}>
           Assista o vídeo abaixo e veja como entrar no teste grátis, criar
@@ -31,31 +29,34 @@ export default function ComoFunciona() {
         <div style={styles.videoWrap}>
           <video
             style={styles.video}
-            src={videoSrc}
             controls
             playsInline
             preload="metadata"
-          />
+          >
+            <source src={videoSrc} type="video/mp4" />
+            Seu navegador não suporta vídeo.
+          </video>
         </div>
 
-        <button
-          style={styles.cta}
-          onClick={() => navigate("/teste-gratis")}
-        >
+        <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
           Quero fazer o teste grátis
         </button>
 
-        {/* TEXTO DE SUPORTE VIA WHATSAPP */}
-        <p style={styles.supportText}>
-          Dúvidas? envie mensagem para nosso Suporte no WhatsApp{" "}
-          <a
-            href={whatsappLink}
-            target="_blank"
-            rel="noreferrer"
-            style={styles.supportLink}
-          >
-            18 99679-6654
-          </a>
+        {/* ✅ BOTÃO WHATSAPP (mais bonito e clicável) */}
+        <a
+          href={whatsappLink}
+          target="_blank"
+          rel="noreferrer"
+          style={styles.whatsBtn}
+        >
+          <span style={styles.whatsIcon} aria-hidden="true">
+            💬
+          </span>
+          Falar com o suporte no WhatsApp
+        </a>
+
+        <p style={styles.smallNote}>
+          Número: <b>18 99679-6654</b> (mensagem automática já vai pronta)
         </p>
       </div>
     </div>
@@ -109,14 +110,33 @@ const styles = {
     background: "#b06cff",
     color: "#0b0b10",
   },
-  supportText: {
+
+  // ✅ WhatsApp button
+  whatsBtn: {
     marginTop: 12,
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "12px 14px",
+    borderRadius: 14,
+    textDecoration: "none",
+    fontSize: 15,
+    fontWeight: 800,
+    background: "#19c37d",
+    color: "#0b0b10",
+    border: "none",
+    cursor: "pointer",
+    boxShadow: "0 8px 20px rgba(0,0,0,0.28)",
+  },
+  whatsIcon: {
+    fontSize: 18,
+    lineHeight: 1,
+  },
+  smallNote: {
+    marginTop: 10,
     fontSize: 13,
     opacity: 0.85,
-  },
-  supportLink: {
-    color: "#d6b3ff",
-    fontWeight: 700,
-    textDecoration: "underline",
   },
 };
