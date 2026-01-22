@@ -5,8 +5,8 @@ import React, {
   useState,
   useCallback,
   useRef,
-} from 'react';
-import { supabase } from '@/lib/supabaseClient';
+} from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 const AuthContext = createContext(null);
 
@@ -14,23 +14,25 @@ const AuthContext = createContext(null);
 // ✅ CONFIG
 // =========================
 
-// ✅ LIGA o novo sistema (Edge Functions) de 1 sessão por vez
+// Liga/desliga o bloqueio 1 dispositivo
 const ENABLE_SINGLE_SESSION = true;
 
-// ✅ polling de validação (ms)
+// Intervalo de verificação (ms)
 const SESSION_POLL_MS = 4000;
 
-// ✅ se der erro de rede/função, quantas vezes seguidas antes de parar o polling (NÃO desloga por erro)
-const FAIL_THRESHOLD = 3;
+// Quantas falhas seguidas antes de derrubar (evita falso positivo por rede ruim)
+const FAIL_THRESHOLD = 2;
 
-// ✅ tempo de “graça” após login/refresh (ms)
+// Tempo de “graça” depois do login (ms)
 const GRACE_AFTER_LOGIN_MS = 1200;
 
-// ✅ tempo de sync do premium (ms)
+// Premium polling
 const PREMIUM_POLL_MS = 2500;
-
-// ✅ por quanto tempo tentar sincronizar premium após login/checkout (ms)
 const PREMIUM_POLL_MAX_MS = 60_000;
+
+// Nome das Edge Functions
+const FN_START_SESSION = "start-session";
+const FN_VALIDATE_SESSION = "validate-session";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -40,30 +42,21 @@ export const AuthProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [checkingPremium, setCheckingPremium] = useState(true);
 
-  // ✅ estado visual/debug (não trava nada)
+  // debug/status
   const [checkingSession, setCheckingSession] = useState(false);
 
-  // =========================
-  // REFS
-  // =========================
+  // refs
   const activeUserIdRef = useRef(null);
 
-  // premium refs
+  const sessionVersionRef = useRef(null); // <-- o "token" do dispositivo atual
+  const sessionPollRef = useRef(null);
+  const sessionFailCountRef = useRef(0);
+
   const premiumPollRef = useRef(null);
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
 
-  // timeouts (evita duplicar timers)
   const timersRef = useRef([]);
-
-  // ✅ NOVO: session_version em memória
-  const sessionVersionRef = useRef(null);
-
-  // ✅ NOVO: intervalo do validate-session
-  const sessionPollRef = useRef(null);
-
-  // ✅ NOVO: contador de falhas de chamada (rede/edge) — não derruba por isso
-  const sessionFailCountRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     (timersRef.current || []).forEach((t) => {
@@ -72,17 +65,6 @@ export const AuthProvider = ({ children }) => {
       } catch {}
     });
     timersRef.current = [];
-  }, []);
-
-  // =========================
-  // ✅ STOPPERS
-  // =========================
-  const stopPremiumPolling = useCallback(() => {
-    if (premiumPollRef.current) {
-      clearInterval(premiumPollRef.current);
-      premiumPollRef.current = null;
-    }
-    premiumPollStartedAtRef.current = 0;
   }, []);
 
   const stopSessionPolling = useCallback(() => {
@@ -94,12 +76,16 @@ export const AuthProvider = ({ children }) => {
     setCheckingSession(false);
   }, []);
 
-  const clearSingleSessionMemory = useCallback(() => {
-    sessionVersionRef.current = null;
+  const stopPremiumPolling = useCallback(() => {
+    if (premiumPollRef.current) {
+      clearInterval(premiumPollRef.current);
+      premiumPollRef.current = null;
+    }
+    premiumPollStartedAtRef.current = 0;
   }, []);
 
   // =========================
-  // PREMIUM (mantido)
+  // ✅ PREMIUM (igual você já tinha)
   // =========================
   const checkPremiumStatus = useCallback(
     async (userId) => {
@@ -114,10 +100,10 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const { data: subscriptions, error } = await supabase
-          .from('subscriptions')
-          .select('status, end_at, current_period_end')
-          .eq('user_id', userId)
-          .in('status', ['active', 'trialing']);
+          .from("subscriptions")
+          .select("status, end_at, current_period_end")
+          .eq("user_id", userId)
+          .in("status", ["active", "trialing"]);
 
         if (error) throw error;
 
@@ -134,7 +120,7 @@ export const AuthProvider = ({ children }) => {
 
         if (hasActiveSub) stopPremiumPolling();
       } catch (err) {
-        console.error('Error checking premium status:', err);
+        console.error("Error checking premium status:", err);
         setIsPremium(false);
         isPremiumRef.current = false;
       } finally {
@@ -185,130 +171,130 @@ export const AuthProvider = ({ children }) => {
   );
 
   // =========================
-  // ✅ NOVO: 1 SESSÃO POR VEZ (Edge Functions)
+  // ✅ 1 DISPOSITIVO (Edge Functions)
   // =========================
 
-  const startEdgeSession = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION) return;
+  // 1) Inicia sessão (gera session_version no backend e devolve pro frontend)
+  const startSingleSession = useCallback(async () => {
+    if (!ENABLE_SINGLE_SESSION) return null;
 
     setCheckingSession(true);
 
     try {
-      // start-session não precisa body. Ele usa o Authorization do usuário logado.
-      const { data, error } = await supabase.functions.invoke('start-session');
+      // OBS: supabase já manda Authorization automaticamente (se estiver logado)
+      const { data, error } = await supabase.functions.invoke(FN_START_SESSION, {
+        body: {},
+      });
 
-      if (error) {
-        console.error('start-session error:', error);
-        return;
+      if (error) throw error;
+
+      const version = data?.session_version || null;
+      if (!version) {
+        console.warn(
+          "[single-session] start-session não retornou session_version:",
+          data
+        );
       }
 
-      const v = data?.session_version;
-      if (!v) {
-        console.error('start-session: resposta sem session_version', data);
-        return;
-      }
-
-      sessionVersionRef.current = v;
-      sessionFailCountRef.current = 0;
+      sessionVersionRef.current = version;
+      return version;
     } catch (e) {
-      console.error('start-session exception:', e);
+      console.error("[single-session] Erro no start-session:", e);
+      // se falhar, não derruba — só não aplica ainda
+      sessionVersionRef.current = null;
+      return null;
     } finally {
       setCheckingSession(false);
     }
   }, []);
 
-  const validateEdgeSessionOnce = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION) return { ok: true };
-    const v = sessionVersionRef.current;
-    if (!v) return { ok: true };
+  // 2) Valida a sessão atual (se mudou no backend => derruba)
+  const validateSingleSession = useCallback(async () => {
+    if (!ENABLE_SINGLE_SESSION) return true;
+
+    const currentVersion = sessionVersionRef.current;
+    if (!currentVersion) {
+      // se não tem version ainda, tenta criar
+      const v = await startSingleSession();
+      return !!v; // se criou, ok; se não criou, não derruba
+    }
 
     try {
-      const { data, error } = await supabase.functions.invoke('validate-session', {
-        body: { session_version: v },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        FN_VALIDATE_SESSION,
+        {
+          body: { session_version: currentVersion },
+        }
+      );
 
-      // erro de rede/edge: NÃO derruba (pra não repetir o inferno de ontem)
-      if (error) {
-        return { ok: true, softError: true, details: error };
+      if (error) throw error;
+
+      // contrato esperado:
+      // data = { valid: boolean }
+      const valid = data?.valid;
+
+      if (typeof valid !== "boolean") {
+        console.warn(
+          "[single-session] validate-session retornou formato inesperado:",
+          data
+        );
+        // não derruba por retorno estranho
+        return true;
       }
 
-      // se o backend disse "invalid", aí é conflito REAL => derruba
-      if (data?.valid === false) {
-        return { ok: false, conflict: true };
-      }
-
-      return { ok: true };
+      return valid;
     } catch (e) {
-      return { ok: true, softError: true, details: e };
+      console.error("[single-session] Erro no validate-session:", e);
+      // rede ruim ≠ derrubar; tratamos no FAIL_THRESHOLD
+      return true;
     }
-  }, []);
+  }, [startSingleSession]);
 
-  const beginEdgeSessionPolling = useCallback(() => {
+  // 3) Polling que derruba mesmo
+  const startSessionPolling = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return;
-    if (sessionPollRef.current) return;
+    if (!activeUserIdRef.current) return;
+
+    // evita múltiplos polls
+    stopSessionPolling();
+
+    // garante session_version inicial
+    await startSingleSession();
 
     sessionFailCountRef.current = 0;
 
     sessionPollRef.current = setInterval(async () => {
-      const res = await validateEdgeSessionOnce();
+      if (!activeUserIdRef.current) return;
 
-      if (res?.conflict === true) {
-        // conflito real: derruba a sessão antiga
-        stopSessionPolling();
-        clearSingleSessionMemory();
+      const ok = await validateSingleSession();
 
-        try {
-          await supabase.auth.signOut();
-        } catch {}
-        return;
-      }
-
-      if (res?.softError) {
+      if (!ok) {
         sessionFailCountRef.current += 1;
 
-        // muita falha seguida: para o polling pra não martelar
         if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
+          // derruba com força
           stopSessionPolling();
-          // não desloga, só para (usuário não sofre por instabilidade)
+
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {
+            console.error("[single-session] erro no signOut:", e);
+          }
+
+          // limpa version local
+          sessionVersionRef.current = null;
         }
       } else {
         sessionFailCountRef.current = 0;
       }
     }, SESSION_POLL_MS);
-  }, [validateEdgeSessionOnce, stopSessionPolling, clearSingleSessionMemory]);
-
-  const startSingleSessionFlow = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION) return;
-
-    // evita duplicar
-    stopSessionPolling();
-    clearSingleSessionMemory();
-
-    // 1) cria a sessão "dona" no banco e pega session_version
-    await startEdgeSession();
-
-    // 2) começa polling de validação
-    if (sessionVersionRef.current) {
-      beginEdgeSessionPolling();
-    }
-  }, [startEdgeSession, beginEdgeSessionPolling, stopSessionPolling, clearSingleSessionMemory]);
+  }, [startSingleSession, stopSessionPolling, validateSingleSession]);
 
   // =========================
   // INIT + AUTH LISTENER
   // =========================
   useEffect(() => {
     let isMounted = true;
-
-    const resetAll = () => {
-      activeUserIdRef.current = null;
-      stopSessionPolling();
-      clearSingleSessionMemory();
-      stopPremiumPolling();
-      setIsPremium(false);
-      isPremiumRef.current = false;
-      setCheckingPremium(false);
-      setCheckingSession(false);
-    };
 
     const initSession = async () => {
       try {
@@ -319,7 +305,7 @@ export const AuthProvider = ({ children }) => {
           error,
         } = await supabase.auth.getSession();
 
-        if (error) console.error('Error getting initial session:', error);
+        if (error) console.error("Error getting initial session:", error);
         if (!isMounted) return;
 
         setSession(session ?? null);
@@ -331,17 +317,25 @@ export const AuthProvider = ({ children }) => {
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
 
-          // premium
           checkPremiumStatus(currentUser.id);
           startPremiumPolling(currentUser.id);
 
-          // single-session (Edge) com grace
+          // inicia single-session após grace
           const t = setTimeout(() => {
-            startSingleSessionFlow();
+            startSessionPolling();
           }, GRACE_AFTER_LOGIN_MS);
           timersRef.current.push(t);
         } else {
-          resetAll();
+          activeUserIdRef.current = null;
+          sessionVersionRef.current = null;
+
+          stopSessionPolling();
+          stopPremiumPolling();
+
+          setIsPremium(false);
+          isPremiumRef.current = false;
+          setCheckingPremium(false);
+          setCheckingSession(false);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -367,13 +361,27 @@ export const AuthProvider = ({ children }) => {
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
 
-        // importante: em SIGNED_IN / TOKEN_REFRESHED / INITIAL_SESSION,
-        // a gente sempre garante o single-session flow (com grace)
-        const t3 = setTimeout(() => startSingleSessionFlow(), GRACE_AFTER_LOGIN_MS);
+        // MUITO IMPORTANTE:
+        // sempre que loga, cria uma NOVA session_version.
+        const t3 = setTimeout(async () => {
+          // start-session primeiro
+          await startSingleSession();
+          // depois polling
+          await startSessionPolling();
+        }, GRACE_AFTER_LOGIN_MS);
 
         timersRef.current.push(t1, t2, t3);
       } else {
-        resetAll();
+        activeUserIdRef.current = null;
+        sessionVersionRef.current = null;
+
+        stopSessionPolling();
+        stopPremiumPolling();
+
+        setIsPremium(false);
+        isPremiumRef.current = false;
+        setCheckingPremium(false);
+        setCheckingSession(false);
       }
 
       setLoading(false);
@@ -386,70 +394,62 @@ export const AuthProvider = ({ children }) => {
       } catch {}
       clearTimers();
       stopSessionPolling();
-      clearSingleSessionMemory();
       stopPremiumPolling();
     };
   }, [
     checkPremiumStatus,
     startPremiumPolling,
-    startSingleSessionFlow,
-    stopSessionPolling,
     stopPremiumPolling,
+    startSingleSession,
+    startSessionPolling,
+    stopSessionPolling,
     clearTimers,
-    clearSingleSessionMemory,
   ]);
 
-  // ✅ quando usuário volta pra aba/janela, sincroniza premium
+  // ✅ quando volta pra aba, valida sessão + sincroniza premium
   useEffect(() => {
     const onFocus = async () => {
-      const uid = activeUserIdRef.current;
-      if (!uid) return;
+      if (!activeUserIdRef.current) return;
 
-      await checkPremiumStatus(uid);
+      // premium
+      await checkPremiumStatus(activeUserIdRef.current);
+      if (isPremiumRef.current === false) startPremiumPolling(activeUserIdRef.current);
 
-      if (isPremiumRef.current === false) {
-        startPremiumPolling(uid);
-      }
-
-      // opcional: valida sessão ao voltar foco (deixa mais rápido pra derrubar o antigo)
-      if (ENABLE_SINGLE_SESSION && sessionVersionRef.current) {
-        const res = await validateEdgeSessionOnce();
-        if (res?.conflict === true) {
-          stopSessionPolling();
-          clearSingleSessionMemory();
+      // sessão
+      if (ENABLE_SINGLE_SESSION) {
+        const ok = await validateSingleSession();
+        if (!ok) {
           try {
             await supabase.auth.signOut();
           } catch {}
+          sessionVersionRef.current = null;
         }
       }
     };
 
     const onVisibility = async () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         await onFocus();
       }
     };
 
     try {
-      window.addEventListener('focus', onFocus);
-      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener("focus", onFocus);
+      document.addEventListener("visibilitychange", onVisibility);
     } catch {}
 
     return () => {
       try {
-        window.removeEventListener('focus', onFocus);
-        document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onVisibility);
       } catch {}
     };
-  }, [checkPremiumStatus, startPremiumPolling, validateEdgeSessionOnce, stopSessionPolling, clearSingleSessionMemory]);
+  }, [checkPremiumStatus, startPremiumPolling, validateSingleSession]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
       checkPremiumStatus(user.id);
-
-      if (isPremiumRef.current === false) {
-        startPremiumPolling(user.id);
-      }
+      if (isPremiumRef.current === false) startPremiumPolling(user.id);
     }
   }, [user, checkPremiumStatus, startPremiumPolling]);
 
@@ -463,9 +463,8 @@ export const AuthProvider = ({ children }) => {
     checkingPremium,
     refreshPremiumStatus,
 
+    // sessão única
     checkingSession,
-
-    // debug
     singleSessionEnabled: ENABLE_SINGLE_SESSION,
   };
 
@@ -474,8 +473,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 };
