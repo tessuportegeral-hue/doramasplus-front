@@ -31,6 +31,9 @@ import RecommendedDoramas from '@/pages/RecommendedDoramas';
 import DubbedDoramas from '@/pages/DubbedDoramas';
 import ResetPassword from '@/pages/ResetPassword';
 
+// ✅ (ADICIONADO) Página do vídeo
+import ComoFunciona from '@/pages/ComoFunciona';
+
 // Admin
 import AdminLogin from '@/pages/AdminLogin';
 import AdminAnalytics from '@/pages/AdminAnalytics';
@@ -222,6 +225,9 @@ function App() {
                   />
                 }
               />
+
+              {/* ✅ (ADICIONADO) Página do vídeo (conversão) */}
+              <Route path="/como-funciona" element={<ComoFunciona />} />
 
               {/* Landing */}
               <Route path="/landing" element={<Landing />} />
