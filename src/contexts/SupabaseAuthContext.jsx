@@ -21,15 +21,18 @@ const ENABLE_SINGLE_SESSION = true;
 const START_SESSION_FN = "start-session";
 const VALIDATE_SESSION_FN = "validate-session";
 
-// ✅ tempo de verificação (ms) — mais rápido pra derrubar logo
-const SESSION_POLL_MS = 2000;
+// ✅ tempo de verificação (ms) — (AJUSTADO) mais leve pra não derrubar por falso positivo
+const SESSION_POLL_MS = 12_000;
 
-// ✅ grace após login/refresh (ms)
-const GRACE_AFTER_LOGIN_MS = 800;
+// ✅ grace após login/refresh (ms) — (AJUSTADO) mais folga
+const GRACE_AFTER_LOGIN_MS = 2_500;
 
 // ✅ premium
 const PREMIUM_POLL_MS = 2500;
 const PREMIUM_POLL_MAX_MS = 60_000;
+
+// ✅ (ADICIONADO) Quantas falhas seguidas antes de derrubar
+const INVALID_STREAK_LIMIT = 3;
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -60,6 +63,9 @@ export const AuthProvider = ({ children }) => {
 
   // timeouts (evita duplicar timers)
   const timersRef = useRef([]);
+
+  // ✅ (ADICIONADO) controle de falso positivo: só derruba se falhar várias vezes seguidas
+  const invalidStreakRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     (timersRef.current || []).forEach((t) => {
@@ -212,6 +218,10 @@ export const AuthProvider = ({ children }) => {
       }
 
       sessionVersionRef.current = String(v);
+
+      // ✅ (ADICIONADO) se conseguiu iniciar sessão, zera streak
+      invalidStreakRef.current = 0;
+
       return true;
     } catch (e) {
       console.error("Error startSingleSession:", e);
@@ -275,6 +285,7 @@ export const AuthProvider = ({ children }) => {
       stopSessionPolling();
       sessionVersionRef.current = null;
       activeUserIdRef.current = null;
+      invalidStreakRef.current = 0;
       await supabase.auth.signOut();
     } catch (e) {
       console.error("Error signOut:", e);
@@ -287,16 +298,24 @@ export const AuthProvider = ({ children }) => {
 
     stopSessionPolling();
 
-    // sempre “toma posse” quando entrar (isso é o que faltava!)
+    // ✅ sempre “toma posse” quando entrar
     await startSingleSession();
 
     pollRef.current = setInterval(async () => {
       const ok = await validateSingleSession();
 
       if (!ok) {
-        // ✅ AQUI É O “NETFLIX MODE”: derruba sem dó
-        await forceSignOut();
+        // ✅ (ALTERADO) Não derruba na 1ª — só após X falhas seguidas
+        invalidStreakRef.current = (invalidStreakRef.current || 0) + 1;
+
+        if (invalidStreakRef.current >= INVALID_STREAK_LIMIT) {
+          await forceSignOut();
+        }
+        return;
       }
+
+      // ✅ se validou, zera o contador
+      invalidStreakRef.current = 0;
     }, SESSION_POLL_MS);
   }, [forceSignOut, startSingleSession, stopSessionPolling, validateSingleSession]);
 
@@ -326,6 +345,7 @@ export const AuthProvider = ({ children }) => {
 
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
+          invalidStreakRef.current = 0;
 
           checkPremiumStatus(currentUser.id);
           startPremiumPolling(currentUser.id);
@@ -342,6 +362,7 @@ export const AuthProvider = ({ children }) => {
           setCheckingSession(false);
           activeUserIdRef.current = null;
           sessionVersionRef.current = null;
+          invalidStreakRef.current = 0;
           stopSessionPolling();
           stopPremiumPolling();
         }
@@ -365,6 +386,7 @@ export const AuthProvider = ({ children }) => {
 
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
+        invalidStreakRef.current = 0;
 
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
@@ -376,6 +398,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         activeUserIdRef.current = null;
         sessionVersionRef.current = null;
+        invalidStreakRef.current = 0;
         stopSessionPolling();
         stopPremiumPolling();
         setIsPremium(false);
@@ -405,7 +428,8 @@ export const AuthProvider = ({ children }) => {
     clearTimers,
   ]);
 
-  // ✅ quando usuário volta pra aba/janela: valida e (se preciso) derruba
+  // ✅ quando usuário volta pra aba/janela:
+  // (ALTERADO) NÃO derruba mais no foco/visibility — só tenta "tomar posse" e revalidar sem expulsar
   useEffect(() => {
     const onFocus = async () => {
       if (!activeUserIdRef.current) return;
@@ -413,9 +437,9 @@ export const AuthProvider = ({ children }) => {
       await checkPremiumStatus(activeUserIdRef.current);
       if (isPremiumRef.current === false) startPremiumPolling(activeUserIdRef.current);
 
-      // valida na hora
-      const ok = await validateSingleSession();
-      if (!ok) await forceSignOut();
+      // ✅ em vez de derrubar, tenta reassumir e zera streak
+      await startSingleSession();
+      invalidStreakRef.current = 0;
     };
 
     const onVisibility = async () => {
@@ -435,7 +459,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener("visibilitychange", onVisibility);
       } catch {}
     };
-  }, [checkPremiumStatus, forceSignOut, startPremiumPolling, validateSingleSession]);
+  }, [checkPremiumStatus, startPremiumPolling, startSingleSession]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
