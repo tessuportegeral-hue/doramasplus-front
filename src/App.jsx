@@ -1,4 +1,9 @@
 // src/App.jsx
+// ============================================================
+// (LINHAS EXTRAS) Comentários adicionados APENAS pra forçar diff
+// Não muda lógica / rotas / auth / nada do funcionamento.
+// ============================================================
+
 import React, { useState, useEffect } from 'react';
 import {
   BrowserRouter as Router,
@@ -12,6 +17,10 @@ import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth, AuthProvider } from '@/contexts/SupabaseAuthContext';
+
+// ============================================================
+// Páginas (mantido exatamente como está)
+// ============================================================
 
 // Páginas
 import Login from '@/pages/Login';
@@ -42,6 +51,10 @@ import AdminRoute from '@/components/AdminRoute';
 
 // Landing
 import Landing from '@/pages/Landing';
+
+// ============================================================
+// DeviceGuard (mantido exatamente como está)
+// ============================================================
 
 // ✅ Guard global: derruba INSTANTÂNEO via Realtime quando outro device entrar
 function DeviceGuard({ children }) {
@@ -190,6 +203,10 @@ function DeviceGuard({ children }) {
 
   return children;
 }
+
+// ============================================================
+// App (mantido exatamente como está)
+// ============================================================
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
