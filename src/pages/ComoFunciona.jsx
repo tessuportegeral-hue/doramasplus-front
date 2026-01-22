@@ -5,19 +5,27 @@ import { useNavigate } from "react-router-dom";
 export default function ComoFunciona() {
   const navigate = useNavigate();
 
-  // Opção 1: vídeo local no /public
-  // Coloque seu vídeo em: public/videos/explicacao.mp4
+  // Vídeo explicativo
   const videoSrc = "/videos/explicacao.mp4";
 
-  // Opção 2 (se preferir): vídeo hospedado (ex: Cloudflare / R2 / etc)
-  // const videoSrc = "https://SEU_LINK_DO_VIDEO.mp4";
+  // WhatsApp suporte (com mensagem pré-definida)
+  const whatsappNumber = "5518996796654";
+  const whatsappMessage =
+    "Ola eu vim do anuncio pelo site e estou com uma duvida. Você pode me ajudar?";
+  const whatsappLink = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(
+    whatsappMessage
+  )}`;
 
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <h1 style={styles.h1}>Como fazer o teste grátis no DoramasPlus 💜</h1>
+        <h1 style={styles.h1}>
+          Como fazer o teste grátis no DoramasPlus 💜
+        </h1>
+
         <p style={styles.p}>
-          Assista o vídeo rápido abaixo e veja como: entrar no teste grátis, criar cadastro e assinar quando quiser.
+          Assista o vídeo abaixo e veja como entrar no teste grátis, criar
+          cadastro e assinar quando quiser.
         </p>
 
         <div style={styles.videoWrap}>
@@ -37,8 +45,17 @@ export default function ComoFunciona() {
           Quero fazer o teste grátis
         </button>
 
-        <p style={styles.small}>
-          Se o botão não abrir, acesse: <b>/teste-gratis</b>
+        {/* TEXTO DE SUPORTE VIA WHATSAPP */}
+        <p style={styles.supportText}>
+          Dúvidas? envie mensagem para nosso Suporte no WhatsApp{" "}
+          <a
+            href={whatsappLink}
+            target="_blank"
+            rel="noreferrer"
+            style={styles.supportLink}
+          >
+            18 99679-6654
+          </a>
         </p>
       </div>
     </div>
@@ -52,7 +69,7 @@ const styles = {
     justifyContent: "center",
     padding: "24px 16px",
     background: "#0b0b10",
-    color: "#fff",
+    color: "#ffffff",
   },
   container: {
     width: "100%",
@@ -60,11 +77,11 @@ const styles = {
   },
   h1: {
     fontSize: 28,
-    margin: "0 0 10px",
+    marginBottom: 8,
     lineHeight: 1.2,
   },
   p: {
-    margin: "0 0 18px",
+    marginBottom: 18,
     opacity: 0.9,
     lineHeight: 1.5,
   },
@@ -78,11 +95,10 @@ const styles = {
   },
   video: {
     width: "100%",
-    height: "auto",
     display: "block",
   },
   cta: {
-    marginTop: 16,
+    marginTop: 18,
     width: "100%",
     padding: "14px 16px",
     borderRadius: 14,
@@ -93,9 +109,14 @@ const styles = {
     background: "#b06cff",
     color: "#0b0b10",
   },
-  small: {
-    marginTop: 10,
+  supportText: {
+    marginTop: 12,
     fontSize: 13,
-    opacity: 0.75,
+    opacity: 0.85,
+  },
+  supportLink: {
+    color: "#d6b3ff",
+    fontWeight: 700,
+    textDecoration: "underline",
   },
 };
