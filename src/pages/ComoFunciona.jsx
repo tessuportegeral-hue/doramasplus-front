@@ -6,8 +6,7 @@ export default function ComoFunciona() {
   const navigate = useNavigate();
 
   // 🎬 Vídeo explicativo (Bunny CDN)
-  const videoSrc =
-    "https://doramasplus.b-cdn.net/Video%20apresenta%C3%A7%C3%A3o.mp4";
+  const videoSrc = "https://doramasplus.b-cdn.net/Video-apresentacao.mp4";
 
   // WhatsApp suporte (com mensagem pré-definida)
   const whatsappNumber = "5518996796654";
@@ -30,6 +29,7 @@ export default function ComoFunciona() {
         </p>
 
         <div style={styles.videoWrap}>
+          {/* BLOCO DE VÍDEO MAIS COMPATÍVEL POSSÍVEL */}
           <video
             style={styles.video}
             controls
@@ -55,7 +55,9 @@ export default function ComoFunciona() {
           rel="noreferrer"
           style={styles.whatsBtn}
         >
-          <span style={styles.whatsIcon} aria-hidden="true">💬</span>
+          <span style={styles.whatsIcon} aria-hidden="true">
+            💬
+          </span>
           Falar com o suporte no WhatsApp
         </a>
 
@@ -101,6 +103,7 @@ const styles = {
   video: {
     width: "100%",
     display: "block",
+    background: "#000",
   },
   cta: {
     marginTop: 18,
