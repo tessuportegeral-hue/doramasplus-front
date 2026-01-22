@@ -14,64 +14,23 @@ const AuthContext = createContext(null);
 // ✅ CONFIG
 // =========================
 
-// 🔥 EMERGÊNCIA: deixa FALSE pra NÃO aplicar 1 sessão (estabiliza login)
-const ENABLE_SINGLE_SESSION = false;
+// ✅ LIGA o novo sistema (Edge Functions) de 1 sessão por vez
+const ENABLE_SINGLE_SESSION = true;
 
-// ✅ chave do localStorage (não muda)
-const LOCAL_SESSION_KEY = 'dp_session_id';
+// ✅ polling de validação (ms)
+const SESSION_POLL_MS = 4000;
 
-// ✅ tempo de verificação (ms)
-const SESSION_POLL_MS = 5000;
-
-// ✅ só considera conflito se falhar X vezes seguidas
-const FAIL_THRESHOLD = 2;
+// ✅ se der erro de rede/função, quantas vezes seguidas antes de parar o polling (NÃO desloga por erro)
+const FAIL_THRESHOLD = 3;
 
 // ✅ tempo de “graça” após login/refresh (ms)
-const GRACE_AFTER_LOGIN_MS = 1500;
+const GRACE_AFTER_LOGIN_MS = 1200;
 
 // ✅ tempo de sync do premium (ms)
 const PREMIUM_POLL_MS = 2500;
 
 // ✅ por quanto tempo tentar sincronizar premium após login/checkout (ms)
 const PREMIUM_POLL_MAX_MS = 60_000;
-
-// ✅ cria um session_id robusto
-const generateSessionId = () => {
-  try {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  } catch {}
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random()
-    .toString(16)
-    .slice(2)}`;
-};
-
-const getLocalSessionId = () => {
-  try {
-    return localStorage.getItem(LOCAL_SESSION_KEY) || '';
-  } catch {
-    return '';
-  }
-};
-
-const setLocalSessionId = (value) => {
-  try {
-    if (!value) localStorage.removeItem(LOCAL_SESSION_KEY);
-    else localStorage.setItem(LOCAL_SESSION_KEY, value);
-  } catch {}
-};
-
-// (novo) detecta se localStorage é confiável (alguns navegadores/webviews quebram)
-const isStorageReliable = () => {
-  try {
-    const k = '__dp_test_storage__';
-    localStorage.setItem(k, '1');
-    const ok = localStorage.getItem(k) === '1';
-    localStorage.removeItem(k);
-    return ok;
-  } catch {
-    return false;
-  }
-};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -81,14 +40,13 @@ export const AuthProvider = ({ children }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [checkingPremium, setCheckingPremium] = useState(true);
 
-  // ✅ estado da sessão única (não derruba ninguém)
+  // ✅ estado visual/debug (não trava nada)
   const [checkingSession, setCheckingSession] = useState(false);
 
-  // refs
-  const pollRef = useRef(null);
+  // =========================
+  // REFS
+  // =========================
   const activeUserIdRef = useRef(null);
-
-  const sessionFailCountRef = useRef(0);
 
   // premium refs
   const premiumPollRef = useRef(null);
@@ -97,6 +55,15 @@ export const AuthProvider = ({ children }) => {
 
   // timeouts (evita duplicar timers)
   const timersRef = useRef([]);
+
+  // ✅ NOVO: session_version em memória
+  const sessionVersionRef = useRef(null);
+
+  // ✅ NOVO: intervalo do validate-session
+  const sessionPollRef = useRef(null);
+
+  // ✅ NOVO: contador de falhas de chamada (rede/edge) — não derruba por isso
+  const sessionFailCountRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     (timersRef.current || []).forEach((t) => {
@@ -107,21 +74,28 @@ export const AuthProvider = ({ children }) => {
     timersRef.current = [];
   }, []);
 
-  const stopSessionPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    sessionFailCountRef.current = 0;
-    setCheckingSession(false);
-  }, []);
-
+  // =========================
+  // ✅ STOPPERS
+  // =========================
   const stopPremiumPolling = useCallback(() => {
     if (premiumPollRef.current) {
       clearInterval(premiumPollRef.current);
       premiumPollRef.current = null;
     }
     premiumPollStartedAtRef.current = 0;
+  }, []);
+
+  const stopSessionPolling = useCallback(() => {
+    if (sessionPollRef.current) {
+      clearInterval(sessionPollRef.current);
+      sessionPollRef.current = null;
+    }
+    sessionFailCountRef.current = 0;
+    setCheckingSession(false);
+  }, []);
+
+  const clearSingleSessionMemory = useCallback(() => {
+    sessionVersionRef.current = null;
   }, []);
 
   // =========================
@@ -211,139 +185,130 @@ export const AuthProvider = ({ children }) => {
   );
 
   // =========================
-  // 1 SESSÃO POR VEZ
-  // (mantido, mas com proteção + NUNCA dá signOut automático)
+  // ✅ NOVO: 1 SESSÃO POR VEZ (Edge Functions)
   // =========================
 
-  const registerSingleSession = useCallback(async (userId) => {
+  const startEdgeSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return;
-    if (!userId) return;
-
-    // se storage é instável, não aplica regra
-    if (!isStorageReliable()) return;
 
     setCheckingSession(true);
 
     try {
-      let sid = getLocalSessionId();
-      if (!sid) {
-        sid = generateSessionId();
-        setLocalSessionId(sid);
+      // start-session não precisa body. Ele usa o Authorization do usuário logado.
+      const { data, error } = await supabase.functions.invoke('start-session');
+
+      if (error) {
+        console.error('start-session error:', error);
+        return;
       }
 
-      const { error } = await supabase.from('user_sessions').upsert(
-        {
-          user_id: userId,
-          session_id: sid,
-          updated_at: new Date().toISOString(),
-          last_seen: new Date().toISOString(),
-          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-        },
-        { onConflict: 'user_id' }
-      );
+      const v = data?.session_version;
+      if (!v) {
+        console.error('start-session: resposta sem session_version', data);
+        return;
+      }
 
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error registering single session:', err);
+      sessionVersionRef.current = v;
+      sessionFailCountRef.current = 0;
+    } catch (e) {
+      console.error('start-session exception:', e);
     } finally {
       setCheckingSession(false);
     }
   }, []);
 
-  const verifySingleSession = useCallback(
-    async (userId) => {
-      if (!ENABLE_SINGLE_SESSION) return true;
-      if (!userId) return true;
+  const validateEdgeSessionOnce = useCallback(async () => {
+    if (!ENABLE_SINGLE_SESSION) return { ok: true };
+    const v = sessionVersionRef.current;
+    if (!v) return { ok: true };
 
-      // se storage é instável, não aplica regra
-      if (!isStorageReliable()) return true;
+    try {
+      const { data, error } = await supabase.functions.invoke('validate-session', {
+        body: { session_version: v },
+      });
 
-      try {
-        const sid = getLocalSessionId();
-        if (!sid) {
-          // se não tem sid, registra e segue sem punir
-          await registerSingleSession(userId);
-          return true;
-        }
-
-        const { data, error } = await supabase
-          .from('user_sessions')
-          .select('session_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (!data?.session_id) {
-          await registerSingleSession(userId);
-          return true;
-        }
-
-        if (data.session_id !== sid) {
-          return false;
-        }
-
-        // best-effort last_seen (se falhar não derruba)
-        supabase
-          .from('user_sessions')
-          .update({ last_seen: new Date().toISOString() })
-          .eq('user_id', userId)
-          .then(() => {})
-          .catch(() => {});
-
-        return true;
-      } catch (err) {
-        console.error('Error verifying single session:', err);
-        return true;
+      // erro de rede/edge: NÃO derruba (pra não repetir o inferno de ontem)
+      if (error) {
+        return { ok: true, softError: true, details: error };
       }
-    },
-    [registerSingleSession]
-  );
 
-  const startSessionPolling = useCallback(
-    async (userId) => {
-      if (!ENABLE_SINGLE_SESSION) return;
-      if (!userId) return;
+      // se o backend disse "invalid", aí é conflito REAL => derruba
+      if (data?.valid === false) {
+        return { ok: false, conflict: true };
+      }
 
-      // se storage é instável, não aplica regra
-      if (!isStorageReliable()) return;
+      return { ok: true };
+    } catch (e) {
+      return { ok: true, softError: true, details: e };
+    }
+  }, []);
 
-      activeUserIdRef.current = userId;
-      sessionFailCountRef.current = 0;
+  const beginEdgeSessionPolling = useCallback(() => {
+    if (!ENABLE_SINGLE_SESSION) return;
+    if (sessionPollRef.current) return;
 
-      await registerSingleSession(userId);
+    sessionFailCountRef.current = 0;
 
-      stopSessionPolling();
+    sessionPollRef.current = setInterval(async () => {
+      const res = await validateEdgeSessionOnce();
 
-      pollRef.current = setInterval(async () => {
-        const currentUserId = activeUserIdRef.current;
-        if (!currentUserId) return;
+      if (res?.conflict === true) {
+        // conflito real: derruba a sessão antiga
+        stopSessionPolling();
+        clearSingleSessionMemory();
 
-        const ok = await verifySingleSession(currentUserId);
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+        return;
+      }
 
-        if (!ok) {
-          sessionFailCountRef.current += 1;
+      if (res?.softError) {
+        sessionFailCountRef.current += 1;
 
-          // ✅ IMPORTANTE: NÃO derruba usuário.
-          // Só para o polling se detectar conflito real várias vezes.
-          if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
-            stopSessionPolling();
-            // opcional: você pode limpar o sid local pra não ficar insistindo
-            // setLocalSessionId('');
-          }
-        } else {
-          sessionFailCountRef.current = 0;
+        // muita falha seguida: para o polling pra não martelar
+        if (sessionFailCountRef.current >= FAIL_THRESHOLD) {
+          stopSessionPolling();
+          // não desloga, só para (usuário não sofre por instabilidade)
         }
-      }, SESSION_POLL_MS);
-    },
-    [registerSingleSession, stopSessionPolling, verifySingleSession]
-  );
+      } else {
+        sessionFailCountRef.current = 0;
+      }
+    }, SESSION_POLL_MS);
+  }, [validateEdgeSessionOnce, stopSessionPolling, clearSingleSessionMemory]);
+
+  const startSingleSessionFlow = useCallback(async () => {
+    if (!ENABLE_SINGLE_SESSION) return;
+
+    // evita duplicar
+    stopSessionPolling();
+    clearSingleSessionMemory();
+
+    // 1) cria a sessão "dona" no banco e pega session_version
+    await startEdgeSession();
+
+    // 2) começa polling de validação
+    if (sessionVersionRef.current) {
+      beginEdgeSessionPolling();
+    }
+  }, [startEdgeSession, beginEdgeSessionPolling, stopSessionPolling, clearSingleSessionMemory]);
 
   // =========================
   // INIT + AUTH LISTENER
   // =========================
   useEffect(() => {
     let isMounted = true;
+
+    const resetAll = () => {
+      activeUserIdRef.current = null;
+      stopSessionPolling();
+      clearSingleSessionMemory();
+      stopPremiumPolling();
+      setIsPremium(false);
+      isPremiumRef.current = false;
+      setCheckingPremium(false);
+      setCheckingSession(false);
+    };
 
     const initSession = async () => {
       try {
@@ -366,22 +331,17 @@ export const AuthProvider = ({ children }) => {
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
 
+          // premium
           checkPremiumStatus(currentUser.id);
           startPremiumPolling(currentUser.id);
 
-          // ✅ grace period
+          // single-session (Edge) com grace
           const t = setTimeout(() => {
-            startSessionPolling(currentUser.id);
+            startSingleSessionFlow();
           }, GRACE_AFTER_LOGIN_MS);
           timersRef.current.push(t);
         } else {
-          setIsPremium(false);
-          isPremiumRef.current = false;
-          setCheckingPremium(false);
-          setCheckingSession(false);
-          activeUserIdRef.current = null;
-          stopSessionPolling();
-          stopPremiumPolling();
+          resetAll();
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -406,21 +366,14 @@ export const AuthProvider = ({ children }) => {
 
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
-        const t3 = setTimeout(
-          () => startSessionPolling(currentUser.id),
-          GRACE_AFTER_LOGIN_MS
-        );
+
+        // importante: em SIGNED_IN / TOKEN_REFRESHED / INITIAL_SESSION,
+        // a gente sempre garante o single-session flow (com grace)
+        const t3 = setTimeout(() => startSingleSessionFlow(), GRACE_AFTER_LOGIN_MS);
 
         timersRef.current.push(t1, t2, t3);
       } else {
-        activeUserIdRef.current = null;
-        stopSessionPolling();
-        stopPremiumPolling();
-        setLocalSessionId('');
-        setIsPremium(false);
-        isPremiumRef.current = false;
-        setCheckingPremium(false);
-        setCheckingSession(false);
+        resetAll();
       }
 
       setLoading(false);
@@ -433,15 +386,17 @@ export const AuthProvider = ({ children }) => {
       } catch {}
       clearTimers();
       stopSessionPolling();
+      clearSingleSessionMemory();
       stopPremiumPolling();
     };
   }, [
     checkPremiumStatus,
     startPremiumPolling,
-    startSessionPolling,
+    startSingleSessionFlow,
     stopSessionPolling,
     stopPremiumPolling,
     clearTimers,
+    clearSingleSessionMemory,
   ]);
 
   // ✅ quando usuário volta pra aba/janela, sincroniza premium
@@ -454,6 +409,18 @@ export const AuthProvider = ({ children }) => {
 
       if (isPremiumRef.current === false) {
         startPremiumPolling(uid);
+      }
+
+      // opcional: valida sessão ao voltar foco (deixa mais rápido pra derrubar o antigo)
+      if (ENABLE_SINGLE_SESSION && sessionVersionRef.current) {
+        const res = await validateEdgeSessionOnce();
+        if (res?.conflict === true) {
+          stopSessionPolling();
+          clearSingleSessionMemory();
+          try {
+            await supabase.auth.signOut();
+          } catch {}
+        }
       }
     };
 
@@ -474,7 +441,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener('visibilitychange', onVisibility);
       } catch {}
     };
-  }, [checkPremiumStatus, startPremiumPolling]);
+  }, [checkPremiumStatus, startPremiumPolling, validateEdgeSessionOnce, stopSessionPolling, clearSingleSessionMemory]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
@@ -498,7 +465,7 @@ export const AuthProvider = ({ children }) => {
 
     checkingSession,
 
-    // só pra debug
+    // debug
     singleSessionEnabled: ENABLE_SINGLE_SESSION,
   };
 
