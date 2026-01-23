@@ -364,16 +364,6 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const META_PIXEL_ID = "1424314778637167";
   const PURCHASE_SESSION_KEY = `dp_purchase_tracked_${META_PIXEL_ID}`;
 
-  // ✅ (ADICIONADO) 1 dispositivo por vez (device_id)
-  const DEVICE_KEY = "dp_device_id";
-  const getStoredDeviceId = () => {
-    try {
-      return localStorage.getItem(DEVICE_KEY);
-    } catch {
-      return null;
-    }
-  };
-
   const [doramas, setDoramas] = useState({
     featured: [],
     new: [],
@@ -483,49 +473,6 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     };
 
     checkEverSubscribed();
-  }, [authLoading, user]);
-
-  // ✅✅✅ (ADICIONADO) ENFORCE: 1 dispositivo por vez
-  useEffect(() => {
-    const enforceSingleDevice = async () => {
-      try {
-        if (typeof window === "undefined") return;
-        if (authLoading || !user) return;
-
-        const localDeviceId = getStoredDeviceId();
-
-        // Se não existir device_id no aparelho, força relogar (pra gerar certinho no login)
-        if (!localDeviceId) {
-          await supabase.auth.signOut();
-          window.location.href = "/login?reason=device";
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("user_sessions")
-          .select("device_id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error("[single-device] erro ao validar sessão:", error);
-          return; // não derruba em erro pra evitar falso positivo
-        }
-
-        // Se não existe registro ainda, não derruba (usuário antigo). No próximo login entra na regra.
-        if (!data?.device_id) return;
-
-        // Se o device não bate, derruba
-        if (data.device_id !== localDeviceId) {
-          await supabase.auth.signOut();
-          window.location.href = "/login?reason=other_device";
-        }
-      } catch (e) {
-        console.error("[single-device] exception:", e);
-      }
-    };
-
-    enforceSingleDevice();
   }, [authLoading, user]);
 
   // ✅✅✅ ALTERAÇÃO ÚNICA: REMOVIDO Purchase do FRONT (não mexe em mais nada)
