@@ -234,11 +234,16 @@ export const AuthProvider = ({ children }) => {
       setCheckingSession(true);
 
       try {
-        const { data, error } = await supabase.functions.invoke(START_SESSION_FN, {
-          body: {
-            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-          },
-        });
+        const { data, error } = await supabase.functions.invoke(
+          START_SESSION_FN,
+          {
+            body: {
+              force, // ✅ ALTERAÇÃO: envia force pro backend
+              user_agent:
+                typeof navigator !== "undefined" ? navigator.userAgent : null,
+            },
+          }
+        );
 
         if (error) throw error;
 
@@ -295,9 +300,12 @@ export const AuthProvider = ({ children }) => {
     validateInFlightRef.current = true;
 
     try {
-      const { data, error } = await supabase.functions.invoke(VALIDATE_SESSION_FN, {
-        body: { session_version: sessionVersionRef.current },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        VALIDATE_SESSION_FN,
+        {
+          body: { session_version: sessionVersionRef.current },
+        }
+      );
 
       if (error) throw error;
 
@@ -474,7 +482,10 @@ export const AuthProvider = ({ children }) => {
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
 
-        const t3 = setTimeout(() => startSessionPolling(), GRACE_AFTER_LOGIN_MS);
+        const t3 = setTimeout(
+          () => startSessionPolling(),
+          GRACE_AFTER_LOGIN_MS
+        );
 
         timersRef.current.push(t1, t2, t3);
       } else {
@@ -524,7 +535,8 @@ export const AuthProvider = ({ children }) => {
       if (!activeUserIdRef.current) return;
 
       await checkPremiumStatus(activeUserIdRef.current);
-      if (isPremiumRef.current === false) startPremiumPolling(activeUserIdRef.current);
+      if (isPremiumRef.current === false)
+        startPremiumPolling(activeUserIdRef.current);
 
       // ✅ (ALTERADO) reassume só se precisar (usa localStorage primeiro)
       await startSingleSession();
