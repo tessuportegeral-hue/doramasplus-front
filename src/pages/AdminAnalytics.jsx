@@ -281,6 +281,20 @@ const wasActiveInRange = (sub, rangeStart, rangeEnd) => {
   return s <= rangeEnd && e > rangeStart;
 };
 
+// ✅ helpers de mês seguinte (pra calcular “renovou do mês X pro mês seguinte”)
+const startOfNextDay = (d) => {
+  const nd = new Date(d);
+  nd.setDate(nd.getDate() + 1);
+  nd.setHours(0, 0, 0, 0);
+  return nd;
+};
+
+const endOfMonthFrom = (d) => {
+  const nd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  nd.setHours(23, 59, 59, 999);
+  return nd;
+};
+
 const AdminAnalyticsPage = () => {
   // loading / erro
   const [loading, setLoading] = useState(true);
@@ -296,11 +310,13 @@ const AdminAnalyticsPage = () => {
   // ✅ NOVO: ativas no período (em algum momento)
   const [activeInPeriodCount, setActiveInPeriodCount] = useState(0);
 
-  // ✅ (AJUSTADO) Coorte do mês anterior (FIXO) + renovou + ainda vai vencer no restante do período
-  const [prevMonthTotalSigned, setPrevMonthTotalSigned] = useState(0); // FIXO: quantos iniciaram no mês anterior
-  const [prevMonthRenewedInPeriod, setPrevMonthRenewedInPeriod] = useState(0); // quantos dessa coorte renovaram no período selecionado (até agora)
-  const [prevMonthStillActive, setPrevMonthStillActive] = useState(0); // quantos dessa coorte ainda estão ativos agora
-  const [prevMonthToRenewRestOfPeriod, setPrevMonthToRenewRestOfPeriod] = useState(0); // quantos dessa coorte ainda vencem até o fim do período
+  // ✅ MÊS BASE (cohort): total inscritos do mês base, quantos ainda ativos, quantos vão vencer
+  const [prevMonthBase, setPrevMonthBase] = useState(0);
+  const [prevMonthStillActive, setPrevMonthStillActive] = useState(0);
+  const [prevMonthToExpire, setPrevMonthToExpire] = useState(0);
+
+  // ✅ NOVO: renovações do mês base para o mês seguinte (via last_renewed_at)
+  const [prevMonthRenewed, setPrevMonthRenewed] = useState(0);
 
   // ✅ receita
   const [mrr, setMrr] = useState(0);
@@ -412,62 +428,76 @@ const AdminAnalyticsPage = () => {
           ).length;
           setActiveInPeriodCount(activeSomeTimeInRange);
         } else {
-          // sem filtro: mantém igual a foto atual (não inventa número enorme)
+          // sem filtro: mantém igual a foto atual
           setActiveInPeriodCount(activeSubsSnapshot.length);
         }
 
-        // ✅ (AJUSTADO) MÉTRICAS DO MÊS ANTERIOR (COORTE FIXA)
-        // Coorte = quem INICIOU no mês anterior (start_at dentro do mês anterior)
-        const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevMonthStart.setHours(0, 0, 0, 0);
-        const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        prevMonthEnd.setHours(23, 59, 59, 999);
+        /**
+         * ✅ NOVA LÓGICA DO "MÊS BASE" (o que você pediu):
+         * - Base do mês: TOTAL de inscritos no mês (start_at dentro do mês base)
+         * - Ainda ativos: desses, quantos estão ativos HOJE (end_at > agora)
+         * - Renovaram: desses, quantos tiveram last_renewed_at no MÊS SEGUINTE ao mês base (até snapshotAt)
+         * - Vão vencer: ainda ativos HOJE e NÃO renovaram no mês seguinte (last_renewed_at nulo ou < início do mês seguinte)
+         *
+         * Regra de qual é o "mês base":
+         * - Se você selecionou um período (start/end): o mês base é ESSE período.
+         * - Se não tem filtro (Tudo): mês base = mês passado.
+         */
+        let baseStart = null;
+        let baseEnd = null;
 
-        const prevMonthCohort = subsAll.filter((sub) => {
+        if (start && end) {
+          baseStart = new Date(start);
+          baseEnd = new Date(end);
+          baseStart.setHours(0, 0, 0, 0);
+          baseEnd.setHours(23, 59, 59, 999);
+        } else {
+          // sem filtro -> mês passado
+          const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const e = new Date(now.getFullYear(), now.getMonth(), 0);
+          s.setHours(0, 0, 0, 0);
+          e.setHours(23, 59, 59, 999);
+          baseStart = s;
+          baseEnd = e;
+        }
+
+        // mês seguinte ao "mês base"
+        const nextStart = startOfNextDay(baseEnd); // 1º dia após o baseEnd
+        const nextEndFull = endOfMonthFrom(nextStart);
+        const nextEndEffective = nextEndFull > snapshotAt ? snapshotAt : nextEndFull;
+
+        // ✅ total inscritos no mês base (start_at dentro do mês base)
+        const baseCohort = subsAll.filter((sub) => {
           const sd = getStartDate(sub);
           if (!sd || Number.isNaN(sd.getTime())) return false;
-          return sd >= prevMonthStart && sd <= prevMonthEnd;
+          return sd >= baseStart && sd <= baseEnd;
         });
 
-        // Total FIXO: iniciou no mês passado
-        const prevTotal = prevMonthCohort.length;
-        setPrevMonthTotalSigned(prevTotal);
+        const baseTotal = baseCohort.length;
 
-        // Quantos dessa coorte ainda estão ativos hoje
-        const prevStillActive = prevMonthCohort.filter((sub) => isActiveAt(sub, snapshotAt)).length;
-        setPrevMonthStillActive(prevStillActive);
+        // ✅ desses, quantos ainda estão ativos hoje (snapshotAt)
+        const baseStillActive = baseCohort.filter((sub) => isActiveAt(sub, snapshotAt)).length;
 
-        // Janela do "período" pra contar renovações:
-        // - se o filtro estiver ativo (start/end), usa esse período
-        // - se não tiver filtro, usa o MÊS ATUAL (do dia 1 até o fim do mês), mas contado até agora (snapshotAt)
-        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        currentMonthStart.setHours(0, 0, 0, 0);
-        const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        currentMonthEnd.setHours(23, 59, 59, 999);
-
-        const renewWindowStart = start && end ? start : currentMonthStart;
-        const renewWindowEndHard = start && end ? end : currentMonthEnd;
-        const renewWindowEnd = renewWindowEndHard > snapshotAt ? snapshotAt : renewWindowEndHard;
-
-        // Quantos RENOVARAM (via last_renewed_at) dentro do período (até agora)
-        const prevRenewed = prevMonthCohort.filter((sub) => {
+        // ✅ desses, quantos renovaram no mês seguinte (last_renewed_at no range do próximo mês)
+        const baseRenewed = baseCohort.filter((sub) => {
           const rd = getRenewedAt(sub);
           if (!rd) return false;
-          return rd >= renewWindowStart && rd <= renewWindowEnd;
+          if (Number.isNaN(rd.getTime())) return false;
+          return rd >= nextStart && rd <= nextEndEffective;
         }).length;
-        setPrevMonthRenewedInPeriod(prevRenewed);
 
-        // Quantos AINDA VÃO VENCER no RESTANTE do período (de agora até o fim do período)
-        // (Somente da coorte do mês anterior e que estão ativos agora)
-        const restPeriodEnd = renewWindowEndHard; // fim do período selecionado (ou fim do mês atual)
-        const prevToRenewRest = prevMonthCohort.filter((sub) => {
+        // ✅ “vão vencer”: ainda ativos agora e NÃO renovaram no mês seguinte
+        const baseToExpire = baseCohort.filter((sub) => {
           if (!isActiveAt(sub, snapshotAt)) return false;
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          // vai vencer entre "agora" e o fim do período (inclui hoje em diante)
-          return ed > snapshotAt && ed <= restPeriodEnd;
+          const rd = getRenewedAt(sub);
+          // se não tem last_renewed_at, ou renovou antes do próximo mês, então ainda vai vencer
+          return !rd || rd < nextStart;
         }).length;
-        setPrevMonthToRenewRestOfPeriod(prevToRenewRest);
+
+        setPrevMonthBase(baseTotal);
+        setPrevMonthStillActive(baseStillActive);
+        setPrevMonthRenewed(baseRenewed);
+        setPrevMonthToExpire(baseToExpire);
 
         // Pendentes (mantém comportamento: pendentes do recorte por start do período)
         const pendingSubs = subs.filter((sub) =>
@@ -477,18 +507,17 @@ const AdminAnalyticsPage = () => {
 
         // ✅ Expiradas do PERÍODO: assinaturas que venceram dentro do intervalo selecionado
         // Se não tiver período, expirada = end <= snapshotAt (até agora)
-        const expiredSubs =
-          start && end
-            ? subsAll.filter((sub) => {
-                const ed = getEndDate(sub);
-                if (!ed || Number.isNaN(ed.getTime())) return false;
-                return ed >= start && ed <= end && ed <= snapshotAt;
-              })
-            : subsAll.filter((sub) => {
-                const ed = getEndDate(sub);
-                if (!ed || Number.isNaN(ed.getTime())) return false;
-                return ed <= snapshotAt;
-              });
+        const expiredSubs = start && end
+          ? subsAll.filter((sub) => {
+              const ed = getEndDate(sub);
+              if (!ed || Number.isNaN(ed.getTime())) return false;
+              return ed >= start && ed <= end && ed <= snapshotAt;
+            })
+          : subsAll.filter((sub) => {
+              const ed = getEndDate(sub);
+              if (!ed || Number.isNaN(ed.getTime())) return false;
+              return ed <= snapshotAt;
+            });
 
         setExpiredSubscriptions(expiredSubs.length);
 
@@ -649,8 +678,13 @@ const AdminAnalyticsPage = () => {
     );
   };
 
+  // ✅ agora retenção do “mês base”: ainda ativos / total inscritos do mês base
   const prevMonthRetentionPercent =
-    prevMonthTotalSigned > 0 ? (prevMonthStillActive / prevMonthTotalSigned) * 100 : 0;
+    prevMonthBase > 0 ? (prevMonthStillActive / prevMonthBase) * 100 : 0;
+
+  // ✅ % renovação do mês base → mês seguinte
+  const prevMonthRenewedPercent =
+    prevMonthBase > 0 ? (prevMonthRenewed / prevMonthBase) * 100 : 0;
 
   const combinedUsers = useMemo(() => {
     return [
@@ -778,7 +812,7 @@ const AdminAnalyticsPage = () => {
           {!loading && !error && (
             <>
               {/* Métricas principais */}
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
@@ -800,35 +834,44 @@ const AdminAnalyticsPage = () => {
                   </p>
                 </div>
 
-                {/* ✅ (AJUSTADO) Card coorte do mês anterior (FIXO + renovou + restante do período) */}
+                {/* ✅ Card mês base (ainda ativos) com dados completos */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Mês anterior (coorte)
+                      Ativos do mês anterior (ainda ativos)
                     </span>
                     <Users className="w-5 h-5 text-indigo-300" />
                   </div>
-
                   <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {prevMonthTotalSigned}
+                    {prevMonthStillActive}
                   </p>
 
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Total iniciados no mês anterior (fixo)
-                  </p>
-
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    Renovou no período:{' '}
-                    <span className="font-semibold text-slate-200">{prevMonthRenewedInPeriod}</span>
-                    {' '}· Ainda ativos:{' '}
-                    <span className="font-semibold text-slate-200">{prevMonthStillActive}</span>
-                  </p>
-
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Vence no restante do período:{' '}
-                    <span className="font-semibold text-slate-200">{prevMonthToRenewRestOfPeriod}</span>
+                    Inscritos no mês: <span className="font-semibold text-slate-200">{prevMonthBase}</span>
                     {' '}· Retenção:{' '}
                     <span className="font-semibold text-slate-200">{formatPercent(prevMonthRetentionPercent)}</span>
+                  </p>
+
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Vão vencer (ainda não renovaram):{' '}
+                    <span className="font-semibold text-slate-200">{prevMonthToExpire}</span>
+                  </p>
+                </div>
+
+                {/* ✅ NOVO CARD: RENOVAÇÕES DO MÊS BASE → MÊS SEGUINTE */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Renovaram (mês → mês seguinte)
+                    </span>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-300" />
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">
+                    {prevMonthRenewed}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    % da base do mês:{' '}
+                    <span className="font-semibold text-slate-200">{formatPercent(prevMonthRenewedPercent)}</span>
                   </p>
                 </div>
 
