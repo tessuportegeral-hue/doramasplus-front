@@ -19,8 +19,11 @@ import { useNavigate } from 'react-router-dom';
  * - Mensal: DoramaPlay Padrão
  * - Trimestral: DoramaPlay Trimestral
  */
-const PRICE_MONTHLY = 14.90;
-const PRICE_QUARTERLY = 38.90; // <-- se o seu trimestral for outro valor, troca aqui
+const PRICE_MONTHLY = 14.9;
+const PRICE_QUARTERLY = 38.9; // <-- se o seu trimestral for outro valor, troca aqui
+
+// ✅ Quantos dias de "tolerância" pra considerar renovação (Pix/manual às vezes paga depois)
+const RENEW_GRACE_DAYS = 2;
 
 // Abas do painel admin (Analytics | Doramas | Usuários)
 const AdminTopNav = ({ current }) => {
@@ -143,29 +146,39 @@ const parseMoneySmart = (raw) => {
 
 // ✅ AJUSTE: prioriza os campos que EXISTEM na sua tabela (start_at / end_at)
 const getEndDate = (sub) =>
-  new Date(
-    sub.end_at ||
-      sub.current_period_end ||
-      sub.expires_at ||
-      sub.period_end ||
-      sub.end_at
-  );
+  new Date(sub.end_at || sub.current_period_end || sub.expires_at || sub.period_end || sub.end_at);
 
 const getStartDate = (sub) =>
-  new Date(
-    sub.start_at ||
-      sub.current_period_start ||
-      sub.period_start ||
-      sub.created_at ||
-      sub.start_at
-  );
+  new Date(sub.start_at || sub.current_period_start || sub.period_start || sub.created_at || sub.start_at);
 
-// ✅ NOVO: data/hora da última renovação (precisa ser preenchida quando renovar)
-const getRenewedAt = (sub) => {
-  if (!sub.last_renewed_at) return null;
-  const d = new Date(sub.last_renewed_at);
-  if (!d || Number.isNaN(d.getTime())) return null;
-  return d;
+// ✅ NOVO: regra consistente pra saber se está "ativo" em uma data (snapshot)
+// Ativo em T = start <= T  e  end > T
+const isActiveAt = (sub, at) => {
+  const s = getStartDate(sub);
+  const e = getEndDate(sub);
+  if (!at || !s || !e) return false;
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || Number.isNaN(at.getTime())) {
+    return false;
+  }
+  return s <= at && e > at;
+};
+
+// ✅ NOVO: esteve ativo em ALGUM MOMENTO dentro do período [rangeStart, rangeEnd]
+// Interseção do intervalo da assinatura com o intervalo do filtro
+const wasActiveInRange = (sub, rangeStart, rangeEnd) => {
+  const s = getStartDate(sub);
+  const e = getEndDate(sub);
+  if (!rangeStart || !rangeEnd || !s || !e) return false;
+  if (
+    Number.isNaN(s.getTime()) ||
+    Number.isNaN(e.getTime()) ||
+    Number.isNaN(rangeStart.getTime()) ||
+    Number.isNaN(rangeEnd.getTime())
+  ) {
+    return false;
+  }
+  // Intersecta se start <= rangeEnd  e  end > rangeStart
+  return s <= rangeEnd && e > rangeStart;
 };
 
 const getPeriodDays = (sub) => {
@@ -191,7 +204,6 @@ const isQuarterlyByText = (sub) => {
     .map(toLower)
     .join(' ');
 
-  // palavras-chave comuns
   return (
     blob.includes('trimes') ||
     blob.includes('quarter') ||
@@ -251,48 +263,25 @@ const pickSubscriptionValue = (sub) => {
   return PRICE_MONTHLY;
 };
 
-// ✅ NOVO: regra consistente pra saber se está "ativo" em uma data (snapshot)
-// Ativo em T = start <= T  e  end > T
-const isActiveAt = (sub, at) => {
-  const s = getStartDate(sub);
-  const e = getEndDate(sub);
-  if (!at || !s || !e) return false;
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || Number.isNaN(at.getTime())) {
-    return false;
-  }
-  return s <= at && e > at;
-};
+// ✅ NOVO: verifica se houve "renovação por continuidade"
+// Regra: para um sub que terminou em X, existe outro sub do mesmo user começando até X + graceDays
+const didRenewByContinuity = (endedSub, subsAll, graceDays = RENEW_GRACE_DAYS) => {
+  const end = getEndDate(endedSub);
+  if (!end || Number.isNaN(end.getTime())) return false;
 
-// ✅ NOVO: esteve ativo em ALGUM MOMENTO dentro do período [rangeStart, rangeEnd]
-// Interseção do intervalo da assinatura com o intervalo do filtro
-const wasActiveInRange = (sub, rangeStart, rangeEnd) => {
-  const s = getStartDate(sub);
-  const e = getEndDate(sub);
-  if (!rangeStart || !rangeEnd || !s || !e) return false;
-  if (
-    Number.isNaN(s.getTime()) ||
-    Number.isNaN(e.getTime()) ||
-    Number.isNaN(rangeStart.getTime()) ||
-    Number.isNaN(rangeEnd.getTime())
-  ) {
-    return false;
-  }
-  // Intersecta se start <= rangeEnd  e  end > rangeStart
-  return s <= rangeEnd && e > rangeStart;
-};
+  const limit = new Date(end);
+  limit.setDate(limit.getDate() + graceDays);
+  limit.setHours(23, 59, 59, 999);
 
-// ✅ helpers de mês seguinte (pra calcular “renovou do mês X pro mês seguinte”)
-const startOfNextDay = (d) => {
-  const nd = new Date(d);
-  nd.setDate(nd.getDate() + 1);
-  nd.setHours(0, 0, 0, 0);
-  return nd;
-};
+  return subsAll.some((s2) => {
+    if (!s2 || s2.user_id !== endedSub.user_id) return false;
 
-const endOfMonthFrom = (d) => {
-  const nd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  nd.setHours(23, 59, 59, 999);
-  return nd;
+    const s2Start = getStartDate(s2);
+    if (!s2Start || Number.isNaN(s2Start.getTime())) return false;
+
+    // novo começa depois do fim e até o limite
+    return s2Start > end && s2Start <= limit;
+  });
 };
 
 const AdminAnalyticsPage = () => {
@@ -310,13 +299,19 @@ const AdminAnalyticsPage = () => {
   // ✅ NOVO: ativas no período (em algum momento)
   const [activeInPeriodCount, setActiveInPeriodCount] = useState(0);
 
-  // ✅ MÊS BASE (cohort): total inscritos do mês base, quantos ainda ativos, quantos vão vencer
-  const [prevMonthBase, setPrevMonthBase] = useState(0);
-  const [prevMonthStillActive, setPrevMonthStillActive] = useState(0);
-  const [prevMonthToExpire, setPrevMonthToExpire] = useState(0);
-
-  // ✅ NOVO: renovações do mês base para o mês seguinte (via last_renewed_at)
-  const [prevMonthRenewed, setPrevMonthRenewed] = useState(0);
+  /**
+   * ✅ MÊS/PERÍODO BASE: agora baseado em "quem precisava renovar"
+   *
+   * Definições:
+   * - Base do período: assinaturas com end_at dentro do período selecionado (ou mês passado se sem filtro)
+   * - Renovaram: vencidas no período (end_at <= snapshotAt) e com nova assinatura em até N dias
+   * - Desistiram: vencidas no período (end_at <= snapshotAt) e sem nova assinatura
+   * - Ainda pra renovar: end_at dentro do período, mas end_at > snapshotAt (ainda não venceu)
+   */
+  const [prevMonthBase, setPrevMonthBase] = useState(0); // total que "vence no período"
+  const [prevMonthStillActive, setPrevMonthStillActive] = useState(0); // ainda pra renovar (não venceu ainda)
+  const [prevMonthToExpire, setPrevMonthToExpire] = useState(0); // desistiram (venceram e não renovaram)
+  const [prevMonthRenewed, setPrevMonthRenewed] = useState(0); // renovaram (continuidade)
 
   // ✅ receita
   const [mrr, setMrr] = useState(0);
@@ -335,7 +330,7 @@ const AdminAnalyticsPage = () => {
   const [churnRate, setChurnRate] = useState(0);
   const [churnCount, setChurnCount] = useState(0);
 
-  // ✅ renovações no período (via last_renewed_at)
+  // ✅ renovações no período (AGORA por continuidade)
   const [renewedCount, setRenewedCount] = useState(0);
 
   // filtros
@@ -374,14 +369,10 @@ const AdminAnalyticsPage = () => {
         }
 
         // TOTAL USERS
-        let profilesCountQuery = supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true });
+        let profilesCountQuery = supabase.from('profiles').select('id', { count: 'exact', head: true });
 
         if (start && end) {
-          profilesCountQuery = profilesCountQuery
-            .gte('created_at', start.toISOString())
-            .lte('created_at', end.toISOString());
+          profilesCountQuery = profilesCountQuery.gte('created_at', start.toISOString()).lte('created_at', end.toISOString());
         }
 
         const { count: usersCount, error: usersError } = await profilesCountQuery;
@@ -389,10 +380,7 @@ const AdminAnalyticsPage = () => {
         setTotalUsers(usersCount || 0);
 
         // SUBSCRIPTIONS (busca tudo e filtra no FRONT por start)
-        const { data: subsDataAll, error: subsError } = await supabase
-          .from('subscriptions')
-          .select('*');
-
+        const { data: subsDataAll, error: subsError } = await supabase.from('subscriptions').select('*');
         if (subsError) throw subsError;
 
         const subsAll = subsDataAll || [];
@@ -423,9 +411,7 @@ const AdminAnalyticsPage = () => {
 
         // ✅ NOVO: ATIVAS NO PERÍODO (em algum momento)
         if (start && end && rangeEndEffective) {
-          const activeSomeTimeInRange = subsAll.filter((sub) =>
-            wasActiveInRange(sub, start, rangeEndEffective)
-          ).length;
+          const activeSomeTimeInRange = subsAll.filter((sub) => wasActiveInRange(sub, start, rangeEndEffective)).length;
           setActiveInPeriodCount(activeSomeTimeInRange);
         } else {
           // sem filtro: mantém igual a foto atual
@@ -433,15 +419,11 @@ const AdminAnalyticsPage = () => {
         }
 
         /**
-         * ✅ NOVA LÓGICA DO "MÊS BASE" (o que você pediu):
-         * - Base do mês: TOTAL de inscritos no mês (start_at dentro do mês base)
-         * - Ainda ativos: desses, quantos estão ativos HOJE (end_at > agora)
-         * - Renovaram: desses, quantos tiveram last_renewed_at no MÊS SEGUINTE ao mês base (até snapshotAt)
-         * - Vão vencer: ainda ativos HOJE e NÃO renovaram no mês seguinte (last_renewed_at nulo ou < início do mês seguinte)
+         * ✅ PERÍODO BASE PARA "RENOVOU / AINDA PRA RENOVAR / DESISTIU"
          *
-         * Regra de qual é o "mês base":
-         * - Se você selecionou um período (start/end): o mês base é ESSE período.
-         * - Se não tem filtro (Tudo): mês base = mês passado.
+         * Regra:
+         * - Se você selecionou um período (start/end): esse é o período base.
+         * - Se não tem filtro (Tudo): período base = mês passado.
          */
         let baseStart = null;
         let baseEnd = null;
@@ -461,43 +443,41 @@ const AdminAnalyticsPage = () => {
           baseEnd = e;
         }
 
-        // mês seguinte ao "mês base"
-        const nextStart = startOfNextDay(baseEnd); // 1º dia após o baseEnd
-        const nextEndFull = endOfMonthFrom(nextStart);
-        const nextEndEffective = nextEndFull > snapshotAt ? snapshotAt : nextEndFull;
-
-        // ✅ total inscritos no mês base (start_at dentro do mês base)
-        const baseCohort = subsAll.filter((sub) => {
-          const sd = getStartDate(sub);
-          if (!sd || Number.isNaN(sd.getTime())) return false;
-          return sd >= baseStart && sd <= baseEnd;
+        // Base: assinaturas que "vencem" dentro do período (end_at no período)
+        const baseEndingSubs = subsAll.filter((sub) => {
+          const ed = getEndDate(sub);
+          if (!ed || Number.isNaN(ed.getTime())) return false;
+          return ed >= baseStart && ed <= baseEnd;
         });
 
-        const baseTotal = baseCohort.length;
+        const baseTotalEnding = baseEndingSubs.length;
 
-        // ✅ desses, quantos ainda estão ativos hoje (snapshotAt)
-        const baseStillActive = baseCohort.filter((sub) => isActiveAt(sub, snapshotAt)).length;
+        // Separação:
+        // - já venceu (end_at <= snapshotAt): decide se renovou ou desistiu
+        // - ainda não venceu (end_at > snapshotAt): ainda pra renovar
+        let stillToRenew = 0;
+        let renewedByContinuity = 0;
+        let churnedByNoRenew = 0;
 
-        // ✅ desses, quantos renovaram no mês seguinte (last_renewed_at no range do próximo mês)
-        const baseRenewed = baseCohort.filter((sub) => {
-          const rd = getRenewedAt(sub);
-          if (!rd) return false;
-          if (Number.isNaN(rd.getTime())) return false;
-          return rd >= nextStart && rd <= nextEndEffective;
-        }).length;
+        baseEndingSubs.forEach((sub) => {
+          const ed = getEndDate(sub);
+          if (!ed || Number.isNaN(ed.getTime())) return;
 
-        // ✅ “vão vencer”: ainda ativos agora e NÃO renovaram no mês seguinte
-        const baseToExpire = baseCohort.filter((sub) => {
-          if (!isActiveAt(sub, snapshotAt)) return false;
-          const rd = getRenewedAt(sub);
-          // se não tem last_renewed_at, ou renovou antes do próximo mês, então ainda vai vencer
-          return !rd || rd < nextStart;
-        }).length;
+          if (ed > snapshotAt) {
+            stillToRenew += 1;
+            return;
+          }
 
-        setPrevMonthBase(baseTotal);
-        setPrevMonthStillActive(baseStillActive);
-        setPrevMonthRenewed(baseRenewed);
-        setPrevMonthToExpire(baseToExpire);
+          // já venceu
+          const renewed = didRenewByContinuity(sub, subsAll, RENEW_GRACE_DAYS);
+          if (renewed) renewedByContinuity += 1;
+          else churnedByNoRenew += 1;
+        });
+
+        setPrevMonthBase(baseTotalEnding);
+        setPrevMonthStillActive(stillToRenew); // "ainda pra renovar"
+        setPrevMonthRenewed(renewedByContinuity); // "renovaram"
+        setPrevMonthToExpire(churnedByNoRenew); // "desistiram"
 
         // Pendentes (mantém comportamento: pendentes do recorte por start do período)
         const pendingSubs = subs.filter((sub) =>
@@ -507,17 +487,18 @@ const AdminAnalyticsPage = () => {
 
         // ✅ Expiradas do PERÍODO: assinaturas que venceram dentro do intervalo selecionado
         // Se não tiver período, expirada = end <= snapshotAt (até agora)
-        const expiredSubs = start && end
-          ? subsAll.filter((sub) => {
-              const ed = getEndDate(sub);
-              if (!ed || Number.isNaN(ed.getTime())) return false;
-              return ed >= start && ed <= end && ed <= snapshotAt;
-            })
-          : subsAll.filter((sub) => {
-              const ed = getEndDate(sub);
-              if (!ed || Number.isNaN(ed.getTime())) return false;
-              return ed <= snapshotAt;
-            });
+        const expiredSubs =
+          start && end
+            ? subsAll.filter((sub) => {
+                const ed = getEndDate(sub);
+                if (!ed || Number.isNaN(ed.getTime())) return false;
+                return ed >= start && ed <= end && ed <= snapshotAt;
+              })
+            : subsAll.filter((sub) => {
+                const ed = getEndDate(sub);
+                if (!ed || Number.isNaN(ed.getTime())) return false;
+                return ed <= snapshotAt;
+              });
 
         setExpiredSubscriptions(expiredSubs.length);
 
@@ -543,13 +524,19 @@ const AdminAnalyticsPage = () => {
           setChurnCount(0);
         }
 
-        // ✅ RENOVAÇÕES NO PERÍODO (last_renewed_at)
+        // ✅ RENOVAÇÕES NO PERÍODO (AGORA via continuidade)
         if (start && end) {
-          const renewedInPeriod = subsAll.filter((sub) => {
-            const rd = getRenewedAt(sub);
-            if (!rd) return false;
-            return rd >= start && rd <= end;
-          }).length;
+          // pega as que venceram no período até snapshotAt e conta as que renovaram
+          const endedInPeriod = subsAll.filter((sub) => {
+            const ed = getEndDate(sub);
+            if (!ed || Number.isNaN(ed.getTime())) return false;
+            return ed >= start && ed <= end && ed <= snapshotAt;
+          });
+
+          let renewedInPeriod = 0;
+          endedInPeriod.forEach((sub) => {
+            if (didRenewByContinuity(sub, subsAll, RENEW_GRACE_DAYS)) renewedInPeriod += 1;
+          });
 
           setRenewedCount(renewedInPeriod);
         } else {
@@ -607,9 +594,7 @@ const AdminAnalyticsPage = () => {
           .limit(200);
 
         if (start && end) {
-          profilesListQuery = profilesListQuery
-            .gte('created_at', start.toISOString())
-            .lte('created_at', end.toISOString());
+          profilesListQuery = profilesListQuery.gte('created_at', start.toISOString()).lte('created_at', end.toISOString());
         }
 
         const { data: profilesList, error: profilesListError } = await profilesListQuery;
@@ -678,13 +663,12 @@ const AdminAnalyticsPage = () => {
     );
   };
 
-  // ✅ agora retenção do “mês base”: ainda ativos / total inscritos do mês base
-  const prevMonthRetentionPercent =
-    prevMonthBase > 0 ? (prevMonthStillActive / prevMonthBase) * 100 : 0;
+  // ✅ Retenção do bloco "vencimentos no período": renovaram / total que venceu (base)
+  // Aqui é uma taxa útil pra leitura rápida
+  const prevMonthRetentionPercent = prevMonthBase > 0 ? (prevMonthRenewed / prevMonthBase) * 100 : 0;
 
-  // ✅ % renovação do mês base → mês seguinte
-  const prevMonthRenewedPercent =
-    prevMonthBase > 0 ? (prevMonthRenewed / prevMonthBase) * 100 : 0;
+  // ✅ "Taxa de renovação" = igual (mantém o card e o cálculo simples)
+  const prevMonthRenewedPercent = prevMonthBase > 0 ? (prevMonthRenewed / prevMonthBase) * 100 : 0;
 
   const combinedUsers = useMemo(() => {
     return [
@@ -738,9 +722,7 @@ const AdminAnalyticsPage = () => {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-purple-300" />
-                  <h2 className="text-sm font-semibold text-slate-200">
-                    Filtro de período
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-200">Filtro de período</h2>
                 </div>
                 <p className="text-xs text-slate-400">
                   Selecione um período para analisar suas métricas.{` `}
@@ -815,14 +797,10 @@ const AdminAnalyticsPage = () => {
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Assinaturas Ativas
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Assinaturas Ativas</span>
                     <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {activeSubscriptions}
-                  </p>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{activeSubscriptions}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     Mensal: {activeMonthlyCount} · Trimestral: {activeQuarterlyCount}
                   </p>
@@ -834,75 +812,60 @@ const AdminAnalyticsPage = () => {
                   </p>
                 </div>
 
-                {/* ✅ Card mês base (ainda ativos) com dados completos */}
+                {/* ✅ Card "período base" (mês passado ou período escolhido): ainda pra renovar */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Ativos do mês anterior (ainda ativos)
+                      Ainda pra renovar (no período)
                     </span>
                     <Users className="w-5 h-5 text-indigo-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {prevMonthStillActive}
-                  </p>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{prevMonthStillActive}</p>
 
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Inscritos no mês: <span className="font-semibold text-slate-200">{prevMonthBase}</span>
-                    {' '}· Retenção:{' '}
+                    Vencem no período:{' '}
+                    <span className="font-semibold text-slate-200">{prevMonthBase}</span>
+                    {' '}· Taxa de renovação:{' '}
                     <span className="font-semibold text-slate-200">{formatPercent(prevMonthRetentionPercent)}</span>
                   </p>
 
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Vão vencer (ainda não renovaram):{' '}
+                    Desistiram (venceram e não renovaram):{' '}
                     <span className="font-semibold text-slate-200">{prevMonthToExpire}</span>
                   </p>
                 </div>
 
-                {/* ✅ NOVO CARD: RENOVAÇÕES DO MÊS BASE → MÊS SEGUINTE */}
+                {/* ✅ NOVO CARD: RENOVARAM NO PERÍODO (continuidade) */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Renovaram (mês → mês seguinte)
+                      Renovaram (continuidade)
                     </span>
                     <CheckCircle2 className="w-5 h-5 text-emerald-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {prevMonthRenewed}
-                  </p>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{prevMonthRenewed}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
-                    % da base do mês:{' '}
+                    % dos que venciam:{' '}
                     <span className="font-semibold text-slate-200">{formatPercent(prevMonthRenewedPercent)}</span>
                   </p>
                 </div>
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Faturamento (período)
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Faturamento (período)</span>
                     <CreditCard className="w-5 h-5 text-sky-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {formatCurrency(totalRevenue)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Aproximação: soma dos planos ativos.
-                  </p>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{formatCurrency(totalRevenue)}</p>
+                  <p className="mt-1 text-xs text-slate-500">Aproximação: soma dos planos ativos.</p>
                 </div>
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      MRR (total)
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">MRR (total)</span>
                     <CreditCard className="w-5 h-5 text-emerald-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {formatCurrency(mrr)}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Mensal + (Trimestral ÷ 3)
-                  </p>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{formatCurrency(mrr)}</p>
+                  <p className="mt-1 text-xs text-slate-500">Mensal + (Trimestral ÷ 3)</p>
                 </div>
               </section>
 
@@ -910,26 +873,18 @@ const AdminAnalyticsPage = () => {
               <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      MRR Mensal
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">MRR Mensal</span>
                     <CreditCard className="w-5 h-5 text-purple-300" />
                   </div>
-                  <p className="text-2xl font-bold text-slate-50">
-                    {formatCurrency(mrrMonthly)}
-                  </p>
+                  <p className="text-2xl font-bold text-slate-50">{formatCurrency(mrrMonthly)}</p>
                 </div>
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      MRR Trimestral (÷ 3)
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">MRR Trimestral (÷ 3)</span>
                     <CreditCard className="w-5 h-5 text-amber-300" />
                   </div>
-                  <p className="text-2xl font-bold text-slate-50">
-                    {formatCurrency(mrrQuarterly)}
-                  </p>
+                  <p className="text-2xl font-bold text-slate-50">{formatCurrency(mrrQuarterly)}</p>
                 </div>
               </section>
 
@@ -937,9 +892,7 @@ const AdminAnalyticsPage = () => {
               <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Assinaturas Pendentes
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Assinaturas Pendentes</span>
                     <Clock className="w-5 h-5 text-amber-300" />
                   </div>
                   <p className="text-2xl font-bold text-slate-50">{pendingSubscriptions}</p>
@@ -947,9 +900,7 @@ const AdminAnalyticsPage = () => {
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Assinaturas Expiradas
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Assinaturas Expiradas</span>
                     <AlertCircle className="w-5 h-5 text-red-400" />
                   </div>
                   <p className="text-2xl font-bold text-slate-50">{expiredSubscriptions}</p>
@@ -957,29 +908,20 @@ const AdminAnalyticsPage = () => {
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Retenção Geral
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Retenção Geral</span>
                     <BarChart3 className="w-5 h-5 text-emerald-300" />
                   </div>
-                  <p className="text-2xl font-bold text-slate-50">
-                    {formatPercent(retentionRate)}
-                  </p>
+                  <p className="text-2xl font-bold text-slate-50">{formatPercent(retentionRate)}</p>
                 </div>
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Churn (período)
-                    </span>
+                    <span className="text-xs uppercase tracking-wide text-slate-400">Churn (período)</span>
                     <AlertCircle className="w-5 h-5 text-rose-300" />
                   </div>
-                  <p className="text-2xl font-bold text-slate-50">
-                    {formatPercent(churnRate)}
-                  </p>
+                  <p className="text-2xl font-bold text-slate-50">{formatPercent(churnRate)}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Perdeu:{' '}
-                    <span className="font-semibold text-slate-200">{churnCount}</span>
+                    Perdeu: <span className="font-semibold text-slate-200">{churnCount}</span>
                   </p>
                 </div>
               </section>
@@ -991,22 +933,16 @@ const AdminAnalyticsPage = () => {
                     <BarChart3 className="w-4 h-4 text-purple-300" />
                     Taxa de Conversão
                   </h2>
-                  <p className="text-3xl font-bold text-purple-300">
-                    {formatPercent(conversionRate)}
-                  </p>
+                  <p className="text-3xl font-bold text-purple-300">{formatPercent(conversionRate)}</p>
                 </div>
 
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                  <h2 className="text-sm font-semibold text-slate-200 mb-3">
-                    Insights rápidos
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-200 mb-3">Insights rápidos</h2>
                   <ul className="space-y-2 text-sm text-slate-300">
                     <li>
                       • Ticket médio (aprox.) por assinante ativo:{' '}
                       <span className="font-semibold">
-                        {activeSubscriptions > 0
-                          ? formatCurrency(mrr / activeSubscriptions)
-                          : formatCurrency(0)}
+                        {activeSubscriptions > 0 ? formatCurrency(mrr / activeSubscriptions) : formatCurrency(0)}
                       </span>
                     </li>
                     <li>
@@ -1029,15 +965,11 @@ const AdminAnalyticsPage = () => {
               <section className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="w-5 h-5 text-indigo-300" />
-                  <h2 className="text-sm font-semibold text-slate-200">
-                    Usuários por status (amostra)
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-200">Usuários por status (amostra)</h2>
                 </div>
 
                 {combinedUsers.length === 0 ? (
-                  <p className="text-xs sm:text-sm text-slate-400">
-                    Nenhum usuário encontrado para o período selecionado.
-                  </p>
+                  <p className="text-xs sm:text-sm text-slate-400">Nenhum usuário encontrado para o período selecionado.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-xs sm:text-sm">
@@ -1062,9 +994,7 @@ const AdminAnalyticsPage = () => {
                                 : '—'}
                             </td>
                             <td className="py-2 pr-4">
-                              <span className={`text-xs font-semibold ${u.statusColor}`}>
-                                {u.statusLabel}
-                              </span>
+                              <span className={`text-xs font-semibold ${u.statusColor}`}>{u.statusLabel}</span>
                             </td>
                           </tr>
                         ))}
