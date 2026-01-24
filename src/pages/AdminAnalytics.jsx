@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
  * - Trimestral: DoramaPlay Trimestral
  */
 const PRICE_MONTHLY = 14.90;
-const PRICE_QUARTERLY = 38.90; // <-- se o seu trimestral for outro valor, troca aqui
+const PRICE_QUARTERLY = 38.90;
 
 // Abas do painel admin (Analytics | Doramas | Usuários)
 const AdminTopNav = ({ current }) => {
@@ -112,9 +112,7 @@ const getDateRange = (filterType, customStart, customEnd) => {
       break;
     }
     case 'custom': {
-      if (!customStart || !customEnd) {
-        return { start: null, end: null };
-      }
+      if (!customStart || !customEnd) return { start: null, end: null };
       const s = startOfDay(customStart);
       const e = endOfDay(customEnd);
       start = s;
@@ -140,7 +138,7 @@ const parseMoneySmart = (raw) => {
   return n >= 100 ? n / 100 : n;
 };
 
-// ✅ prioriza os campos que EXISTEM na sua tabela (start_at / end_at)
+// Datas base (prioriza start_at/end_at)
 const getEndDate = (sub) =>
   new Date(
     sub.end_at ||
@@ -158,14 +156,6 @@ const getStartDate = (sub) =>
       sub.created_at ||
       sub.start_at
   );
-
-// (continua existindo, mas hoje não dá pra confiar se não preenche)
-const getRenewedAt = (sub) => {
-  if (!sub.last_renewed_at) return null;
-  const d = new Date(sub.last_renewed_at);
-  if (!d || Number.isNaN(d.getTime())) return null;
-  return d;
-};
 
 const getPeriodDays = (sub) => {
   const s = getStartDate(sub);
@@ -186,7 +176,6 @@ const isQuarterlyByText = (sub) => {
     sub.interval,
     sub.plan_interval,
     sub.type,
-    sub.plan_interval,
   ]
     .map(toLower)
     .join(' ');
@@ -212,7 +201,6 @@ const isMonthlyByText = (sub) => {
     sub.interval,
     sub.plan_interval,
     sub.type,
-    sub.plan_interval,
   ]
     .map(toLower)
     .join(' ');
@@ -221,7 +209,6 @@ const isMonthlyByText = (sub) => {
 };
 
 const pickSubscriptionValue = (sub) => {
-  // 1) tenta pegar valor real do banco (se existir em alguma coluna)
   const candidates = [
     sub.amount_monthly,
     sub.amount,
@@ -239,7 +226,6 @@ const pickSubscriptionValue = (sub) => {
     if (v > 0) return v;
   }
 
-  // 2) fallback: calcula por plano/duração (FRONT)
   const days = getPeriodDays(sub);
 
   if (isQuarterlyByText(sub)) return PRICE_QUARTERLY;
@@ -249,7 +235,7 @@ const pickSubscriptionValue = (sub) => {
   return PRICE_MONTHLY;
 };
 
-// ✅ regra consistente: Ativo em T = start <= T  e  end > T
+// Ativo em T = start <= T e end > T
 const isActiveAt = (sub, at) => {
   const s = getStartDate(sub);
   const e = getEndDate(sub);
@@ -264,7 +250,7 @@ const isActiveAt = (sub, at) => {
   return s <= at && e > at;
 };
 
-// ✅ esteve ativo em ALGUM MOMENTO dentro do período [rangeStart, rangeEnd]
+// Interseção com período [rangeStart, rangeEnd]
 const wasActiveInRange = (sub, rangeStart, rangeEnd) => {
   const s = getStartDate(sub);
   const e = getEndDate(sub);
@@ -277,7 +263,6 @@ const wasActiveInRange = (sub, rangeStart, rangeEnd) => {
   ) {
     return false;
   }
-  // intersecta se start <= rangeEnd e end > rangeStart
   return s <= rangeEnd && e > rangeStart;
 };
 
@@ -286,7 +271,7 @@ const AdminAnalyticsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // métricas
+  // métricas gerais
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalSubscriptions, setTotalSubscriptions] = useState(0);
   const [activeSubscriptions, setActiveSubscriptions] = useState(0);
@@ -296,15 +281,14 @@ const AdminAnalyticsPage = () => {
   // ativas no período (em algum momento)
   const [activeInPeriodCount, setActiveInPeriodCount] = useState(0);
 
-  // ✅ FUNIL DE VENCIMENTO (obedece filtro)
-  const [expiringInPeriodTotal, setExpiringInPeriodTotal] = useState(0); // vencem no mês/período
-  const [expiringToRenew, setExpiringToRenew] = useState(0); // ainda vão vencer (end_at > snapshotAt)
-  const [expiringChurned, setExpiringChurned] = useState(0); // já venceram (end_at <= snapshotAt)
-  const [expiringRenewedDeduction, setExpiringRenewedDeduction] = useState(0); // dedução
+  // ✅ FUNIL (BASE DO MÊS ANTERIOR → VENCEM NO MÊS DO FILTRO)
+  const [continuityBasePrevMonthExpiringNow, setContinuityBasePrevMonthExpiringNow] = useState(0);
+  const [continuityStillToRenew, setContinuityStillToRenew] = useState(0);
+  const [continuityChurned, setContinuityChurned] = useState(0);
+  const [continuityRenewedByDiff, setContinuityRenewedByDiff] = useState(0);
 
-  // ✅ CARD “ATIVOS DO MÊS ANTERIOR QUE VENCEM NO MÊS ATUAL”
-  const [prevMonthActiveThatExpireThisPeriod, setPrevMonthActiveThatExpireThisPeriod] = useState(0);
-  const [prevMonthQuarterlyStarted, setPrevMonthQuarterlyStarted] = useState(0);
+  // ✅ Trimestral do mês anterior (no período do mês anterior)
+  const [prevMonthQuarterlyCount, setPrevMonthQuarterlyCount] = useState(0);
 
   // receita
   const [mrr, setMrr] = useState(0);
@@ -319,18 +303,14 @@ const AdminAnalyticsPage = () => {
   const [conversionRate, setConversionRate] = useState(0);
   const [retentionRate, setRetentionRate] = useState(0);
 
-  // churn no período (vencidos dentro do período até agora)
+  // churn no período (vencidos dentro do período)
   const [churnRate, setChurnRate] = useState(0);
   const [churnCount, setChurnCount] = useState(0);
-
-  // renovações no período (last_renewed_at) — hoje pode ficar 0 se não preenche
-  const [renewedCount, setRenewedCount] = useState(0);
 
   // filtros
   const [filterType, setFilterType] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-
   const [appliedRangeLabel, setAppliedRangeLabel] = useState('Exibindo todos os dados');
 
   // usuários por status
@@ -346,17 +326,19 @@ const AdminAnalyticsPage = () => {
         setLoading(true);
         setError(null);
 
+        const now = new Date();
         const { start, end } = getDateRange(filterType, customStartDate, customEndDate);
 
-        const now = new Date();
+        /**
+         * ✅ REGRA QUE VOCÊ PEDIU: O FUNIL SEMPRE OBEDECE O FILTRO.
+         * - Se tiver start/end => esse é o “mês de agora” (período atual).
+         * - Se estiver em "Tudo" => usa o mês atual (pra não ficar sem sentido).
+         */
+        const periodStart = start ? new Date(start) : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        const periodEnd = end ? new Date(end) : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-        // ✅ se não tiver filtro, para o “funil do mês” fazer sentido, usa o MÊS ATUAL
-        const effectiveStart = start
-          ? new Date(start)
-          : new Date(now.getFullYear(), now.getMonth(), 1);
-        const effectiveEnd = end
-          ? new Date(end)
-          : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        // SnapshotAt: se o período termina no futuro, usa NOW; se já terminou, usa o fim do período
+        const snapshotAt = periodEnd < now ? periodEnd : now;
 
         // Label amigável do período
         const fmt = (d) =>
@@ -366,21 +348,14 @@ const AdminAnalyticsPage = () => {
             year: 'numeric',
           });
 
-        if (!start || !end) {
-          setAppliedRangeLabel(`Período: ${fmt(effectiveStart)} até ${fmt(effectiveEnd)} (mês atual)`);
-        } else {
-          setAppliedRangeLabel(`Período: ${fmt(start)} até ${fmt(end)}`);
-        }
-
-        // ✅ SnapshotAt: se o período já acabou, usa o final do período; senão usa NOW
-        const snapshotAt = effectiveEnd < now ? effectiveEnd : now;
+        setAppliedRangeLabel(`Período: ${fmt(periodStart)} até ${fmt(periodEnd)}`);
 
         // TOTAL USERS
         let profilesCountQuery = supabase
           .from('profiles')
           .select('id', { count: 'exact', head: true });
 
-        // (mantém: se tiver filtro real, aplica; se não tiver, mantém geral)
+        // Só filtra usuários quando houver filtro real (start/end)
         if (start && end) {
           profilesCountQuery = profilesCountQuery
             .gte('created_at', start.toISOString())
@@ -391,7 +366,7 @@ const AdminAnalyticsPage = () => {
         if (usersError) throw usersError;
         setTotalUsers(usersCount || 0);
 
-        // SUBSCRIPTIONS (busca tudo e filtra no FRONT)
+        // SUBSCRIPTIONS
         const { data: subsDataAll, error: subsError } = await supabase
           .from('subscriptions')
           .select('*');
@@ -400,7 +375,7 @@ const AdminAnalyticsPage = () => {
 
         const subsAll = subsDataAll || [];
 
-        // totalSubscriptions (mantém: por start dentro do filtro REAL; se não tiver, mostra tudo)
+        // totalSubscriptions (mantém sua ideia: por start no filtro real; se não tiver filtro real, tudo)
         const isInRangeByStart = (sub) => {
           if (!start || !end) return true;
           const sd = getStartDate(sub);
@@ -408,27 +383,27 @@ const AdminAnalyticsPage = () => {
           return sd >= start && sd <= end;
         };
 
-        const subsForTotalByStart = subsAll.filter(isInRangeByStart);
-        setTotalSubscriptions(subsForTotalByStart.length);
+        const subsForTotal = subsAll.filter(isInRangeByStart);
+        setTotalSubscriptions(subsForTotal.length);
 
         // ✅ ATIVOS (foto)
         const activeSubsSnapshot = subsAll.filter((sub) => isActiveAt(sub, snapshotAt));
         setActiveSubscriptions(activeSubsSnapshot.length);
 
         // ✅ ATIVAS NO PERÍODO (em algum momento)
-        const rangeEndEffective = effectiveEnd > now ? snapshotAt : effectiveEnd;
+        const rangeEndEffective = periodEnd > now ? snapshotAt : periodEnd;
         const activeSomeTimeInRange = subsAll.filter((sub) =>
-          wasActiveInRange(sub, effectiveStart, rangeEndEffective)
+          wasActiveInRange(sub, periodStart, rangeEndEffective)
         ).length;
         setActiveInPeriodCount(activeSomeTimeInRange);
 
-        // Pendentes (mantém comportamento: pendentes do recorte por start do período real)
-        const pendingSubs = subsForTotalByStart.filter((sub) =>
+        // Pendentes (do recorte por start no filtro real)
+        const pendingSubs = subsForTotal.filter((sub) =>
           ['pending', 'incomplete', 'requires_payment_method'].includes(sub.status)
         );
         setPendingSubscriptions(pendingSubs.length);
 
-        // ✅ Expiradas (geral): se tiver filtro real, expiradas dentro do filtro até snapshot; senão expiradas até hoje
+        // Expiradas (geral): até snapshotAt (se tiver filtro real, dentro do filtro; senão geral)
         const expiredSubs = start && end
           ? subsAll.filter((sub) => {
               const ed = getEndDate(sub);
@@ -444,99 +419,82 @@ const AdminAnalyticsPage = () => {
         setExpiredSubscriptions(expiredSubs.length);
 
         /**
-         * ✅ FUNIL DE VENCIMENTO (OBEDECE O PERÍODO EFETIVO)
-         * Vencem no período: end_at dentro do período
-         * - “desistiram”: end_at <= snapshotAt
-         * - “ainda pra renovar”: end_at > snapshotAt
-         * - “renovaram (dedução)”: vencem_total - desistiram - ainda_pra_renovar
+         * ✅ AQUI É A PARTE QUE VOCÊ PEDIU (SEM last_renewed_at):
+         *
+         * Card "Renovaram (continuidade)" vira:
+         * - TOTAL DE ATIVOS DO MÊS ANTERIOR QUE VENCEM NO MÊS DE AGORA (período do filtro)
+         *
+         * E você bate com:
+         * - Ainda precisa renovar (dentro DESSA BASE)
+         * - Desistiram (dentro DESSA BASE)
+         *
+         * A diferença vira:
+         * - Renovaram (por diferença)
+         *
+         * Trimestrais do mês anterior:
+         * - quantos trimestrais tiveram no período do mês anterior (start_at no mês anterior e trimestral)
          */
-        const expiringInPeriod = subsAll.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed >= effectiveStart && ed <= effectiveEnd;
-        });
 
-        const expiringTotal = expiringInPeriod.length;
-
-        const churnedInPeriod = expiringInPeriod.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed <= snapshotAt;
-        }).length;
-
-        const toRenewInPeriod = expiringInPeriod.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed > snapshotAt;
-        }).length;
-
-        const renewedDeduction = Math.max(0, expiringTotal - churnedInPeriod - toRenewInPeriod);
-
-        setExpiringInPeriodTotal(expiringTotal);
-        setExpiringChurned(churnedInPeriod);
-        setExpiringToRenew(toRenewInPeriod);
-        setExpiringRenewedDeduction(renewedDeduction);
-
-        // ✅ CHURN (período) = churnedInPeriod / (ativos + churnedInPeriod) (base aproximada)
-        if (effectiveStart && effectiveEnd) {
-          const base = activeSubsSnapshot.length + churnedInPeriod;
-          setChurnCount(churnedInPeriod);
-          setChurnRate(base > 0 ? (churnedInPeriod / base) * 100 : 0);
-        } else {
-          setChurnRate(0);
-          setChurnCount(0);
-        }
-
-        /**
-         * ✅ CARD: “TOTAL DE ATIVOS DO MÊS ANTERIOR QUE VENCEM NO MÊS ATUAL”
-         * Regra:
-         * - pega o último dia do mês anterior ao início do período (effectiveStart)
-         * - conta quem estava ATIVO naquela data
-         * - e cujo end_at cai dentro do período atual (effectiveStart..effectiveEnd)
-         */
-        const prevMonthEnd = new Date(effectiveStart.getFullYear(), effectiveStart.getMonth(), 0, 23, 59, 59, 999);
+        // Mês anterior ao início do período
+        const prevMonthEnd = new Date(periodStart.getFullYear(), periodStart.getMonth(), 0, 23, 59, 59, 999);
         const prevMonthStart = new Date(prevMonthEnd.getFullYear(), prevMonthEnd.getMonth(), 1, 0, 0, 0, 0);
 
-        const prevMonthActiveThatExpire = subsAll.filter((sub) => {
+        // Base: assinaturas ATIVAS no final do mês anterior
+        const activeAtPrevMonthEnd = subsAll.filter((sub) => isActiveAt(sub, prevMonthEnd));
+
+        // Dessas, pega as que VENCEM dentro do período atual (mês do filtro)
+        const basePrevMonthThatExpireNow = activeAtPrevMonthEnd.filter((sub) => {
           const ed = getEndDate(sub);
           if (!ed || Number.isNaN(ed.getTime())) return false;
+          return ed >= periodStart && ed <= periodEnd;
+        });
 
-          const wasActivePrevMonthEnd = isActiveAt(sub, prevMonthEnd);
-          if (!wasActivePrevMonthEnd) return false;
+        const baseTotal = basePrevMonthThatExpireNow.length;
 
-          return ed >= effectiveStart && ed <= effectiveEnd;
+        const baseChurned = basePrevMonthThatExpireNow.filter((sub) => {
+          const ed = getEndDate(sub);
+          if (!ed || Number.isNaN(ed.getTime())) return false;
+          return ed <= snapshotAt; // já venceu até hoje
         }).length;
 
-        setPrevMonthActiveThatExpireThisPeriod(prevMonthActiveThatExpire);
+        const baseToRenew = basePrevMonthThatExpireNow.filter((sub) => {
+          const ed = getEndDate(sub);
+          if (!ed || Number.isNaN(ed.getTime())) return false;
+          return ed > snapshotAt; // ainda vai vencer
+        }).length;
 
-        // ✅ Trimestrais iniciados no mês anterior (pra você ter noção da base trimestral do mês anterior)
+        const baseRenewedByDiff = Math.max(0, baseTotal - baseChurned - baseToRenew);
+
+        setContinuityBasePrevMonthExpiringNow(baseTotal);
+        setContinuityChurned(baseChurned);
+        setContinuityStillToRenew(baseToRenew);
+        setContinuityRenewedByDiff(baseRenewedByDiff);
+
+        // ✅ Trimestrais do mês anterior (start_at dentro do mês anterior + trimestral)
         const prevMonthQuarterly = subsAll.filter((sub) => {
           const sd = getStartDate(sub);
           if (!sd || Number.isNaN(sd.getTime())) return false;
-
-          const startedPrevMonth = sd >= prevMonthStart && sd <= prevMonthEnd;
-          if (!startedPrevMonth) return false;
+          if (!(sd >= prevMonthStart && sd <= prevMonthEnd)) return false;
 
           const days = getPeriodDays(sub);
           const isQuarter = isQuarterlyByText(sub) || days >= 80;
           return isQuarter;
         }).length;
 
-        setPrevMonthQuarterlyStarted(prevMonthQuarterly);
+        setPrevMonthQuarterlyCount(prevMonthQuarterly);
 
-        // ✅ RENOVAÇÕES NO PERÍODO (last_renewed_at) — pode ficar 0 se não preenche
-        if (start && end) {
-          const renewedInPeriod = subsAll.filter((sub) => {
-            const rd = getRenewedAt(sub);
-            if (!rd) return false;
-            return rd >= start && rd <= end;
-          }).length;
-          setRenewedCount(renewedInPeriod);
-        } else {
-          setRenewedCount(0);
-        }
+        /**
+         * ✅ “Churn (período)” do seu painel:
+         * Vou manter o conceito simples: perdeu (venceram até hoje) dentro da BASE
+         * (porque é o que você usa pra tomar decisão nesse mês).
+         */
+        const churnedInPeriod = baseChurned;
+        setChurnCount(churnedInPeriod);
 
-        // ✅ RECEITA (por plano/duração) — baseada nas ativas CORRETAS (snapshot)
+        const churnBase = activeSubsSnapshot.length + churnedInPeriod;
+        setChurnRate(churnBase > 0 ? (churnedInPeriod / churnBase) * 100 : 0);
+
+        // ✅ RECEITA / MRR (foto)
         let monthlyCount = 0;
         let quarterlyCount = 0;
         let revenue = 0;
@@ -565,16 +523,16 @@ const AdminAnalyticsPage = () => {
         setMrr(mrrMonthlyValue + mrrQuarterlyValue);
         setTotalRevenue(revenue);
 
-        // conversão (mantém lógica atual: ativos / usuários do período real)
+        // conversão (mantém: ativos / usuários no período real)
         if (usersCount && usersCount > 0) {
           setConversionRate((activeSubsSnapshot.length / usersCount) * 100);
         } else {
           setConversionRate(0);
         }
 
-        // retenção (mantém lógica atual: ativos / totalSubs (start no período real))
-        if (subsForTotalByStart.length > 0) {
-          setRetentionRate((activeSubsSnapshot.length / subsForTotalByStart.length) * 100);
+        // retenção (mantém: ativos / totalSubs do recorte por start)
+        if (subsForTotal.length > 0) {
+          setRetentionRate((activeSubsSnapshot.length / subsForTotal.length) * 100);
         } else {
           setRetentionRate(0);
         }
@@ -657,9 +615,9 @@ const AdminAnalyticsPage = () => {
     );
   };
 
-  const continuityPercent =
-    prevMonthActiveThatExpireThisPeriod > 0
-      ? (expiringRenewedDeduction / prevMonthActiveThatExpireThisPeriod) * 100
+  const continuityRate =
+    continuityBasePrevMonthExpiringNow > 0
+      ? (continuityRenewedByDiff / continuityBasePrevMonthExpiringNow) * 100
       : 0;
 
   const combinedUsers = useMemo(() => {
@@ -789,6 +747,7 @@ const AdminAnalyticsPage = () => {
             <>
               {/* Métricas principais */}
               <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* ATIVAS (foto) */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
@@ -808,71 +767,69 @@ const AdminAnalyticsPage = () => {
                   </p>
                 </div>
 
-                {/* ✅ CARD: Ainda pra renovar no período (obedece filtro) */}
+                {/* ✅ CARD QUE VOCÊ PEDIU: Renovaram (continuidade) = BASE DO MÊS ANTERIOR QUE VENCE NO MÊS ATUAL */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Ainda pra renovar (no período)
+                      Renovaram (continuidade)
                     </span>
                     <Users className="w-5 h-5 text-indigo-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {expiringToRenew}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Vencem no período:{' '}
-                    <span className="font-semibold text-slate-200">{expiringInPeriodTotal}</span>
-                    {' '}· Desistiram:{' '}
-                    <span className="font-semibold text-slate-200">{expiringChurned}</span>
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Renovaram (dedução):{' '}
-                    <span className="font-semibold text-slate-200">{expiringRenewedDeduction}</span>
-                  </p>
-                </div>
 
-                {/* ✅ NOVO CARD: ATIVOS DO MÊS ANTERIOR QUE VENCEM NO PERÍODO + trimestrais do mês anterior */}
-                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Base do mês anterior que vence no período
-                    </span>
-                    <CheckCircle2 className="w-5 h-5 text-emerald-300" />
-                  </div>
                   <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {prevMonthActiveThatExpireThisPeriod}
+                    {continuityBasePrevMonthExpiringNow}
                   </p>
+
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Continuidade (dedução):{' '}
-                    <span className="font-semibold text-slate-200">
-                      {expiringRenewedDeduction}
-                    </span>
+                    Base do mês anterior que vence agora
+                  </p>
+
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Trimestral no mês anterior:{' '}
+                    <span className="font-semibold text-slate-200">{prevMonthQuarterlyCount}</span>
+                  </p>
+
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Renovaram (diferença):{' '}
+                    <span className="font-semibold text-slate-200">{continuityRenewedByDiff}</span>
                     {' '}· Taxa:{' '}
-                    <span className="font-semibold text-slate-200">
-                      {formatPercent(continuityPercent)}
-                    </span>
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Trimestrais iniciados no mês anterior:{' '}
-                    <span className="font-semibold text-slate-200">{prevMonthQuarterlyStarted}</span>
+                    <span className="font-semibold text-slate-200">{formatPercent(continuityRate)}</span>
                   </p>
                 </div>
 
+                {/* AINDA PRA RENOVAR (dentro da BASE) */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
-                      Faturamento (período)
+                      Ainda precisa renovar
                     </span>
-                    <CreditCard className="w-5 h-5 text-sky-300" />
+                    <Clock className="w-5 h-5 text-amber-300" />
                   </div>
                   <p className="mt-3 text-3xl font-bold text-slate-50">
-                    {formatCurrency(totalRevenue)}
+                    {continuityStillToRenew}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Aproximação: soma dos planos ativos.
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Dentro da base do mês anterior
                   </p>
                 </div>
 
+                {/* DESISTIRAM (dentro da BASE) */}
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Desistiram (no período)
+                    </span>
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">
+                    {continuityChurned}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Dentro da base do mês anterior
+                  </p>
+                </div>
+
+                {/* MRR */}
                 <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                   <div className="flex items-center justify-between">
                     <span className="text-xs uppercase tracking-wide text-slate-400">
@@ -1001,8 +958,8 @@ const AdminAnalyticsPage = () => {
                       <span className="font-semibold">{pendingSubscriptions}</span>
                     </li>
                     <li>
-                      • Renovaram no período (se last_renewed_at existir):{' '}
-                      <span className="font-semibold">{renewedCount}</span>
+                      • Renovaram por diferença (base mês anterior):{' '}
+                      <span className="font-semibold">{continuityRenewedByDiff}</span>
                     </li>
                   </ul>
                 </div>
