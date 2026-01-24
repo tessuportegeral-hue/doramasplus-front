@@ -22,13 +22,6 @@ import {
 const PRICE_MONTHLY = 15.9;
 const PRICE_QUARTERLY = 43.9;
 
-/**
- * ✅ Nomes "prováveis" de plano (baseado no que você mostrou do seu banco)
- * Se o seu `subscriptions.plan_name` tiver outros nomes, ajuste aqui.
- */
-const MONTHLY_MATCH = ["mensal", "padrão", "padrao", "monthly"];
-const QUARTERLY_MATCH = ["trimestral", "quarterly", "trimestre"];
-
 /** Helpers */
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -58,11 +51,6 @@ function startOfMonth(d) {
 function endOfMonth(d) {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
 }
-function addDays(d, days) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + days);
-  return x;
-}
 function addMonths(d, months) {
   const x = new Date(d);
   x.setMonth(x.getMonth() + months);
@@ -83,10 +71,6 @@ function formatPct(value) {
   const v = safeNum(value);
   return `${v.toFixed(2)}%`;
 }
-function includesAny(haystack, needles) {
-  const h = String(haystack || "").toLowerCase();
-  return needles.some((n) => h.includes(String(n).toLowerCase()));
-}
 
 export default function AdminAnalytics() {
   const navigate = useNavigate();
@@ -103,32 +87,30 @@ export default function AdminAnalytics() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [error, setError] = useState("");
 
-  // Métricas (SQL dos deuses + complementos)
+  // Métricas (vindas da RPC atualizada)
   const [metrics, setMetrics] = useState({
     active_now: 0,
+    active_now_monthly: 0,
+    active_now_quarterly: 0,
+
+    mrr_total_estimated: 0,
+    mrr_monthly_estimated: 0,
+    mrr_quarterly_estimated: 0,
+
     due_in_period: 0,
-    due_future: 0,
-    due_past: 0,
-    churned: 0,
-    renewed_estimated: 0,
+    due_future_in_period: 0,
+    due_past_in_period: 0,
+
+    expired_not_active_now: 0,
+    non_renew_rate_operational_pct: 0,
+
+    sold_total: 0,
     sold_monthly: 0,
     sold_quarterly: 0,
-  });
+    revenue_estimated_in_period: 0,
 
-  // Complementos (porque o painel precisa de breakdown e cards do jeito certo)
-  const [activeBreakdown, setActiveBreakdown] = useState({
-    active_total: 0,
-    active_monthly: 0,
-    active_quarterly: 0,
-  });
-
-  const [periodBreakdown, setPeriodBreakdown] = useState({
-    due_period_total: 0, // vencem no período (start..end)
-    due_period_past: 0, // já venceram dentro do período (end_at < now)
-    due_period_future: 0, // ainda vão vencer dentro do período (end_at >= now)
-    churned_in_period: 0, // desistiram no período
-    pending_in_period: 0, // pagamentos pendentes (pix) no período
-    expires_in_period: 0, // expiradas (aprox) no período
+    pending_now: 0,
+    pending_in_period: 0,
   });
 
   // Lista de usuários por status (opcional)
@@ -158,7 +140,6 @@ export default function AdminAnalytics() {
       const valid = s && e && s <= e;
 
       if (!valid) {
-        // fallback (este mês)
         const s2 = startOfMonth(now);
         const e2 = endOfMonth(now);
         return {
@@ -213,7 +194,6 @@ export default function AdminAnalytics() {
       setStartDateStr(toDateInputValue(s));
       setEndDateStr(toDateInputValue(e));
     }
-    // custom não mexe (deixa o usuário digitar)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickPeriod]);
 
@@ -238,7 +218,6 @@ export default function AdminAnalytics() {
           .maybeSingle();
 
         if (profErr) {
-          // se der erro, não derruba: só mostra erro e deixa você ver
           console.warn("profiles check error:", profErr);
           return;
         }
@@ -267,127 +246,43 @@ export default function AdminAnalytics() {
     setError("");
 
     try {
-      // 1) SQL dos deuses (RPC)
+      // ✅ RPC atualizada com todas as métricas
       const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_metrics_period", {
         p_start: toISO(periodStart),
         p_end: toISO(periodEnd),
+        price_monthly: PRICE_MONTHLY,
+        price_quarterly: PRICE_QUARTERLY,
       });
 
-      if (rpcErr) {
-        throw new Error(rpcErr.message || "Erro ao rodar admin_metrics_period");
-      }
+      if (rpcErr) throw new Error(rpcErr.message || "Erro ao rodar admin_metrics_period");
 
       const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-      const base = {
+
+      setMetrics({
         active_now: safeNum(row?.active_now),
+        active_now_monthly: safeNum(row?.active_now_monthly),
+        active_now_quarterly: safeNum(row?.active_now_quarterly),
+
+        mrr_total_estimated: safeNum(row?.mrr_total_estimated),
+        mrr_monthly_estimated: safeNum(row?.mrr_monthly_estimated),
+        mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
+
         due_in_period: safeNum(row?.due_in_period),
-        due_future: safeNum(row?.due_future),
-        due_past: safeNum(row?.due_past),
-        churned: safeNum(row?.churned),
-        renewed_estimated: safeNum(row?.renewed_estimated),
+        due_future_in_period: safeNum(row?.due_future_in_period),
+        due_past_in_period: safeNum(row?.due_past_in_period),
+
+        expired_not_active_now: safeNum(row?.expired_not_active_now),
+        non_renew_rate_operational_pct: safeNum(row?.non_renew_rate_operational_pct),
+
+        sold_total: safeNum(row?.sold_total),
         sold_monthly: safeNum(row?.sold_monthly),
         sold_quarterly: safeNum(row?.sold_quarterly),
-      };
-      setMetrics(base);
+        revenue_estimated_in_period: safeNum(row?.revenue_estimated_in_period),
 
-      // 2) Breakdown de ativos agora (mensal vs trimestral)
-      //    (precisa do plan_name, pq o RPC não traz isso)
-      const nowIso = new Date().toISOString();
-      const { data: activeSubs, error: activeSubsErr } = await supabase
-        .from("subscriptions")
-        .select("id, plan_name, status, end_at")
-        .eq("status", "active")
-        .gt("end_at", nowIso);
-
-      if (activeSubsErr) {
-        console.warn("active subscriptions error:", activeSubsErr);
-      }
-
-      const list = Array.isArray(activeSubs) ? activeSubs : [];
-      let monthly = 0;
-      let quarterly = 0;
-
-      for (const s of list) {
-        const planName = s?.plan_name || "";
-        if (includesAny(planName, QUARTERLY_MATCH)) quarterly += 1;
-        else if (includesAny(planName, MONTHLY_MATCH)) monthly += 1;
-        else {
-          // fallback: se não reconheceu, assume mensal (pra não zerar seu MRR)
-          monthly += 1;
-        }
-      }
-
-      setActiveBreakdown({
-        active_total: list.length,
-        active_monthly: monthly,
-        active_quarterly: quarterly,
+        pending_now: safeNum(row?.pending_now),
+        pending_in_period: safeNum(row?.pending_in_period),
       });
 
-      // 3) Cards do período que fazem sentido pra você:
-      //    - vencem no período (start..end)
-      //    - já venceram (dentro do período, end_at < agora)
-      //    - ainda vão vencer (dentro do período, end_at >= agora)
-      //    - desistiram no período (status != active e end_at dentro do período) [aprox]
-      const now = new Date();
-      const nowISO = now.toISOString();
-
-      // 3a) Já venceram no período
-      const { count: duePastInPeriod, error: duePastInPeriodErr } = await supabase
-        .from("subscriptions")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "active")
-        .gte("end_at", toISO(periodStart))
-        .lte("end_at", toISO(periodEnd))
-        .lt("end_at", nowISO);
-
-      if (duePastInPeriodErr) console.warn("duePastInPeriod error:", duePastInPeriodErr);
-
-      // 3b) Ainda vão vencer no período
-      const { count: dueFutureInPeriod, error: dueFutureInPeriodErr } = await supabase
-        .from("subscriptions")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "active")
-        .gte("end_at", toISO(periodStart))
-        .lte("end_at", toISO(periodEnd))
-        .gte("end_at", nowISO);
-
-      if (dueFutureInPeriodErr) console.warn("dueFutureInPeriod error:", dueFutureInPeriodErr);
-
-      // 3c) Desistiram no período (aproximação: status != active e end_at dentro do período)
-      const { count: churnedInPeriod, error: churnedInPeriodErr } = await supabase
-        .from("subscriptions")
-        .select("id", { count: "exact", head: true })
-        .neq("status", "active")
-        .gte("end_at", toISO(periodStart))
-        .lte("end_at", toISO(periodEnd));
-
-      if (churnedInPeriodErr) console.warn("churnedInPeriod error:", churnedInPeriodErr);
-
-      // 3d) Pagamentos pendentes no período (pix)
-      const { count: pendingInPeriod, error: pendingInPeriodErr } = await supabase
-        .from("pix_payments")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
-        .gte("created_at", toISO(periodStart))
-        .lte("created_at", toISO(periodEnd));
-
-      if (pendingInPeriodErr) console.warn("pendingInPeriod error:", pendingInPeriodErr);
-
-      // 3e) Expiradas no período (status != active + end_at dentro do período) (igual churnedInPeriod, mas separado pra card)
-      const expires = safeNum(churnedInPeriod);
-
-      setPeriodBreakdown({
-        due_period_total: safeNum(base.due_in_period),
-        due_period_past: safeNum(duePastInPeriod),
-        due_period_future: safeNum(dueFutureInPeriod),
-        churned_in_period: safeNum(churnedInPeriod),
-        pending_in_period: safeNum(pendingInPeriod),
-        expires_in_period: safeNum(expires),
-      });
-
-      // 4) Lista de usuários (opcional, só pra aba Usuários)
-      //    - aqui eu busco pouca coisa pra não pesar
-      //    - se você quiser uma lista mais completa depois, a gente ajusta
       setUsersList([]);
     } catch (e) {
       console.error(e);
@@ -401,44 +296,9 @@ export default function AdminAnalytics() {
     fetchAllMetrics();
   }, [fetchAllMetrics]);
 
-  // Receita / MRR
-  const mrrMonthly = useMemo(() => activeBreakdown.active_monthly * PRICE_MONTHLY, [activeBreakdown.active_monthly]);
-  const mrrQuarterly = useMemo(
-    () => activeBreakdown.active_quarterly * (PRICE_QUARTERLY / 3),
-    [activeBreakdown.active_quarterly]
-  );
-  const mrrTotal = useMemo(() => mrrMonthly + mrrQuarterly, [mrrMonthly, mrrQuarterly]);
-
-  // Faturamento no período (aprox por vendas)
-  const revenuePeriod = useMemo(() => {
-    return metrics.sold_monthly * PRICE_MONTHLY + metrics.sold_quarterly * PRICE_QUARTERLY;
-  }, [metrics.sold_monthly, metrics.sold_quarterly]);
-
-  // Churn/Retenção do período (baseado em vencimentos do período)
-  const churnPeriodPct = useMemo(() => {
-    const denom = safeNum(periodBreakdown.due_period_total);
-    if (!denom) return 0;
-    return (safeNum(periodBreakdown.churned_in_period) / denom) * 100;
-  }, [periodBreakdown.due_period_total, periodBreakdown.churned_in_period]);
-
-  const retentionPct = useMemo(() => {
-    const v = 100 - churnPeriodPct;
-    return v < 0 ? 0 : v;
-  }, [churnPeriodPct]);
-
-  // Ticket médio (aprox) por assinante ativo (MRR total / ativos agora)
-  const avgTicket = useMemo(() => {
-    const denom = safeNum(activeBreakdown.active_total);
-    if (!denom) return 0;
-    return mrrTotal / denom;
-  }, [activeBreakdown.active_total, mrrTotal]);
-
   // UI
   const onChangeQuick = (v) => {
     setQuickPeriod(v);
-    if (v !== "custom") {
-      // inputs são atualizados pelo effect
-    }
   };
 
   const renderCard = (title, value, icon, subtitle, tone = "default") => {
@@ -598,9 +458,9 @@ export default function AdminAnalytics() {
               <div className="md:col-span-3">
                 {renderCard(
                   "Ativos agora",
-                  `${activeBreakdown.active_total}`,
+                  `${metrics.active_now}`,
                   <Users className="w-5 h-5 text-green-300" />,
-                  `Mensal: ${activeBreakdown.active_monthly} • Trimestral: ${activeBreakdown.active_quarterly}`,
+                  `Mensal: ${metrics.active_now_monthly} • Trimestral: ${metrics.active_now_quarterly}`,
                   "ok"
                 )}
               </div>
@@ -608,9 +468,9 @@ export default function AdminAnalytics() {
               <div className="md:col-span-3">
                 {renderCard(
                   "Pendentes agora",
-                  `${periodBreakdown.pending_in_period}`,
+                  `${metrics.pending_now}`,
                   <Clock className="w-5 h-5 text-yellow-300" />,
-                  "Podem virar receita",
+                  `No período: ${metrics.pending_in_period}`,
                   "warn"
                 )}
               </div>
@@ -618,16 +478,16 @@ export default function AdminAnalytics() {
               <div className="md:col-span-3">
                 {renderCard(
                   "Faturamento (período)",
-                  formatBRL(revenuePeriod),
+                  formatBRL(metrics.revenue_estimated_in_period),
                   <CreditCard className="w-5 h-5 text-blue-300" />,
-                  "Aproximação: soma das vendas no período"
+                  "Estimativa: vendas em subscriptions"
                 )}
               </div>
 
               <div className="md:col-span-3">
                 {renderCard(
                   "MRR (total)",
-                  formatBRL(mrrTotal),
+                  formatBRL(metrics.mrr_total_estimated),
                   <BarChart3 className="w-5 h-5 text-purple-300" />,
                   "Mensal + (Trimestral ÷ 3)"
                 )}
@@ -639,32 +499,32 @@ export default function AdminAnalytics() {
               <div className="md:col-span-6">
                 {renderCard(
                   "MRR Mensal",
-                  formatBRL(mrrMonthly),
+                  formatBRL(metrics.mrr_monthly_estimated),
                   <CreditCard className="w-5 h-5 text-white/70" />,
-                  `${activeBreakdown.active_monthly} assinaturas`
+                  `${metrics.active_now_monthly} assinaturas`
                 )}
               </div>
               <div className="md:col-span-6">
                 {renderCard(
                   "MRR Trimestral (÷ 3)",
-                  formatBRL(mrrQuarterly),
+                  formatBRL(metrics.mrr_quarterly_estimated),
                   <CreditCard className="w-5 h-5 text-yellow-300" />,
-                  `${activeBreakdown.active_quarterly} assinaturas`
+                  `${metrics.active_now_quarterly} assinaturas`
                 )}
               </div>
             </div>
 
-            {/* Linha 3 (vencimentos do período - do jeito que faz sentido) */}
+            {/* Linha 3 (vencimentos do período - correto) */}
             <div className="mt-6">
               <div className="text-sm font-semibold text-white/80 mb-2">
-                Meu período selecionado (renovação)
+                Meu período selecionado (vencimentos)
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-3">
                   {renderCard(
                     "Vencem no período",
-                    `${periodBreakdown.due_period_total}`,
+                    `${metrics.due_in_period}`,
                     <Clock className="w-5 h-5 text-white/70" />,
                     '"Boletos" do período'
                   )}
@@ -673,7 +533,7 @@ export default function AdminAnalytics() {
                 <div className="md:col-span-3">
                   {renderCard(
                     "Ainda vão vencer",
-                    `${periodBreakdown.due_period_future}`,
+                    `${metrics.due_future_in_period}`,
                     <Clock className="w-5 h-5 text-yellow-300" />,
                     "End_at ≥ hoje",
                     "warn"
@@ -683,7 +543,7 @@ export default function AdminAnalytics() {
                 <div className="md:col-span-3">
                   {renderCard(
                     "Já venceram",
-                    `${periodBreakdown.due_period_past}`,
+                    `${metrics.due_past_in_period}`,
                     <Clock className="w-5 h-5 text-blue-300" />,
                     "End_at < hoje"
                   )}
@@ -691,10 +551,10 @@ export default function AdminAnalytics() {
 
                 <div className="md:col-span-3">
                   {renderCard(
-                    "Desistiram",
-                    `${periodBreakdown.churned_in_period}`,
+                    "Expiraram e não estão ativos hoje",
+                    `${metrics.expired_not_active_now}`,
                     <AlertCircle className="w-5 h-5 text-red-300" />,
-                    "Status != active",
+                    "Churn operacional (honesto)",
                     "bad"
                   )}
                 </div>
@@ -703,11 +563,30 @@ export default function AdminAnalytics() {
               <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-3">
                   {renderCard(
-                    "Renovaram (estimado)",
-                    `${metrics.renewed_estimated}`,
+                    "% não renovaram (operacional)",
+                    formatPct(metrics.non_renew_rate_operational_pct),
+                    <AlertCircle className="w-5 h-5 text-yellow-300" />,
+                    "Entre os que vencem no período",
+                    "warn"
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Vendas no período",
+                    `${metrics.sold_total}`,
                     <CheckCircle2 className="w-5 h-5 text-green-300" />,
-                    "Estimativa (aprox.)",
+                    `Mensal: ${metrics.sold_monthly} • Trimestral: ${metrics.sold_quarterly}`,
                     "ok"
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Mensal vendido",
+                    `${metrics.sold_monthly}`,
+                    <CreditCard className="w-5 h-5 text-white/70" />,
+                    `Trimestral vendido: ${metrics.sold_quarterly}`
                   )}
                 </div>
 
@@ -719,38 +598,20 @@ export default function AdminAnalytics() {
                     `Mensal vendido: ${metrics.sold_monthly}`
                   )}
                 </div>
-
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Retenção (período)",
-                    formatPct(retentionPct),
-                    <BarChart3 className="w-5 h-5 text-green-300" />,
-                    "100% - churn"
-                  )}
-                </div>
-
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Churn (período)",
-                    formatPct(churnPeriodPct),
-                    <AlertCircle className="w-5 h-5 text-red-300" />,
-                    `Perdeu: ${periodBreakdown.churned_in_period}`,
-                    "bad"
-                  )}
-                </div>
               </div>
 
               {/* Insights rápidos */}
               <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-4">
                 <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
                 <div className="text-sm text-white/70 space-y-1">
-                  <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
-                  <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
-                  <div>• Pendentes que podem virar receita (no período): {periodBreakdown.pending_in_period}</div>
+                  <div>• Assinaturas ativas agora: {metrics.active_now}</div>
                   <div>
-                    • Vencimentos no período: {periodBreakdown.due_period_total} (já venceram:{" "}
-                    {periodBreakdown.due_period_past}, ainda vão vencer: {periodBreakdown.due_period_future})
+                    • Vencimentos no período: {metrics.due_in_period} (já venceram: {metrics.due_past_in_period}, ainda vão vencer:{" "}
+                    {metrics.due_future_in_period})
                   </div>
+                  <div>• Expiraram e não estão ativos hoje: {metrics.expired_not_active_now}</div>
+                  <div>• % não renovaram (operacional): {formatPct(metrics.non_renew_rate_operational_pct)}</div>
+                  <div>• Pendentes agora: {metrics.pending_now} (no período: {metrics.pending_in_period})</div>
                 </div>
               </div>
             </div>
@@ -772,7 +633,6 @@ export default function AdminAnalytics() {
                   setLoadingUsers(true);
                   setError("");
                   try {
-                    // Lista pequena pra não travar: 50 mais recentes
                     const { data, error: uErr } = await supabase
                       .from("profiles")
                       .select("email, created_at, active")
