@@ -58,7 +58,7 @@ const AdminTopNav = ({ current }) => {
   );
 };
 
-// Utilitário pra montar range de datas (filtro)
+// Utilitário pra montar range de datas
 const getDateRange = (filterType, customStart, customEnd) => {
   const now = new Date();
 
@@ -112,7 +112,9 @@ const getDateRange = (filterType, customStart, customEnd) => {
       break;
     }
     case 'custom': {
-      if (!customStart || !customEnd) return { start: null, end: null };
+      if (!customStart || !customEnd) {
+        return { start: null, end: null };
+      }
       const s = startOfDay(customStart);
       const e = endOfDay(customEnd);
       start = s;
@@ -128,161 +130,30 @@ const getDateRange = (filterType, customStart, customEnd) => {
   return { start, end };
 };
 
-// Helpers
-const toLower = (v) => String(v || '').toLowerCase().trim();
-
-const parseMoneySmart = (raw) => {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  // 1590, 3990 etc => centavos
-  return n >= 100 ? n / 100 : n;
-};
-
-// Datas base (prioriza start_at/end_at)
-const getEndDate = (sub) =>
-  new Date(
-    sub.end_at ||
-      sub.current_period_end ||
-      sub.expires_at ||
-      sub.period_end ||
-      sub.end_at
-  );
-
-const getStartDate = (sub) =>
-  new Date(
-    sub.start_at ||
-      sub.current_period_start ||
-      sub.period_start ||
-      sub.created_at ||
-      sub.start_at
-  );
-
-const getPeriodDays = (sub) => {
-  const s = getStartDate(sub);
-  const e = getEndDate(sub);
-  const diff = e.getTime() - s.getTime();
-  if (!Number.isFinite(diff) || diff <= 0) return 0;
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-};
-
-const isQuarterlyByText = (sub) => {
-  const blob = [
-    sub.plan_name,
-    sub.plan,
-    sub.plan_type,
-    sub.product_name,
-    sub.price_name,
-    sub.subscription_type,
-    sub.interval,
-    sub.plan_interval,
-    sub.type,
-  ]
-    .map(toLower)
-    .join(' ');
-
-  return (
-    blob.includes('trimes') ||
-    blob.includes('quarter') ||
-    blob.includes('3 meses') ||
-    blob.includes('3mes') ||
-    blob.includes('90') ||
-    blob.includes('trimestral')
-  );
-};
-
-const isMonthlyByText = (sub) => {
-  const blob = [
-    sub.plan_name,
-    sub.plan,
-    sub.plan_type,
-    sub.product_name,
-    sub.price_name,
-    sub.subscription_type,
-    sub.interval,
-    sub.plan_interval,
-    sub.type,
-  ]
-    .map(toLower)
-    .join(' ');
-
-  return blob.includes('mensal') || blob.includes('month') || blob.includes('30');
-};
-
-const pickSubscriptionValue = (sub) => {
-  const candidates = [
-    sub.amount_monthly,
-    sub.amount,
-    sub.price,
-    sub.price_amount,
-    sub.plan_amount,
-    sub.value,
-    sub.total,
-    sub.unit_amount,
-    sub.unit_amount_decimal,
-  ];
-
-  for (const c of candidates) {
-    const v = parseMoneySmart(c);
-    if (v > 0) return v;
-  }
-
-  const days = getPeriodDays(sub);
-
-  if (isQuarterlyByText(sub)) return PRICE_QUARTERLY;
-  if (isMonthlyByText(sub)) return PRICE_MONTHLY;
-
-  if (days >= 80) return PRICE_QUARTERLY;
-  return PRICE_MONTHLY;
-};
-
-// Ativo em T = start <= T e end > T
-const isActiveAt = (sub, at) => {
-  const s = getStartDate(sub);
-  const e = getEndDate(sub);
-  if (!at || !s || !e) return false;
-  if (
-    Number.isNaN(s.getTime()) ||
-    Number.isNaN(e.getTime()) ||
-    Number.isNaN(at.getTime())
-  ) {
-    return false;
-  }
-  return s <= at && e > at;
-};
-
 const AdminAnalyticsPage = () => {
   // loading / erro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // FOTO DO NEGÓCIO (agora)
-  const [activeNow, setActiveNow] = useState(0);
-  const [activeMonthlyNow, setActiveMonthlyNow] = useState(0);
-  const [activeQuarterlyNow, setActiveQuarterlyNow] = useState(0);
-  const [pendingNow, setPendingNow] = useState(0);
-  const [mrr, setMrr] = useState(0);
-  const [mrrMonthly, setMrrMonthly] = useState(0);
-  const [mrrQuarterly, setMrrQuarterly] = useState(0);
-
-  // MÊS/PERÍODO SELECIONADO (obedece filtro)
-  const [dueInPeriod, setDueInPeriod] = useState(0);          // vencem no período
-  const [dueFuture, setDueFuture] = useState(0);              // ainda vão vencer
-  const [duePast, setDuePast] = useState(0);                  // já venceram
-  const [churnedInPeriod, setChurnedInPeriod] = useState(0);  // desistiram (definitivo)
-  const [renewedEstimated, setRenewedEstimated] = useState(0);// renovaram (estimado)
-  const [soldMonthlyInPeriod, setSoldMonthlyInPeriod] = useState(0);
-  const [soldQuarterlyInPeriod, setSoldQuarterlyInPeriod] = useState(0);
-
-  // Outras infos
-  const [totalUsers, setTotalUsers] = useState(0);
-  const [appliedRangeLabel, setAppliedRangeLabel] = useState('Exibindo período');
-
   // filtros
-  const [filterType, setFilterType] = useState('month'); // ✅ default: este mês (faz sentido pro seu uso)
+  const [filterType, setFilterType] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [appliedRangeLabel, setAppliedRangeLabel] = useState('Exibindo todos os dados');
 
-  // usuários por status (amostra)
+  // ✅ métricas vindas do SQL (RPC)
+  const [metrics, setMetrics] = useState({
+    active_now: 0,
+    due_in_period: 0,
+    due_future: 0,
+    due_past: 0,
+    churned: 0,
+    renewed_estimated: 0,
+    sold_monthly: 0,
+    sold_quarterly: 0,
+  });
+
+  // ✅ usuários (mantemos a tabela amostra)
   const [usersByStatus, setUsersByStatus] = useState({
     active: [],
     pending: [],
@@ -295,159 +166,66 @@ const AdminAnalyticsPage = () => {
         setLoading(true);
         setError(null);
 
-        const now = new Date();
         const { start, end } = getDateRange(filterType, customStartDate, customEndDate);
 
-        // ✅ Se não tiver start/end (caso "all"), usa mês atual pro bloco de continuidade
-        const periodStart = start
-          ? new Date(start)
-          : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-
-        const periodEnd = end
-          ? new Date(end)
-          : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-        // snapshotAt: se o período já acabou, usa fim do período; senão usa now
-        const snapshotAt = periodEnd < now ? periodEnd : now;
-
-        const fmt = (d) =>
-          d.toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          });
-
-        setAppliedRangeLabel(`Período: ${fmt(periodStart)} até ${fmt(periodEnd)}`);
-
-        // TOTAL USERS (mantém por período real quando existe)
-        let profilesCountQuery = supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true });
-
-        if (start && end) {
-          profilesCountQuery = profilesCountQuery
-            .gte('created_at', start.toISOString())
-            .lte('created_at', end.toISOString());
+        // Label amigável do período
+        if (!start || !end) {
+          setAppliedRangeLabel('Exibindo todos os dados');
+        } else {
+          const fmt = (d) =>
+            d.toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+            });
+          setAppliedRangeLabel(`Período: ${fmt(start)} até ${fmt(end)}`);
         }
 
-        const { count: usersCount, error: usersError } = await profilesCountQuery;
-        if (usersError) throw usersError;
-        setTotalUsers(usersCount || 0);
+        // ✅ Se não tiver filtro, usamos o mês atual como padrão pro SQL (01 -> 01/31)
+        // porque o SQL precisa de range.
+        let startTs = start;
+        let endTs = end;
 
-        // SUBSCRIPTIONS
-        const { data: subsDataAll, error: subsError } = await supabase
+        if (!startTs || !endTs) {
+          const now = new Date();
+          const s = new Date(now.getFullYear(), now.getMonth(), 1);
+          const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          s.setHours(0, 0, 0, 0);
+          e.setHours(23, 59, 59, 999);
+          startTs = s;
+          endTs = e;
+        }
+
+        // ✅ 1) CHAMA O SQL DOS DEUSES (RPC)
+        const { data: rpcData, error: rpcError } = await supabase.rpc('admin_metrics_period', {
+          start_ts: startTs.toISOString(),
+          end_ts: endTs.toISOString(),
+        });
+
+        if (rpcError) throw rpcError;
+
+        const row = Array.isArray(rpcData) && rpcData.length > 0 ? rpcData[0] : null;
+
+        setMetrics({
+          active_now: Number(row?.active_now || 0),
+          due_in_period: Number(row?.due_in_period || 0),
+          due_future: Number(row?.due_future || 0),
+          due_past: Number(row?.due_past || 0),
+          churned: Number(row?.churned || 0),
+          renewed_estimated: Number(row?.renewed_estimated || 0),
+          sold_monthly: Number(row?.sold_monthly || 0),
+          sold_quarterly: Number(row?.sold_quarterly || 0),
+        });
+
+        // ✅ 2) TABELA (amostra) — mantém do jeito antigo, mas sem quebrar o painel
+        // (se quiser, depois a gente também passa isso pra SQL)
+        const { data: subsAll, error: subsError } = await supabase
           .from('subscriptions')
           .select('*');
 
         if (subsError) throw subsError;
 
-        const subsAll = subsDataAll || [];
-
-        // =========================
-        // ✅ BLOCO A — FOTO DO NEGÓCIO (AGORA)
-        // =========================
-        const activeSubsNow = subsAll.filter((sub) => isActiveAt(sub, now));
-        setActiveNow(activeSubsNow.length);
-
-        const pendingSubsNow = subsAll.filter((sub) =>
-          ['pending', 'incomplete', 'requires_payment_method'].includes(sub.status)
-        );
-        setPendingNow(pendingSubsNow.length);
-
-        let monthlyCountNow = 0;
-        let quarterlyCountNow = 0;
-
-        activeSubsNow.forEach((sub) => {
-          const days = getPeriodDays(sub);
-          const isQuarter = isQuarterlyByText(sub) || days >= 80;
-          if (isQuarter) quarterlyCountNow += 1;
-          else monthlyCountNow += 1;
-        });
-
-        setActiveMonthlyNow(monthlyCountNow);
-        setActiveQuarterlyNow(quarterlyCountNow);
-
-        const mrrMonthlyValue = monthlyCountNow * PRICE_MONTHLY;
-        const mrrQuarterlyValue = quarterlyCountNow * (PRICE_QUARTERLY / 3);
-
-        setMrrMonthly(mrrMonthlyValue);
-        setMrrQuarterly(mrrQuarterlyValue);
-        setMrr(mrrMonthlyValue + mrrQuarterlyValue);
-
-        // =========================
-        // ✅ BLOCO B — MÊS/PERÍODO SELECIONADO (RENOVAÇÃO SEM last_renewed_at)
-        // =========================
-
-        // 1) Vencem no período = end_at dentro do período
-        const dueSubs = subsAll.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed >= periodStart && ed <= periodEnd;
-        });
-
-        const dueTotal = dueSubs.length;
-        setDueInPeriod(dueTotal);
-
-        // 2) Ainda vão vencer (dentro do período) = end_at > snapshotAt
-        const dueNotYet = dueSubs.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed > snapshotAt;
-        }).length;
-        setDueFuture(dueNotYet);
-
-        // 3) Já venceram (dentro do período) = end_at <= snapshotAt
-        const dueAlready = dueSubs.filter((sub) => {
-          const ed = getEndDate(sub);
-          if (!ed || Number.isNaN(ed.getTime())) return false;
-          return ed <= snapshotAt;
-        });
-        setDuePast(dueAlready.length);
-
-        // 4) Desistiram (churn do período) =
-        //    venceu no período ATÉ snapshotAt e o user NÃO tem nenhuma assinatura ativa em snapshotAt
-        const isUserActiveAtSnapshot = (userId) => {
-          if (!userId) return false;
-          return subsAll.some((s) => s.user_id === userId && isActiveAt(s, snapshotAt));
-        };
-
-        const churned = dueAlready.filter((sub) => {
-          const uid = sub.user_id;
-          // se não tem user_id, não dá pra confirmar churn, então não conta como churn
-          if (!uid) return false;
-          return !isUserActiveAtSnapshot(uid);
-        }).length;
-        setChurnedInPeriod(churned);
-
-        // 5) Renovaram (estimado) = já venceram - desistiram
-        const renewedByDiff = Math.max(0, dueAlready.length - churned);
-        setRenewedEstimated(renewedByDiff);
-
-        // 6) Vendas no período (start_at no período)
-        const startedInPeriod = subsAll.filter((sub) => {
-          const sd = getStartDate(sub);
-          if (!sd || Number.isNaN(sd.getTime())) return false;
-          return sd >= periodStart && sd <= periodEnd;
-        });
-
-        const soldQuarter = startedInPeriod.filter((sub) => {
-          const days = getPeriodDays(sub);
-          const isQuarter = isQuarterlyByText(sub) || days >= 80;
-          return isQuarter;
-        }).length;
-
-        const soldMonth = startedInPeriod.filter((sub) => {
-          const days = getPeriodDays(sub);
-          const isQuarter = isQuarterlyByText(sub) || days >= 80;
-          return !isQuarter;
-        }).length;
-
-        setSoldQuarterlyInPeriod(soldQuarter);
-        setSoldMonthlyInPeriod(soldMonth);
-
-        // =========================
-        // ✅ Usuários por status (amostra) — baseado na foto do snapshotAt (pra ficar consistente)
-        // =========================
+        // amostra perfis
         let profilesListQuery = supabase
           .from('profiles')
           .select('id, email, created_at')
@@ -463,16 +241,46 @@ const AdminAnalyticsPage = () => {
         const { data: profilesList, error: profilesListError } = await profilesListQuery;
         if (profilesListError) throw profilesListError;
 
+        const nowSnap = new Date();
+
+        const getStartDate = (sub) =>
+          new Date(
+            sub.start_at ||
+              sub.current_period_start ||
+              sub.period_start ||
+              sub.created_at ||
+              sub.start_at
+          );
+
+        const getEndDate = (sub) =>
+          new Date(
+            sub.end_at ||
+              sub.current_period_end ||
+              sub.expires_at ||
+              sub.period_end ||
+              sub.end_at
+          );
+
+        const isActiveAt = (sub, at) => {
+          const s = getStartDate(sub);
+          const e = getEndDate(sub);
+          if (!at || !s || !e) return false;
+          if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || Number.isNaN(at.getTime())) {
+            return false;
+          }
+          return s <= at && e > at;
+        };
+
         const activeUsers = [];
         const pendingUsers = [];
         const inactiveUsers = [];
 
         (profilesList || []).forEach((profile) => {
-          const userSubs = subsAll.filter((s) => s.user_id === profile.id);
+          const userSubs = (subsAll || []).filter((s) => s.user_id === profile.id);
 
           let status = 'inactive';
 
-          const hasActive = userSubs.some((s) => isActiveAt(s, snapshotAt));
+          const hasActive = userSubs.some((s) => isActiveAt(s, nowSnap));
           const hasPending = userSubs.some((s) =>
             ['pending', 'incomplete', 'requires_payment_method'].includes(s.status)
           );
@@ -525,12 +333,26 @@ const AdminAnalyticsPage = () => {
     );
   };
 
-  // Taxas úteis
-  const renewalRate =
-    duePast > 0 ? (renewedEstimated / duePast) * 100 : 0;
+  // ✅ derivados simples (só conta, não inventa regra)
+  const activeSubscriptions = metrics.active_now;
 
-  const churnRatePeriod =
-    duePast > 0 ? (churnedInPeriod / duePast) * 100 : 0;
+  const soldTotal = metrics.sold_monthly + metrics.sold_quarterly;
+
+  // ✅ receita/mrr aproximados (só pra exibir dinheiro)
+  const mrrMonthly = metrics.active_now > 0 ? metrics.active_now * 0 : 0; // placeholder (não usado)
+  // Melhor: estimar por ativos com split mensal/trimestral vindo do SQL (se você quiser, eu adiciono no SQL)
+  // Por enquanto, mantemos um cálculo simples baseado no que você já tem:
+  // MRR ≈ (ativos mensais * PRICE_MONTHLY) + (ativos trimestrais * (PRICE_QUARTERLY/3))
+  // Como o SQL atual não manda "ativos mensais/trimestrais", vamos estimar pela proporção de vendas do período:
+  const totalRevenueApprox =
+    (metrics.sold_monthly * PRICE_MONTHLY) + (metrics.sold_quarterly * PRICE_QUARTERLY);
+
+  const mrrApprox = 0; // deixamos 0 pra não mentir sem ter split real de ativos
+  const churnRate =
+    metrics.due_in_period > 0 ? (metrics.churned / metrics.due_in_period) * 100 : 0;
+
+  // conversão: sem contar users aqui (pra não misturar); se quiser, faço via SQL também.
+  const conversionRate = 0;
 
   const combinedUsers = useMemo(() => {
     return [
@@ -584,12 +406,10 @@ const AdminAnalyticsPage = () => {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-purple-300" />
-                  <h2 className="text-sm font-semibold text-slate-200">
-                    Filtro de período
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-200">Filtro de período</h2>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Selecione um período para analisar o mês/período.{` `}
+                  Selecione um período para analisar suas métricas.{` `}
                   <span className="text-slate-300">{appliedRangeLabel}</span>
                 </p>
               </div>
@@ -602,13 +422,13 @@ const AdminAnalyticsPage = () => {
                     onChange={(e) => setFilterType(e.target.value)}
                     className="bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100"
                   >
+                    <option value="all">Tudo (usa mês atual no SQL)</option>
+                    <option value="today">Hoje</option>
+                    <option value="7days">Últimos 7 dias</option>
                     <option value="month">Este mês</option>
                     <option value="lastmonth">Mês passado</option>
-                    <option value="7days">Últimos 7 dias</option>
-                    <option value="today">Hoje</option>
                     <option value="year">Ano atual</option>
                     <option value="custom">Período personalizado</option>
-                    <option value="all">Tudo (usa mês atual pra continuidade)</option>
                   </select>
                 </div>
 
@@ -657,170 +477,158 @@ const AdminAnalyticsPage = () => {
 
           {!loading && !error && (
             <>
-              {/* ✅ BLOCO A — FOTO DO NEGÓCIO (AGORA) */}
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-slate-200">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-sm font-semibold">Foto do negócio (agora)</h2>
+              {/* ✅ Cards principais (SQL) */}
+              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Assinaturas Ativas
+                    </span>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{metrics.active_now}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    (ativo agora) — vindo do SQL
+                  </p>
                 </div>
 
-                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Ativos agora
-                      </span>
-                      <Users className="w-5 h-5 text-emerald-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{activeNow}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Mensal: {activeMonthlyNow} · Trimestral: {activeQuarterlyNow}
-                    </p>
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Vencem no período
+                    </span>
+                    <Users className="w-5 h-5 text-indigo-300" />
                   </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Pendentes agora
-                      </span>
-                      <Clock className="w-5 h-5 text-amber-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{pendingNow}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Podem virar receita
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        MRR total
-                      </span>
-                      <CreditCard className="w-5 h-5 text-emerald-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{formatCurrency(mrr)}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Mensal + (Trimestral ÷ 3)
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        MRR Mensal
-                      </span>
-                      <CreditCard className="w-5 h-5 text-purple-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{formatCurrency(mrrMonthly)}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {activeMonthlyNow} assinaturas
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        MRR Trimestral
-                      </span>
-                      <CreditCard className="w-5 h-5 text-amber-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{formatCurrency(mrrQuarterly)}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {activeQuarterlyNow} assinaturas (÷3)
-                    </p>
-                  </div>
-                </section>
-              </section>
-
-              {/* ✅ BLOCO B — MÊS/PERÍODO SELECIONADO */}
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-slate-200">
-                  <Calendar className="w-5 h-5 text-purple-300" />
-                  <h2 className="text-sm font-semibold">Mês/Período selecionado (renovação)</h2>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{metrics.due_in_period}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Quem tem end_at dentro do período
+                  </p>
                 </div>
 
-                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Vencem no período
-                      </span>
-                      <Clock className="w-5 h-5 text-sky-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{dueInPeriod}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      “Boletos” do período
-                    </p>
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Já venceu (até agora)
+                    </span>
+                    <AlertCircle className="w-5 h-5 text-rose-300" />
                   </div>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{metrics.due_past}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    end_at &lt;= agora (dentro do período)
+                  </p>
+                </div>
 
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Ainda vão vencer
-                      </span>
-                      <Clock className="w-5 h-5 text-amber-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{dueFuture}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      End_at &gt; hoje
-                    </p>
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Churn (período)
+                    </span>
+                    <AlertCircle className="w-5 h-5 text-red-400" />
                   </div>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">
+                    {formatPercent(churnRate)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Perdeu:{' '}
+                    <span className="font-semibold text-slate-200">{metrics.churned}</span>
+                  </p>
+                </div>
 
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Já venceram
-                      </span>
-                      <AlertCircle className="w-5 h-5 text-slate-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{duePast}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      End_at ≤ hoje
-                    </p>
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Renovaram (estimado)
+                    </span>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-300" />
                   </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Desistiram
-                      </span>
-                      <AlertCircle className="w-5 h-5 text-red-400" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{churnedInPeriod}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      %: <span className="font-semibold text-slate-200">{formatPercent(churnRatePeriod)}</span>
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Renovaram (estimado)
-                      </span>
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{renewedEstimated}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      %: <span className="font-semibold text-slate-200">{formatPercent(renewalRate)}</span>
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase tracking-wide text-slate-400">
-                        Trimestral vendido
-                      </span>
-                      <CreditCard className="w-5 h-5 text-amber-300" />
-                    </div>
-                    <p className="mt-3 text-3xl font-bold text-slate-50">{soldQuarterlyInPeriod}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Mensal vendido: <span className="font-semibold text-slate-200">{soldMonthlyInPeriod}</span>
-                    </p>
-                  </div>
-                </section>
+                  <p className="mt-3 text-3xl font-bold text-slate-50">{metrics.renewed_estimated}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Calculado pelo SQL (aprox.)
+                  </p>
+                </div>
               </section>
 
-              {/* Usuários por status (amostra) */}
+              {/* ✅ Vendas no período (SQL) */}
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Entraram no período
+                    </span>
+                    <CreditCard className="w-5 h-5 text-purple-300" />
+                  </div>
+                  <p className="text-2xl font-bold text-slate-50">{soldTotal}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Mensal: {metrics.sold_monthly} · Trimestral: {metrics.sold_quarterly}
+                  </p>
+                </div>
+
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Faturamento (aprox.)
+                    </span>
+                    <CreditCard className="w-5 h-5 text-sky-300" />
+                  </div>
+                  <p className="text-2xl font-bold text-slate-50">{formatCurrency(totalRevenueApprox)}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    (Mensal * {PRICE_MONTHLY}) + (Trimestral * {PRICE_QUARTERLY})
+                  </p>
+                </div>
+
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                      Vencem depois
+                    </span>
+                    <Clock className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <p className="text-2xl font-bold text-slate-50">{metrics.due_future}</p>
+                  <p className="mt-1 text-xs text-slate-500">end_at &gt; agora</p>
+                </div>
+              </section>
+
+              {/* Conversão + insights (mantido simples) */}
+              <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                  <h2 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-purple-300" />
+                    Taxa de Conversão
+                  </h2>
+                  <p className="text-3xl font-bold text-purple-300">
+                    {formatPercent(conversionRate)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    (Se quiser conversão real via SQL, eu adiciono na função)
+                  </p>
+                </div>
+
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                  <h2 className="text-sm font-semibold text-slate-200 mb-3">
+                    Insights rápidos
+                  </h2>
+                  <ul className="space-y-2 text-sm text-slate-300">
+                    <li>
+                      • Assinaturas ativas agora:{' '}
+                      <span className="font-semibold">{metrics.active_now}</span>
+                    </li>
+                    <li>
+                      • Vencem no período:{' '}
+                      <span className="font-semibold">{metrics.due_in_period}</span>
+                    </li>
+                    <li>
+                      • Já venceu (até agora):{' '}
+                      <span className="font-semibold">{metrics.due_past}</span>
+                    </li>
+                    <li>
+                      • Renovaram (estimado):{' '}
+                      <span className="font-semibold">{metrics.renewed_estimated}</span>
+                    </li>
+                  </ul>
+                </div>
+              </section>
+
+              {/* Tabela usuários por status */}
               <section className="bg-slate-900 rounded-xl border border-slate-800 p-4 shadow-lg">
                 <div className="flex items-center gap-2 mb-3">
                   <Users className="w-5 h-5 text-indigo-300" />
@@ -867,15 +675,6 @@ const AdminAnalyticsPage = () => {
                     </table>
                   </div>
                 )}
-              </section>
-
-              {/* Rodapé leve (opcional) */}
-              <section className="text-xs text-slate-500">
-                <p>
-                  Nota: “Renovaram (estimado)” é calculado sem last_renewed_at:
-                  <span className="text-slate-300"> já venceram − desistiram</span>.
-                  Se você preencher um evento de renovação no backend, dá pra trocar por “renovação real”.
-                </p>
               </section>
             </>
           )}
