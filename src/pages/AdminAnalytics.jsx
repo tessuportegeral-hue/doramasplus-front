@@ -12,6 +12,7 @@ import {
   Clock,
   Loader2,
   Calendar,
+  LineChart,
 } from "lucide-react";
 
 /**
@@ -87,6 +88,14 @@ export default function AdminAnalytics() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [error, setError] = useState("");
 
+  // ✅ D30 (VIEW)
+  const [d30, setD30] = useState({
+    base_com_30_dias: 0,
+    ainda_ativos: 0,
+    retencao_d30: 0,
+  });
+  const [d30Error, setD30Error] = useState("");
+
   // Métricas base (vindas do RPC)
   const [metrics, setMetrics] = useState({
     active_now: 0,
@@ -95,6 +104,7 @@ export default function AdminAnalytics() {
     sold_quarterly: 0,
     revenue_estimated_in_period: 0,
     pending_now: 0,
+    pending_in_period: 0,
   });
 
   // Ativos (breakdown mensal vs trimestral)
@@ -104,21 +114,14 @@ export default function AdminAnalytics() {
     active_quarterly: 0,
   });
 
-  // MRR (vindo do SQL)
+  // MRR (vindo do SQL/RPC)
   const [mrr, setMrr] = useState({
     mrr_total_estimated: 0,
     mrr_monthly_estimated: 0,
     mrr_quarterly_estimated: 0,
   });
 
-  // ✅ Retenção 30d (VIEW admin_retencao_d30)
-  const [retencao30, setRetencao30] = useState({
-    base_com_30_dias: 0,
-    ainda_ativos: 0,
-    retencao_d30: 0,
-  });
-
-  // Lista de usuários por status (opcional)
+  // Lista de usuários (opcional)
   const [usersList, setUsersList] = useState([]);
 
   // Datas derivadas (de acordo com quickPeriod + inputs)
@@ -145,7 +148,6 @@ export default function AdminAnalytics() {
       const valid = s && e && s <= e;
 
       if (!valid) {
-        // fallback (este mês)
         const s2 = startOfMonth(now);
         const e2 = endOfMonth(now);
         return {
@@ -251,9 +253,10 @@ export default function AdminAnalytics() {
   const fetchAllMetrics = useCallback(async () => {
     setLoading(true);
     setError("");
+    setD30Error("");
 
     try {
-      // ✅ 1) RPC com preços (obrigatório)
+      // ✅ RPC com preços (obrigatório)
       const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_metrics_period", {
         p_start: toISO(periodStart),
         p_end: toISO(periodEnd),
@@ -267,14 +270,14 @@ export default function AdminAnalytics() {
 
       const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
 
-      // ✅ ativos (bater com seu print: active_now_monthly / active_now_quarterly)
+      // ✅ ativos (mensal vs trimestral)
       setActiveBreakdown({
         active_total: safeNum(row?.active_now),
         active_monthly: safeNum(row?.active_now_monthly),
         active_quarterly: safeNum(row?.active_now_quarterly),
       });
 
-      // ✅ métricas base (mantive apenas o que não depende do end_at quebrado)
+      // ✅ métricas que NÃO dependem de end_at (pra não te enganar)
       setMetrics({
         active_now: safeNum(row?.active_now),
 
@@ -284,8 +287,8 @@ export default function AdminAnalytics() {
 
         revenue_estimated_in_period: safeNum(row?.revenue_estimated_in_period),
 
-        // pendências atuais (pix)
         pending_now: safeNum(row?.pending_now),
+        pending_in_period: safeNum(row?.pending_in_period),
       });
 
       // ✅ MRR vindo do SQL (pra bater com Supabase)
@@ -295,21 +298,23 @@ export default function AdminAnalytics() {
         mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
       });
 
-      // ✅ 2) VIEW: Retenção 30 dias (admin_retencao_d30)
-      const { data: r30, error: r30Err } = await supabase
+      // ✅ D30 via VIEW (admin_retencao_d30)
+      // Observação: o nome da coluna pode ser retencao_d30 (novo) ou retencao_d30_pct (antigo).
+      const { data: d30Row, error: d30Err } = await supabase
         .from("admin_retencao_d30")
-        .select("base_com_30_dias, ainda_ativos, retencao_d30")
+        .select("base_com_30_dias, ainda_ativos, retencao_d30, retencao_d30_pct")
         .maybeSingle();
 
-      if (r30Err) {
-        console.warn("admin_retencao_d30 error:", r30Err);
-        // não quebra o painel inteiro
-        setRetencao30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
+      if (d30Err) {
+        // não quebra o painel todo, só avisa
+        setD30Error(d30Err.message || "Erro ao buscar admin_retencao_d30");
+        setD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
       } else {
-        setRetencao30({
-          base_com_30_dias: safeNum(r30?.base_com_30_dias),
-          ainda_ativos: safeNum(r30?.ainda_ativos),
-          retencao_d30: safeNum(r30?.retencao_d30),
+        const d30Pct = safeNum(d30Row?.retencao_d30 ?? d30Row?.retencao_d30_pct ?? 0);
+        setD30({
+          base_com_30_dias: safeNum(d30Row?.base_com_30_dias),
+          ainda_ativos: safeNum(d30Row?.ainda_ativos),
+          retencao_d30: d30Pct,
         });
       }
 
@@ -327,10 +332,8 @@ export default function AdminAnalytics() {
     fetchAllMetrics();
   }, [fetchAllMetrics]);
 
-  // ✅ Receita no período (usa o número do SQL/RPC)
-  const revenuePeriod = useMemo(() => {
-    return safeNum(metrics.revenue_estimated_in_period);
-  }, [metrics.revenue_estimated_in_period]);
+  // ✅ Receita no período (usa o número do SQL)
+  const revenuePeriod = useMemo(() => safeNum(metrics.revenue_estimated_in_period), [metrics.revenue_estimated_in_period]);
 
   // ✅ MRR total (SQL)
   const mrrTotal = useMemo(() => safeNum(mrr.mrr_total_estimated), [mrr.mrr_total_estimated]);
@@ -344,10 +347,7 @@ export default function AdminAnalytics() {
     return mrrTotal / denom;
   }, [activeBreakdown.active_total, mrrTotal]);
 
-  // UI
-  const onChangeQuick = (v) => {
-    setQuickPeriod(v);
-  };
+  const onChangeQuick = (v) => setQuickPeriod(v);
 
   const renderCard = (title, value, icon, subtitle, tone = "default") => {
     const toneClasses =
@@ -560,15 +560,30 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
-            {/* ✅ Linha 3 (Retenção 30 dias - VIEW) */}
+            {/* ✅ Retenção D30 (VIEW) */}
             <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
+              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias) — baseado na VIEW</div>
+
+              {d30Error ? (
+                <div className="mb-3 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 text-sm text-yellow-200">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertCircle className="w-4 h-4" />
+                    Aviso: não consegui ler a VIEW no front
+                  </div>
+                  <div className="mt-1 text-yellow-200/90 break-words">
+                    {d30Error}
+                    <div className="mt-2 text-yellow-200/80">
+                      Se no SQL Editor funciona mas no site dá erro, isso é quase sempre permissão/RLS. Aí eu te passo o SQL de policy certinho.
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-4">
                   {renderCard(
                     "Base com 30 dias",
-                    `${retencao30.base_com_30_dias}`,
+                    `${d30.base_com_30_dias}`,
                     <Users className="w-5 h-5 text-white/70" />,
                     "Quem já poderia ter renovado"
                   )}
@@ -577,7 +592,7 @@ export default function AdminAnalytics() {
                 <div className="md:col-span-4">
                   {renderCard(
                     "Ainda ativos",
-                    `${retencao30.ainda_ativos}`,
+                    `${d30.ainda_ativos}`,
                     <CheckCircle2 className="w-5 h-5 text-green-300" />,
                     "Dessa base, quem continua ativo",
                     "ok"
@@ -587,16 +602,16 @@ export default function AdminAnalytics() {
                 <div className="md:col-span-4">
                   {renderCard(
                     "Retenção D30",
-                    formatPct(retencao30.retencao_d30),
-                    <BarChart3 className="w-5 h-5 text-green-300" />,
+                    formatPct(d30.retencao_d30),
+                    <LineChart className="w-5 h-5 text-purple-300" />,
                     "VIEW: admin_retencao_d30",
-                    "ok"
+                    d30.retencao_d30 >= 50 ? "ok" : d30.retencao_d30 >= 35 ? "warn" : "bad"
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Linha 4 (Vendas) */}
+            {/* Vendas (período selecionado) */}
             <div className="mt-6">
               <div className="text-sm font-semibold text-white/80 mb-2">Vendas (período selecionado)</div>
 
@@ -616,7 +631,7 @@ export default function AdminAnalytics() {
                     "Vendas (mensal)",
                     `${metrics.sold_monthly}`,
                     <CreditCard className="w-5 h-5 text-white/70" />,
-                    `Preço: ${formatBRL(PRICE_MONTHLY)}`
+                    `Preço: R$ ${PRICE_MONTHLY.toFixed(2).replace(".", ",")}`
                   )}
                 </div>
 
@@ -625,28 +640,25 @@ export default function AdminAnalytics() {
                     "Vendas (trimestral)",
                     `${metrics.sold_quarterly}`,
                     <CreditCard className="w-5 h-5 text-yellow-300" />,
-                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`
+                    `Preço: R$ ${PRICE_QUARTERLY.toFixed(2).replace(".", ",")}`
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Insights rápidos (só com o que tá confiável) */}
-            <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
-              <div className="text-sm text-white/70 space-y-1">
-                <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
-                <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
-                <div>• Pendentes agora (pix): {metrics.pending_now}</div>
-                <div>
-                  • Retenção 30 dias (D30): {formatPct(retencao30.retencao_d30)} (base: {retencao30.base_com_30_dias} •
-                  ativos: {retencao30.ainda_ativos})
+              {/* Insights rápidos */}
+              <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
+                <div className="text-sm text-white/70 space-y-1">
+                  <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
+                  <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
+                  <div>• Pendentes agora (pix): {metrics.pending_now} (no período: {metrics.pending_in_period})</div>
+                  <div>
+                    • Retenção D30: {formatPct(d30.retencao_d30)} (base: {d30.base_com_30_dias}, ainda ativos: {d30.ainda_ativos})
+                  </div>
+                  <div className="text-white/50 pt-2">
+                    Obs: removi os cards de “vencimentos / expirados / churn por end_at” porque seu end_at está inconsistente e isso te engana.
+                  </div>
                 </div>
-              </div>
-
-              <div className="mt-3 text-xs text-white/45">
-                Obs: Removi os cards de “vencimentos / já venceram / não renovação operacional” porque dependiam do{" "}
-                <span className="text-white/60">end_at/current_period_end</span> e seus dados estão inconsistentes.
               </div>
             </div>
           </>
