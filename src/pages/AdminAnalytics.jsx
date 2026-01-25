@@ -131,6 +131,10 @@ export default function AdminAnalytics() {
     retencao_d30: 0,
   });
 
+  // ✅ Retenção múltiplos cortes (VIEW: admin_retencao_multiplos_cortes)
+  const [retMulti, setRetMulti] = useState([]); // array de linhas
+  const [retMultiWarning, setRetMultiWarning] = useState("");
+
   // Datas derivadas (de acordo com quickPeriod + inputs)
   const { periodStart, periodEnd, periodLabel } = useMemo(() => {
     const now = new Date();
@@ -239,7 +243,6 @@ export default function AdminAnalytics() {
 
         if (profErr) {
           console.warn("profiles check error:", profErr);
-          // Se der erro aqui, é melhor travar do que liberar sem querer.
           if (mounted) {
             setIsAdmin(false);
             setAdminChecked(true);
@@ -282,6 +285,7 @@ export default function AdminAnalytics() {
     setLoading(true);
     setError("");
     setWarning("");
+    setRetMultiWarning("");
 
     try {
       // ✅ 1) RPC (periodizado) — fonte principal dos cards do período
@@ -329,7 +333,6 @@ export default function AdminAnalytics() {
         setWarning(`Aviso (Retenção D30): ${d30Err.message || "sem acesso à VIEW"}`);
         setRetD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
       } else {
-        // ✅ tenta vários nomes possíveis (novo/antigo), sem quebrar
         const rawRet =
           d30Data?.retencao_d30 ??
           d30Data?.retencao_d30_pct ??
@@ -343,6 +346,20 @@ export default function AdminAnalytics() {
           retencao_d30: safeNum(rawRet),
         });
       }
+
+      // ✅ 3) Retenção múltiplos cortes (VIEW) — 30/45/60/90/120 (ou o que existir na view)
+      const { data: multiData, error: multiErr } = await supabase
+        .from("admin_retencao_multiplos_cortes")
+        .select("*")
+        .order("dias_corte", { ascending: true });
+
+      if (multiErr) {
+        console.warn("admin_retencao_multiplos_cortes error:", multiErr);
+        setRetMultiWarning(`Aviso (Retenção múltiplos cortes): ${multiErr.message || "sem acesso à VIEW"}`);
+        setRetMulti([]);
+      } else {
+        setRetMulti(Array.isArray(multiData) ? multiData : []);
+      }
     } catch (e) {
       console.error(e);
       setError(String(e?.message || e || "Erro desconhecido"));
@@ -352,7 +369,6 @@ export default function AdminAnalytics() {
   }, [adminChecked, isAdmin, periodStart, periodEnd]);
 
   useEffect(() => {
-    // Só carrega quando o gate terminar e for admin
     if (!adminChecked) return;
     if (!isAdmin) return;
     fetchAllMetrics();
@@ -420,7 +436,6 @@ export default function AdminAnalytics() {
   };
 
   const isActiveRoute = (path) => {
-    // ✅ Melhor: considera ativo se estiver dentro da rota (subrotas também)
     return location.pathname === path || location.pathname.startsWith(path + "/");
   };
 
@@ -437,7 +452,7 @@ export default function AdminAnalytics() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0f17] text-white">
+    <div className="min-h-screen bg-[#0b0f17] text-white [color-scheme:dark]">
       <Helmet>
         <title>Painel Administrativo | DoramasPlus</title>
       </Helmet>
@@ -506,7 +521,8 @@ export default function AdminAnalytics() {
               <select
                 value={quickPeriod}
                 onChange={(e) => setQuickPeriod(e.target.value)}
-                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
               >
                 <option value="this_month">Este mês</option>
                 <option value="last_month">Mês passado</option>
@@ -523,7 +539,8 @@ export default function AdminAnalytics() {
                   setQuickPeriod("custom");
                   setStartDateStr(e.target.value);
                 }}
-                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
               />
             </div>
 
@@ -536,7 +553,8 @@ export default function AdminAnalytics() {
                   setQuickPeriod("custom");
                   setEndDateStr(e.target.value);
                 }}
-                className="mt-1 w-full rounded-lg bg-[#0b017] border border-white/15 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
               />
             </div>
 
@@ -569,6 +587,16 @@ export default function AdminAnalytics() {
               Aviso
             </div>
             <div className="mt-1 text-yellow-100/90 break-words">{warning}</div>
+          </div>
+        ) : null}
+
+        {!error && retMultiWarning ? (
+          <div className="mt-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 text-sm text-yellow-100">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertCircle className="w-4 h-4" />
+              Aviso
+            </div>
+            <div className="mt-1 text-yellow-100/90 break-words">{retMultiWarning}</div>
           </div>
         ) : null}
 
@@ -681,6 +709,83 @@ export default function AdminAnalytics() {
               <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
             </div>
 
+            {/* ✅ Retenção múltiplos cortes (VIEW) */}
+            <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm font-semibold text-white/80">Retenção por cortes (30 / 45 / 60 / 90 / 120)</div>
+                  <div className="text-xs text-white/45 mt-1">
+                    VIEW: <span className="text-white/60">admin_retencao_multiplos_cortes</span> (vai preenchendo conforme o tempo passa)
+                  </div>
+                </div>
+
+                <button
+                  onClick={fetchAllMetrics}
+                  className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm hover:bg-white/10 transition"
+                >
+                  Recarregar
+                </button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="text-left border-b border-white/10 text-white/70">
+                      <th className="py-2 pr-4">Dias</th>
+                      <th className="py-2 pr-4">Base</th>
+                      <th className="py-2 pr-4">Ainda ativos</th>
+                      <th className="py-2 pr-4">Retenção</th>
+                      <th className="py-2 pr-4">Base mensal</th>
+                      <th className="py-2 pr-4">Ativos mensal</th>
+                      <th className="py-2 pr-4">Base trimestral</th>
+                      <th className="py-2 pr-0">Ativos trimestral</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {retMulti?.length ? (
+                      retMulti.map((r) => {
+                        const dias = safeNum(r?.dias_corte);
+                        const baseTotal = safeNum(r?.base_total);
+                        const aindaAtivos = safeNum(r?.ainda_ativos);
+                        const retPct = r?.retencao_pct;
+
+                        const baseMensal = safeNum(r?.base_mensal);
+                        const aindaMensal = safeNum(r?.ainda_mensal);
+                        const baseTri = safeNum(r?.base_trimestr);
+                        const aindaTri = safeNum(r?.ainda_trimestr);
+
+                        return (
+                          <tr key={dias} className="border-b border-white/5">
+                            <td className="py-2 pr-4">{dias}</td>
+                            <td className="py-2 pr-4">{baseTotal}</td>
+                            <td className="py-2 pr-4">{aindaAtivos}</td>
+                            <td className="py-2 pr-4">
+                              {retPct === null || retPct === undefined ? "—" : `${safeNum(retPct).toFixed(2)}%`}
+                            </td>
+                            <td className="py-2 pr-4">{baseMensal}</td>
+                            <td className="py-2 pr-4">{aindaMensal}</td>
+                            <td className="py-2 pr-4">{baseTri}</td>
+                            <td className="py-2 pr-0">{aindaTri}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td className="py-3 text-white/50" colSpan={8}>
+                          Sem dados na view (ou sem permissão). Se você acabou de criar, pode levar alguns segundos.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 text-xs text-white/45">
+                Obs: se em 60/90/120 aparecer base 0 e retenção “—”, isso é normal quando ainda não existe gente com esse tempo.
+              </div>
+            </div>
+
             {/* Vendas (período selecionado) */}
             <div className="mt-6">
               <div className="text-sm font-semibold text-white/80 mb-2">Vendas (período selecionado)</div>
@@ -731,9 +836,7 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-3 text-xs text-white/45">
-                Obs: removi os cards de “vencimentos / já venceram / não renovação operacional” porque estavam ficando inconsistentes dependendo do
-                seu end_at/current_period_end (principalmente misturando mensal + trimestral). O painel agora fica só com o que está batendo no RPC
-                e na VIEW.
+                Obs: mantive seu painel como está. Só corrigi o bug do date e adicionei a view de retenção por cortes pra você acompanhar 30/45/60/90/120.
               </div>
             </div>
           </>
