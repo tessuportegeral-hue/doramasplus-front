@@ -90,15 +90,11 @@ export default function AdminAnalytics() {
   // Métricas base (vindas do RPC)
   const [metrics, setMetrics] = useState({
     active_now: 0,
-    due_in_period: 0,
-    due_future: 0,
-    due_past: 0,
     sold_total: 0,
     sold_monthly: 0,
     sold_quarterly: 0,
     revenue_estimated_in_period: 0,
-    expired_not_active_now: 0,
-    non_renew_rate_operational_pct: 0,
+    pending_now: 0,
   });
 
   // Ativos (breakdown mensal vs trimestral)
@@ -108,22 +104,18 @@ export default function AdminAnalytics() {
     active_quarterly: 0,
   });
 
-  // Período (cards)
-  const [periodBreakdown, setPeriodBreakdown] = useState({
-    due_period_total: 0,
-    due_period_past: 0,
-    due_period_future: 0,
-    pending_now: 0,
-    pending_in_period: 0,
-    expires_in_period: 0,
-    non_renew_rate_operational_pct: 0,
-  });
-
   // MRR (vindo do SQL)
   const [mrr, setMrr] = useState({
     mrr_total_estimated: 0,
     mrr_monthly_estimated: 0,
     mrr_quarterly_estimated: 0,
+  });
+
+  // ✅ Retenção 30d (VIEW admin_retencao_d30)
+  const [retencao30, setRetencao30] = useState({
+    base_com_30_dias: 0,
+    ainda_ativos: 0,
+    retencao_d30: 0,
   });
 
   // Lista de usuários por status (opcional)
@@ -261,7 +253,7 @@ export default function AdminAnalytics() {
     setError("");
 
     try {
-      // ✅ RPC com preços (obrigatório)
+      // ✅ 1) RPC com preços (obrigatório)
       const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_metrics_period", {
         p_start: toISO(periodStart),
         p_end: toISO(periodEnd),
@@ -282,12 +274,9 @@ export default function AdminAnalytics() {
         active_quarterly: safeNum(row?.active_now_quarterly),
       });
 
-      // ✅ métricas base
+      // ✅ métricas base (mantive apenas o que não depende do end_at quebrado)
       setMetrics({
         active_now: safeNum(row?.active_now),
-        due_in_period: safeNum(row?.due_in_period),
-        due_future: safeNum(row?.due_future_in_period),
-        due_past: safeNum(row?.due_past_in_period),
 
         sold_total: safeNum(row?.sold_total),
         sold_monthly: safeNum(row?.sold_monthly),
@@ -295,21 +284,8 @@ export default function AdminAnalytics() {
 
         revenue_estimated_in_period: safeNum(row?.revenue_estimated_in_period),
 
-        expired_not_active_now: safeNum(row?.expired_not_active_now),
-        non_renew_rate_operational_pct: safeNum(row?.non_renew_rate_operational_pct),
-      });
-
-      // ✅ período
-      setPeriodBreakdown({
-        due_period_total: safeNum(row?.due_in_period),
-        due_period_future: safeNum(row?.due_future_in_period),
-        due_period_past: safeNum(row?.due_past_in_period),
-
+        // pendências atuais (pix)
         pending_now: safeNum(row?.pending_now),
-        pending_in_period: safeNum(row?.pending_in_period),
-
-        expires_in_period: safeNum(row?.expired_not_active_now),
-        non_renew_rate_operational_pct: safeNum(row?.non_renew_rate_operational_pct),
       });
 
       // ✅ MRR vindo do SQL (pra bater com Supabase)
@@ -318,6 +294,24 @@ export default function AdminAnalytics() {
         mrr_monthly_estimated: safeNum(row?.mrr_monthly_estimated),
         mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
       });
+
+      // ✅ 2) VIEW: Retenção 30 dias (admin_retencao_d30)
+      const { data: r30, error: r30Err } = await supabase
+        .from("admin_retencao_d30")
+        .select("base_com_30_dias, ainda_ativos, retencao_d30")
+        .maybeSingle();
+
+      if (r30Err) {
+        console.warn("admin_retencao_d30 error:", r30Err);
+        // não quebra o painel inteiro
+        setRetencao30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
+      } else {
+        setRetencao30({
+          base_com_30_dias: safeNum(r30?.base_com_30_dias),
+          ainda_ativos: safeNum(r30?.ainda_ativos),
+          retencao_d30: safeNum(r30?.retencao_d30),
+        });
+      }
 
       // lista de usuários (não carrega automaticamente)
       setUsersList([]);
@@ -333,7 +327,7 @@ export default function AdminAnalytics() {
     fetchAllMetrics();
   }, [fetchAllMetrics]);
 
-  // ✅ Receita no período (usa o número do SQL)
+  // ✅ Receita no período (usa o número do SQL/RPC)
   const revenuePeriod = useMemo(() => {
     return safeNum(metrics.revenue_estimated_in_period);
   }, [metrics.revenue_estimated_in_period]);
@@ -342,17 +336,6 @@ export default function AdminAnalytics() {
   const mrrTotal = useMemo(() => safeNum(mrr.mrr_total_estimated), [mrr.mrr_total_estimated]);
   const mrrMonthly = useMemo(() => safeNum(mrr.mrr_monthly_estimated), [mrr.mrr_monthly_estimated]);
   const mrrQuarterly = useMemo(() => safeNum(mrr.mrr_quarterly_estimated), [mrr.mrr_quarterly_estimated]);
-
-  // ✅ “Churn operacional” (não-renovação no período) vindo do SQL
-  // OBS: isso NÃO é churn perfeito sem last_renewed_at, mas é o melhor operacional possível hoje.
-  const churnOperationalPct = useMemo(() => {
-    return safeNum(periodBreakdown.non_renew_rate_operational_pct);
-  }, [periodBreakdown.non_renew_rate_operational_pct]);
-
-  const retentionOperationalPct = useMemo(() => {
-    const v = 100 - churnOperationalPct;
-    return v < 0 ? 0 : v;
-  }, [churnOperationalPct]);
 
   // Ticket médio (aprox) por assinante ativo (MRR total / ativos agora)
   const avgTicket = useMemo(() => {
@@ -531,9 +514,9 @@ export default function AdminAnalytics() {
               <div className="md:col-span-3">
                 {renderCard(
                   "Pendentes agora",
-                  `${periodBreakdown.pending_now}`,
+                  `${metrics.pending_now}`,
                   <Clock className="w-5 h-5 text-yellow-300" />,
-                  "Podem virar receita",
+                  "Pix pendente (agora)",
                   "warn"
                 )}
               </div>
@@ -577,52 +560,48 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
-            {/* Linha 3 (período) */}
+            {/* ✅ Linha 3 (Retenção 30 dias - VIEW) */}
             <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Meu período selecionado (renovação)</div>
+              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-3">
+                <div className="md:col-span-4">
                   {renderCard(
-                    "Vencem no período",
-                    `${periodBreakdown.due_period_total}`,
-                    <Clock className="w-5 h-5 text-white/70" />,
-                    '"Boletos" do período'
+                    "Base com 30 dias",
+                    `${retencao30.base_com_30_dias}`,
+                    <Users className="w-5 h-5 text-white/70" />,
+                    "Quem já poderia ter renovado"
                   )}
                 </div>
 
-                <div className="md:col-span-3">
+                <div className="md:col-span-4">
                   {renderCard(
-                    "Ainda vão vencer",
-                    `${periodBreakdown.due_period_future}`,
-                    <Clock className="w-5 h-5 text-yellow-300" />,
-                    "End_at ≥ hoje",
-                    "warn"
+                    "Ainda ativos",
+                    `${retencao30.ainda_ativos}`,
+                    <CheckCircle2 className="w-5 h-5 text-green-300" />,
+                    "Dessa base, quem continua ativo",
+                    "ok"
                   )}
                 </div>
 
-                <div className="md:col-span-3">
+                <div className="md:col-span-4">
                   {renderCard(
-                    "Já venceram",
-                    `${periodBreakdown.due_period_past}`,
-                    <Clock className="w-5 h-5 text-blue-300" />,
-                    "End_at < hoje"
-                  )}
-                </div>
-
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Expirados (não ativos agora)",
-                    `${periodBreakdown.expires_in_period}`,
-                    <AlertCircle className="w-5 h-5 text-red-300" />,
-                    "Operacional (aprox.)",
-                    "bad"
+                    "Retenção D30",
+                    formatPct(retencao30.retencao_d30),
+                    <BarChart3 className="w-5 h-5 text-green-300" />,
+                    "VIEW: admin_retencao_d30",
+                    "ok"
                   )}
                 </div>
               </div>
+            </div>
 
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-3">
+            {/* Linha 4 (Vendas) */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2">Vendas (período selecionado)</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-4">
                   {renderCard(
                     "Vendas (total)",
                     `${metrics.sold_total}`,
@@ -632,49 +611,42 @@ export default function AdminAnalytics() {
                   )}
                 </div>
 
-                <div className="md:col-span-3">
+                <div className="md:col-span-4">
                   {renderCard(
-                    "Pendentes no período",
-                    `${periodBreakdown.pending_in_period}`,
-                    <Clock className="w-5 h-5 text-yellow-300" />,
-                    "Pix pendente (período)",
-                    "warn"
+                    "Vendas (mensal)",
+                    `${metrics.sold_monthly}`,
+                    <CreditCard className="w-5 h-5 text-white/70" />,
+                    `Preço: ${formatBRL(PRICE_MONTHLY)}`
                   )}
                 </div>
 
-                <div className="md:col-span-3">
+                <div className="md:col-span-4">
                   {renderCard(
-                    "Retenção (operacional)",
-                    formatPct(retentionOperationalPct),
-                    <BarChart3 className="w-5 h-5 text-green-300" />,
-                    "100% - não renovação"
-                  )}
-                </div>
-
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Não renovação (operacional)",
-                    formatPct(churnOperationalPct),
-                    <AlertCircle className="w-5 h-5 text-red-300" />,
-                    "Expirados / vencimentos do período",
-                    "bad"
+                    "Vendas (trimestral)",
+                    `${metrics.sold_quarterly}`,
+                    <CreditCard className="w-5 h-5 text-yellow-300" />,
+                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* Insights rápidos */}
-              <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-4">
-                <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
-                <div className="text-sm text-white/70 space-y-1">
-                  <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
-                  <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
-                  <div>• Pendentes agora (pix): {periodBreakdown.pending_now}</div>
-                  <div>
-                    • Vencimentos no período: {periodBreakdown.due_period_total} (já venceram:{" "}
-                    {periodBreakdown.due_period_past}, ainda vão vencer: {periodBreakdown.due_period_future})
-                  </div>
-                  <div>• Expirados (não ativos agora) dentro do período: {periodBreakdown.expires_in_period}</div>
+            {/* Insights rápidos (só com o que tá confiável) */}
+            <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4">
+              <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
+              <div className="text-sm text-white/70 space-y-1">
+                <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
+                <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
+                <div>• Pendentes agora (pix): {metrics.pending_now}</div>
+                <div>
+                  • Retenção 30 dias (D30): {formatPct(retencao30.retencao_d30)} (base: {retencao30.base_com_30_dias} •
+                  ativos: {retencao30.ainda_ativos})
                 </div>
+              </div>
+
+              <div className="mt-3 text-xs text-white/45">
+                Obs: Removi os cards de “vencimentos / já venceram / não renovação operacional” porque dependiam do{" "}
+                <span className="text-white/60">end_at/current_period_end</span> e seus dados estão inconsistentes.
               </div>
             </div>
           </>
