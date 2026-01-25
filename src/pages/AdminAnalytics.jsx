@@ -88,6 +88,10 @@ export default function AdminAnalytics() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Gate admin
+  const [adminChecked, setAdminChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // Filtro de período
   const [quickPeriod, setQuickPeriod] = useState("this_month"); // this_month | last_month | custom
   const [startDateStr, setStartDateStr] = useState("");
@@ -210,12 +214,15 @@ export default function AdminAnalytics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickPeriod]);
 
-  // Gate admin
+  // ✅ Gate admin (mais seguro)
   useEffect(() => {
     let mounted = true;
 
     const checkAdmin = async () => {
       try {
+        setAdminChecked(false);
+        setIsAdmin(false);
+
         const { data: auth } = await supabase.auth.getUser();
         const user = auth?.user;
 
@@ -232,18 +239,32 @@ export default function AdminAnalytics() {
 
         if (profErr) {
           console.warn("profiles check error:", profErr);
+          // Se der erro aqui, é melhor travar do que liberar sem querer.
+          if (mounted) {
+            setIsAdmin(false);
+            setAdminChecked(true);
+            setError("Sem permissão para validar admin (profiles).");
+          }
           return;
         }
 
-        if (prof && prof.is_admin === false) {
+        const ok = prof?.is_admin === true;
+
+        if (!ok) {
           navigate("/");
           return;
         }
+
+        if (mounted) {
+          setIsAdmin(true);
+          setAdminChecked(true);
+        }
       } catch (e) {
         console.warn("admin gate error:", e);
-      } finally {
         if (mounted) {
-          // ok
+          setIsAdmin(false);
+          setAdminChecked(true);
+          setError("Falha ao validar admin.");
         }
       }
     };
@@ -255,6 +276,9 @@ export default function AdminAnalytics() {
   }, [navigate]);
 
   const fetchAllMetrics = useCallback(async () => {
+    // Só busca se for admin confirmado
+    if (!adminChecked || !isAdmin) return;
+
     setLoading(true);
     setError("");
     setWarning("");
@@ -293,25 +317,30 @@ export default function AdminAnalytics() {
         mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
       });
 
-      // ✅ 2) Retenção D30 (VIEW) — NÃO depende do filtro de período (é “hoje”)
-      // IMPORTANTE: depois do seu rename, a coluna certa é "retencao_d30".
-      // Se der erro (RLS/permissão), a gente mostra um aviso mas não quebra o painel.
+      // ✅ 2) Retenção D30 (VIEW) — NÃO depende do filtro do período
+      // ✅ FIX DEFINITIVO: busca '*' pra não quebrar quando você renomear coluna na VIEW.
       const { data: d30Data, error: d30Err } = await supabase
         .from("admin_retencao_d30")
-        .select("base_com_30_dias, ainda_ativos, retencao_d30")
+        .select("*")
         .maybeSingle();
 
       if (d30Err) {
         console.warn("admin_retencao_d30 error:", d30Err);
-        setWarning(
-          `Aviso (Retenção D30): ${d30Err.message || "sem acesso à VIEW"}`
-        );
+        setWarning(`Aviso (Retenção D30): ${d30Err.message || "sem acesso à VIEW"}`);
         setRetD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
       } else {
+        // ✅ tenta vários nomes possíveis (novo/antigo), sem quebrar
+        const rawRet =
+          d30Data?.retencao_d30 ??
+          d30Data?.retencao_d30_pct ??
+          d30Data?.retencao_d30_percent ??
+          d30Data?.retencao_d30_porcentagem ??
+          0;
+
         setRetD30({
           base_com_30_dias: safeNum(d30Data?.base_com_30_dias),
           ainda_ativos: safeNum(d30Data?.ainda_ativos),
-          retencao_d30: safeNum(d30Data?.retencao_d30),
+          retencao_d30: safeNum(rawRet),
         });
       }
     } catch (e) {
@@ -320,17 +349,32 @@ export default function AdminAnalytics() {
     } finally {
       setLoading(false);
     }
-  }, [periodStart, periodEnd]);
+  }, [adminChecked, isAdmin, periodStart, periodEnd]);
 
   useEffect(() => {
+    // Só carrega quando o gate terminar e for admin
+    if (!adminChecked) return;
+    if (!isAdmin) return;
     fetchAllMetrics();
-  }, [fetchAllMetrics]);
+  }, [adminChecked, isAdmin, fetchAllMetrics]);
 
   // Derivados
-  const revenuePeriod = useMemo(() => safeNum(metrics.revenue_estimated_in_period), [metrics.revenue_estimated_in_period]);
-  const mrrTotal = useMemo(() => safeNum(metrics.mrr_total_estimated), [metrics.mrr_total_estimated]);
-  const mrrMonthly = useMemo(() => safeNum(metrics.mrr_monthly_estimated), [metrics.mrr_monthly_estimated]);
-  const mrrQuarterly = useMemo(() => safeNum(metrics.mrr_quarterly_estimated), [metrics.mrr_quarterly_estimated]);
+  const revenuePeriod = useMemo(
+    () => safeNum(metrics.revenue_estimated_in_period),
+    [metrics.revenue_estimated_in_period]
+  );
+  const mrrTotal = useMemo(
+    () => safeNum(metrics.mrr_total_estimated),
+    [metrics.mrr_total_estimated]
+  );
+  const mrrMonthly = useMemo(
+    () => safeNum(metrics.mrr_monthly_estimated),
+    [metrics.mrr_monthly_estimated]
+  );
+  const mrrQuarterly = useMemo(
+    () => safeNum(metrics.mrr_quarterly_estimated),
+    [metrics.mrr_quarterly_estimated]
+  );
 
   const avgTicket = useMemo(() => {
     const denom = safeNum(metrics.active_now);
@@ -341,7 +385,6 @@ export default function AdminAnalytics() {
   // “Janela” explicativa da Retenção D30 (pra não confundir com o filtro do período)
   const retentionWindowLabel = useMemo(() => {
     const today = new Date();
-    // Coorte “com 30 dias” geralmente é gente que entrou ~60 a ~30 dias atrás
     const cohortStart = addDays(today, -60);
     const cohortEnd = addDays(today, -30);
     return `Coorte: ${formatBRDate(cohortStart)} até ${formatBRDate(cohortEnd)} • Medição em: ${formatBRDate(today)}`;
@@ -377,9 +420,21 @@ export default function AdminAnalytics() {
   };
 
   const isActiveRoute = (path) => {
-    // considera ativo mesmo com query/string extra
-    return location.pathname === path;
+    // ✅ Melhor: considera ativo se estiver dentro da rota (subrotas também)
+    return location.pathname === path || location.pathname.startsWith(path + "/");
   };
+
+  // Enquanto valida admin
+  if (!adminChecked && !error) {
+    return (
+      <div className="min-h-screen bg-[#0b0f17] text-white flex items-center justify-center">
+        <div className="flex items-center gap-2 text-white/70">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Validando admin...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f17] text-white">
@@ -395,10 +450,12 @@ export default function AdminAnalytics() {
               <BarChart3 className="w-6 h-6 text-purple-300" />
               <h1 className="text-xl md:text-2xl font-semibold">Painel Administrativo</h1>
             </div>
-            <p className="text-sm text-white/60 mt-1">Métricas em tempo real da sua base de assinantes DoramasPlus.</p>
+            <p className="text-sm text-white/60 mt-1">
+              Métricas em tempo real da sua base de assinantes DoramasPlus.
+            </p>
           </div>
 
-          {/* Tabs (ROTAS) — isso devolve /admin/users e /admin/doramas */}
+          {/* Tabs (ROTAS) */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => goTab("/admin/analytics")}
@@ -479,7 +536,7 @@ export default function AdminAnalytics() {
                   setQuickPeriod("custom");
                   setEndDateStr(e.target.value);
                 }}
-                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none"
+                className="mt-1 w-full rounded-lg bg-[#0b017] border border-white/15 px-3 py-2 text-sm outline-none"
               />
             </div>
 
@@ -621,9 +678,7 @@ export default function AdminAnalytics() {
                 </div>
               </div>
 
-              <div className="mt-2 text-xs text-white/45">
-                {retentionWindowLabel}
-              </div>
+              <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
             </div>
 
             {/* Vendas (período selecionado) */}
@@ -691,12 +746,7 @@ export default function AdminAnalytics() {
 /** Ícone simples (pra não importar mais coisa) */
 function CheckIcon() {
   return (
-    <svg
-      className="w-5 h-5 text-green-300"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg className="w-5 h-5 text-green-300" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M20 6L9 17l-5-5"
         stroke="currentColor"
