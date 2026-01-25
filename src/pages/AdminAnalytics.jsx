@@ -1,18 +1,17 @@
 // src/pages/AdminAnalytics.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Helmet } from "react-helmet";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import {
   BarChart3,
   Users,
   CreditCard,
-  CheckCircle2,
   AlertCircle,
   Clock,
   Loader2,
   Calendar,
-  LineChart,
+  TrendingUp,
 } from "lucide-react";
 
 /**
@@ -57,6 +56,11 @@ function addMonths(d, months) {
   x.setMonth(x.getMonth() + months);
   return x;
 }
+function addDays(d, days) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
 function toISO(d) {
   return d ? d.toISOString() : null;
 }
@@ -72,11 +76,17 @@ function formatPct(value) {
   const v = safeNum(value);
   return `${v.toFixed(2)}%`;
 }
+function formatBRDate(d) {
+  if (!d) return "-";
+  const dd = pad2(d.getDate());
+  const mm = pad2(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
 
 export default function AdminAnalytics() {
   const navigate = useNavigate();
-
-  const [activeTab, setActiveTab] = useState("analytics"); // analytics | doramas | usuarios
+  const location = useLocation();
 
   // Filtro de período
   const [quickPeriod, setQuickPeriod] = useState("this_month"); // this_month | last_month | custom
@@ -85,44 +95,37 @@ export default function AdminAnalytics() {
 
   // Estado de carregamento / erro
   const [loading, setLoading] = useState(true);
-  const [loadingUsers, setLoadingUsers] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ D30 (VIEW)
-  const [d30, setD30] = useState({
-    base_com_30_dias: 0,
-    ainda_ativos: 0,
-    retencao_d30: 0,
-  });
-  const [d30Error, setD30Error] = useState("");
+  // Avisos não-fatais (ex.: VIEW/RLS)
+  const [warning, setWarning] = useState("");
 
-  // Métricas base (vindas do RPC)
+  // Métricas do RPC (periodizadas)
   const [metrics, setMetrics] = useState({
     active_now: 0,
+    active_now_monthly: 0,
+    active_now_quarterly: 0,
+
+    pending_now: 0,
+    pending_in_period: 0,
+
     sold_total: 0,
     sold_monthly: 0,
     sold_quarterly: 0,
+
     revenue_estimated_in_period: 0,
-    pending_now: 0,
-    pending_in_period: 0,
-  });
 
-  // Ativos (breakdown mensal vs trimestral)
-  const [activeBreakdown, setActiveBreakdown] = useState({
-    active_total: 0,
-    active_monthly: 0,
-    active_quarterly: 0,
-  });
-
-  // MRR (vindo do SQL/RPC)
-  const [mrr, setMrr] = useState({
     mrr_total_estimated: 0,
     mrr_monthly_estimated: 0,
     mrr_quarterly_estimated: 0,
   });
 
-  // Lista de usuários (opcional)
-  const [usersList, setUsersList] = useState([]);
+  // Retenção D30 (VIEW: admin_retencao_d30)
+  const [retD30, setRetD30] = useState({
+    base_com_30_dias: 0,
+    ainda_ativos: 0,
+    retencao_d30: 0,
+  });
 
   // Datas derivadas (de acordo com quickPeriod + inputs)
   const { periodStart, periodEnd, periodLabel } = useMemo(() => {
@@ -148,6 +151,7 @@ export default function AdminAnalytics() {
       const valid = s && e && s <= e;
 
       if (!valid) {
+        // fallback (este mês)
         const s2 = startOfMonth(now);
         const e2 = endOfMonth(now);
         return {
@@ -253,10 +257,10 @@ export default function AdminAnalytics() {
   const fetchAllMetrics = useCallback(async () => {
     setLoading(true);
     setError("");
-    setD30Error("");
+    setWarning("");
 
     try {
-      // ✅ RPC com preços (obrigatório)
+      // ✅ 1) RPC (periodizado) — fonte principal dos cards do período
       const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_metrics_period", {
         p_start: toISO(periodStart),
         p_end: toISO(periodEnd),
@@ -270,16 +274,13 @@ export default function AdminAnalytics() {
 
       const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
 
-      // ✅ ativos (mensal vs trimestral)
-      setActiveBreakdown({
-        active_total: safeNum(row?.active_now),
-        active_monthly: safeNum(row?.active_now_monthly),
-        active_quarterly: safeNum(row?.active_now_quarterly),
-      });
-
-      // ✅ métricas que NÃO dependem de end_at (pra não te enganar)
       setMetrics({
         active_now: safeNum(row?.active_now),
+        active_now_monthly: safeNum(row?.active_now_monthly),
+        active_now_quarterly: safeNum(row?.active_now_quarterly),
+
+        pending_now: safeNum(row?.pending_now),
+        pending_in_period: safeNum(row?.pending_in_period),
 
         sold_total: safeNum(row?.sold_total),
         sold_monthly: safeNum(row?.sold_monthly),
@@ -287,39 +288,32 @@ export default function AdminAnalytics() {
 
         revenue_estimated_in_period: safeNum(row?.revenue_estimated_in_period),
 
-        pending_now: safeNum(row?.pending_now),
-        pending_in_period: safeNum(row?.pending_in_period),
-      });
-
-      // ✅ MRR vindo do SQL (pra bater com Supabase)
-      setMrr({
         mrr_total_estimated: safeNum(row?.mrr_total_estimated),
         mrr_monthly_estimated: safeNum(row?.mrr_monthly_estimated),
         mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
       });
 
-      // ✅ D30 via VIEW (admin_retencao_d30)
-      // Observação: o nome da coluna pode ser retencao_d30 (novo) ou retencao_d30_pct (antigo).
-      const { data: d30Row, error: d30Err } = await supabase
+      // ✅ 2) Retenção D30 (VIEW) — NÃO depende do filtro de período (é “hoje”)
+      // IMPORTANTE: depois do seu rename, a coluna certa é "retencao_d30".
+      // Se der erro (RLS/permissão), a gente mostra um aviso mas não quebra o painel.
+      const { data: d30Data, error: d30Err } = await supabase
         .from("admin_retencao_d30")
-        .select("base_com_30_dias, ainda_ativos, retencao_d30, retencao_d30_pct")
+        .select("base_com_30_dias, ainda_ativos, retencao_d30")
         .maybeSingle();
 
       if (d30Err) {
-        // não quebra o painel todo, só avisa
-        setD30Error(d30Err.message || "Erro ao buscar admin_retencao_d30");
-        setD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
+        console.warn("admin_retencao_d30 error:", d30Err);
+        setWarning(
+          `Aviso (Retenção D30): ${d30Err.message || "sem acesso à VIEW"}`
+        );
+        setRetD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
       } else {
-        const d30Pct = safeNum(d30Row?.retencao_d30 ?? d30Row?.retencao_d30_pct ?? 0);
-        setD30({
-          base_com_30_dias: safeNum(d30Row?.base_com_30_dias),
-          ainda_ativos: safeNum(d30Row?.ainda_ativos),
-          retencao_d30: d30Pct,
+        setRetD30({
+          base_com_30_dias: safeNum(d30Data?.base_com_30_dias),
+          ainda_ativos: safeNum(d30Data?.ainda_ativos),
+          retencao_d30: safeNum(d30Data?.retencao_d30),
         });
       }
-
-      // lista de usuários (não carrega automaticamente)
-      setUsersList([]);
     } catch (e) {
       console.error(e);
       setError(String(e?.message || e || "Erro desconhecido"));
@@ -332,23 +326,28 @@ export default function AdminAnalytics() {
     fetchAllMetrics();
   }, [fetchAllMetrics]);
 
-  // ✅ Receita no período (usa o número do SQL)
+  // Derivados
   const revenuePeriod = useMemo(() => safeNum(metrics.revenue_estimated_in_period), [metrics.revenue_estimated_in_period]);
+  const mrrTotal = useMemo(() => safeNum(metrics.mrr_total_estimated), [metrics.mrr_total_estimated]);
+  const mrrMonthly = useMemo(() => safeNum(metrics.mrr_monthly_estimated), [metrics.mrr_monthly_estimated]);
+  const mrrQuarterly = useMemo(() => safeNum(metrics.mrr_quarterly_estimated), [metrics.mrr_quarterly_estimated]);
 
-  // ✅ MRR total (SQL)
-  const mrrTotal = useMemo(() => safeNum(mrr.mrr_total_estimated), [mrr.mrr_total_estimated]);
-  const mrrMonthly = useMemo(() => safeNum(mrr.mrr_monthly_estimated), [mrr.mrr_monthly_estimated]);
-  const mrrQuarterly = useMemo(() => safeNum(mrr.mrr_quarterly_estimated), [mrr.mrr_quarterly_estimated]);
-
-  // Ticket médio (aprox) por assinante ativo (MRR total / ativos agora)
   const avgTicket = useMemo(() => {
-    const denom = safeNum(activeBreakdown.active_total);
+    const denom = safeNum(metrics.active_now);
     if (!denom) return 0;
     return mrrTotal / denom;
-  }, [activeBreakdown.active_total, mrrTotal]);
+  }, [metrics.active_now, mrrTotal]);
 
-  const onChangeQuick = (v) => setQuickPeriod(v);
+  // “Janela” explicativa da Retenção D30 (pra não confundir com o filtro do período)
+  const retentionWindowLabel = useMemo(() => {
+    const today = new Date();
+    // Coorte “com 30 dias” geralmente é gente que entrou ~60 a ~30 dias atrás
+    const cohortStart = addDays(today, -60);
+    const cohortEnd = addDays(today, -30);
+    return `Coorte: ${formatBRDate(cohortStart)} até ${formatBRDate(cohortEnd)} • Medição em: ${formatBRDate(today)}`;
+  }, []);
 
+  // UI
   const renderCard = (title, value, icon, subtitle, tone = "default") => {
     const toneClasses =
       tone === "ok"
@@ -373,6 +372,15 @@ export default function AdminAnalytics() {
     );
   };
 
+  const goTab = (path) => {
+    navigate(path);
+  };
+
+  const isActiveRoute = (path) => {
+    // considera ativo mesmo com query/string extra
+    return location.pathname === path;
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0f17] text-white">
       <Helmet>
@@ -390,28 +398,36 @@ export default function AdminAnalytics() {
             <p className="text-sm text-white/60 mt-1">Métricas em tempo real da sua base de assinantes DoramasPlus.</p>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs (ROTAS) — isso devolve /admin/users e /admin/doramas */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab("analytics")}
+              onClick={() => goTab("/admin/analytics")}
               className={`px-3 py-2 rounded-lg text-sm border ${
-                activeTab === "analytics" ? "bg-purple-500/20 border-purple-400/30" : "bg-white/5 border-white/10"
+                isActiveRoute("/admin/analytics")
+                  ? "bg-purple-500/20 border-purple-400/30"
+                  : "bg-white/5 border-white/10"
               }`}
             >
               Analytics
             </button>
+
             <button
-              onClick={() => setActiveTab("doramas")}
+              onClick={() => goTab("/admin/doramas")}
               className={`px-3 py-2 rounded-lg text-sm border ${
-                activeTab === "doramas" ? "bg-purple-500/20 border-purple-400/30" : "bg-white/5 border-white/10"
+                isActiveRoute("/admin/doramas")
+                  ? "bg-purple-500/20 border-purple-400/30"
+                  : "bg-white/5 border-white/10"
               }`}
             >
               Doramas
             </button>
+
             <button
-              onClick={() => setActiveTab("usuarios")}
+              onClick={() => goTab("/admin/users")}
               className={`px-3 py-2 rounded-lg text-sm border ${
-                activeTab === "usuarios" ? "bg-purple-500/20 border-purple-400/30" : "bg-white/5 border-white/10"
+                isActiveRoute("/admin/users")
+                  ? "bg-purple-500/20 border-purple-400/30"
+                  : "bg-white/5 border-white/10"
               }`}
             >
               Usuários
@@ -432,7 +448,7 @@ export default function AdminAnalytics() {
               <label className="text-xs text-white/60">Período rápido</label>
               <select
                 value={quickPeriod}
-                onChange={(e) => onChangeQuick(e.target.value)}
+                onChange={(e) => setQuickPeriod(e.target.value)}
                 className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none"
               >
                 <option value="this_month">Este mês</option>
@@ -478,7 +494,7 @@ export default function AdminAnalytics() {
           </div>
         </div>
 
-        {/* Estado: erro / loading */}
+        {/* Estado: erro / warning / loading */}
         {error ? (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/30 p-4 text-sm text-red-200">
             <div className="flex items-center gap-2 font-semibold">
@@ -489,6 +505,16 @@ export default function AdminAnalytics() {
           </div>
         ) : null}
 
+        {!error && warning ? (
+          <div className="mt-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 text-sm text-yellow-100">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertCircle className="w-4 h-4" />
+              Aviso
+            </div>
+            <div className="mt-1 text-yellow-100/90 break-words">{warning}</div>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="mt-6 flex items-center gap-2 text-white/70">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -496,17 +522,17 @@ export default function AdminAnalytics() {
           </div>
         ) : null}
 
-        {/* Conteúdo por aba */}
-        {activeTab === "analytics" && !loading ? (
+        {/* Conteúdo */}
+        {!loading && !error ? (
           <>
             {/* Linha 1 */}
             <div className="mt-6 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-3">
                 {renderCard(
                   "Ativos agora",
-                  `${activeBreakdown.active_total}`,
+                  `${metrics.active_now}`,
                   <Users className="w-5 h-5 text-green-300" />,
-                  `Mensal: ${activeBreakdown.active_monthly} • Trimestral: ${activeBreakdown.active_quarterly}`,
+                  `Mensal: ${metrics.active_now_monthly} • Trimestral: ${metrics.active_now_quarterly}`,
                   "ok"
                 )}
               </div>
@@ -547,7 +573,7 @@ export default function AdminAnalytics() {
                   "MRR Mensal",
                   formatBRL(mrrMonthly),
                   <CreditCard className="w-5 h-5 text-white/70" />,
-                  `${activeBreakdown.active_monthly} assinaturas`
+                  `${metrics.active_now_monthly} assinaturas`
                 )}
               </div>
               <div className="md:col-span-6">
@@ -555,45 +581,30 @@ export default function AdminAnalytics() {
                   "MRR Trimestral (÷ 3)",
                   formatBRL(mrrQuarterly),
                   <CreditCard className="w-5 h-5 text-yellow-300" />,
-                  `${activeBreakdown.active_quarterly} assinaturas`
+                  `${metrics.active_now_quarterly} assinaturas`
                 )}
               </div>
             </div>
 
-            {/* ✅ Retenção D30 (VIEW) */}
+            {/* Retenção D30 (VIEW) */}
             <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias) — baseado na VIEW</div>
-
-              {d30Error ? (
-                <div className="mb-3 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 text-sm text-yellow-200">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <AlertCircle className="w-4 h-4" />
-                    Aviso: não consegui ler a VIEW no front
-                  </div>
-                  <div className="mt-1 text-yellow-200/90 break-words">
-                    {d30Error}
-                    <div className="mt-2 text-yellow-200/80">
-                      Se no SQL Editor funciona mas no site dá erro, isso é quase sempre permissão/RLS. Aí eu te passo o SQL de policy certinho.
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-4">
                   {renderCard(
                     "Base com 30 dias",
-                    `${d30.base_com_30_dias}`,
+                    `${retD30.base_com_30_dias}`,
                     <Users className="w-5 h-5 text-white/70" />,
-                    "Quem já poderia ter renovado"
+                    "Quem já poderia ter renovado (coorte)"
                   )}
                 </div>
 
                 <div className="md:col-span-4">
                   {renderCard(
                     "Ainda ativos",
-                    `${d30.ainda_ativos}`,
-                    <CheckCircle2 className="w-5 h-5 text-green-300" />,
+                    `${retD30.ainda_ativos}`,
+                    <CheckIcon />,
                     "Dessa base, quem continua ativo",
                     "ok"
                   )}
@@ -602,12 +613,16 @@ export default function AdminAnalytics() {
                 <div className="md:col-span-4">
                   {renderCard(
                     "Retenção D30",
-                    formatPct(d30.retencao_d30),
-                    <LineChart className="w-5 h-5 text-purple-300" />,
+                    formatPct(retD30.retencao_d30),
+                    <TrendingUp className="w-5 h-5 text-green-300" />,
                     "VIEW: admin_retencao_d30",
-                    d30.retencao_d30 >= 50 ? "ok" : d30.retencao_d30 >= 35 ? "warn" : "bad"
+                    "ok"
                   )}
                 </div>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                {retentionWindowLabel}
               </div>
             </div>
 
@@ -620,7 +635,7 @@ export default function AdminAnalytics() {
                   {renderCard(
                     "Vendas (total)",
                     `${metrics.sold_total}`,
-                    <CheckCircle2 className="w-5 h-5 text-green-300" />,
+                    <Users className="w-5 h-5 text-green-300" />,
                     `Mensal: ${metrics.sold_monthly} • Trimestral: ${metrics.sold_quarterly}`,
                     "ok"
                   )}
@@ -631,7 +646,7 @@ export default function AdminAnalytics() {
                     "Vendas (mensal)",
                     `${metrics.sold_monthly}`,
                     <CreditCard className="w-5 h-5 text-white/70" />,
-                    `Preço: R$ ${PRICE_MONTHLY.toFixed(2).replace(".", ",")}`
+                    `Preço: ${formatBRL(PRICE_MONTHLY)}`
                   )}
                 </div>
 
@@ -640,100 +655,55 @@ export default function AdminAnalytics() {
                     "Vendas (trimestral)",
                     `${metrics.sold_quarterly}`,
                     <CreditCard className="w-5 h-5 text-yellow-300" />,
-                    `Preço: R$ ${PRICE_QUARTERLY.toFixed(2).replace(".", ",")}`
+                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* Insights rápidos */}
-              <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-4">
-                <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
-                <div className="text-sm text-white/70 space-y-1">
-                  <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
-                  <div>• Assinaturas ativas neste momento: {activeBreakdown.active_total}</div>
-                  <div>• Pendentes agora (pix): {metrics.pending_now} (no período: {metrics.pending_in_period})</div>
-                  <div>
-                    • Retenção D30: {formatPct(d30.retencao_d30)} (base: {d30.base_com_30_dias}, ainda ativos: {d30.ainda_ativos})
-                  </div>
-                  <div className="text-white/50 pt-2">
-                    Obs: removi os cards de “vencimentos / expirados / churn por end_at” porque seu end_at está inconsistente e isso te engana.
-                  </div>
+            {/* Insights rápidos */}
+            <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4">
+              <div className="text-sm font-semibold text-white/80 mb-2">Insights rápidos</div>
+              <div className="text-sm text-white/70 space-y-1">
+                <div>• Ticket médio (aprox.) por assinante ativo: {formatBRL(avgTicket)}</div>
+                <div>• Assinaturas ativas neste momento: {metrics.active_now}</div>
+                <div>• Pendentes agora (pix): {metrics.pending_now}</div>
+                <div>• Pendentes no período (pix): {metrics.pending_in_period}</div>
+                <div>
+                  • Retenção 30 dias (D30): {formatPct(retD30.retencao_d30)} (base: {retD30.base_com_30_dias} • ativos:{" "}
+                  {retD30.ainda_ativos})
                 </div>
+              </div>
+
+              <div className="mt-3 text-xs text-white/45">
+                Obs: removi os cards de “vencimentos / já venceram / não renovação operacional” porque estavam ficando inconsistentes dependendo do
+                seu end_at/current_period_end (principalmente misturando mensal + trimestral). O painel agora fica só com o que está batendo no RPC
+                e na VIEW.
               </div>
             </div>
           </>
         ) : null}
-
-        {activeTab === "doramas" ? (
-          <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-5 text-white/70">
-            Aqui a gente pode colocar métricas de catálogo / uploads / views depois.
-          </div>
-        ) : null}
-
-        {activeTab === "usuarios" ? (
-          <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-white/80">Usuários por status (preview)</div>
-              <button
-                onClick={async () => {
-                  setLoadingUsers(true);
-                  setError("");
-                  try {
-                    const { data, error: uErr } = await supabase
-                      .from("profiles")
-                      .select("email, created_at, active")
-                      .order("created_at", { ascending: false })
-                      .limit(50);
-
-                    if (uErr) throw new Error(uErr.message || "Erro ao buscar usuários");
-                    setUsersList(Array.isArray(data) ? data : []);
-                  } catch (e) {
-                    setError(String(e?.message || e || "Erro desconhecido"));
-                  } finally {
-                    setLoadingUsers(false);
-                  }
-                }}
-                className="px-3 py-2 rounded-lg text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition"
-              >
-                {loadingUsers ? "Carregando..." : "Carregar"}
-              </button>
-            </div>
-
-            <div className="mt-4 overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-white/60 border-b border-white/10">
-                    <th className="py-2 pr-3">Email</th>
-                    <th className="py-2 pr-3">Criado em</th>
-                    <th className="py-2 pr-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.length === 0 ? (
-                    <tr>
-                      <td className="py-3 text-white/50" colSpan={3}>
-                        Clique em “Carregar” para listar (últimos 50).
-                      </td>
-                    </tr>
-                  ) : (
-                    usersList.map((u, idx) => (
-                      <tr key={`${u.email}-${idx}`} className="border-b border-white/5">
-                        <td className="py-2 pr-3 text-white/80">{u.email}</td>
-                        <td className="py-2 pr-3 text-white/60">
-                          {u.created_at ? new Date(u.created_at).toLocaleString("pt-BR") : "-"}
-                        </td>
-                        <td className="py-2 pr-3">
-                          {u.active ? <span className="text-green-300">Ativo</span> : <span className="text-red-300">Inativo</span>}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
+  );
+}
+
+/** Ícone simples (pra não importar mais coisa) */
+function CheckIcon() {
+  return (
+    <svg
+      className="w-5 h-5 text-green-300"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M20 6L9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
