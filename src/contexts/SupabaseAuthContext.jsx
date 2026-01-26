@@ -1,3 +1,4 @@
+// src/contexts/SupabaseAuthContext.jsx (ou onde estiver o seu AuthProvider)
 import React, {
   createContext,
   useContext,
@@ -21,20 +22,20 @@ const ENABLE_SINGLE_SESSION = true;
 const START_SESSION_FN = "start-session";
 const VALIDATE_SESSION_FN = "validate-session";
 
-// ✅ tempo de verificação (ms) — (AJUSTADO) mais leve pra não derrubar por falso positivo
+// ✅ tempo de verificação (ms) — mais leve pra não derrubar por falso positivo
 const SESSION_POLL_MS = 12_000;
 
-// ✅ grace após login/refresh (ms) — (AJUSTADO) mais folga
+// ✅ grace após login/refresh (ms) — mais folga
 const GRACE_AFTER_LOGIN_MS = 2_500;
 
 // ✅ premium
 const PREMIUM_POLL_MS = 2500;
 const PREMIUM_POLL_MAX_MS = 60_000;
 
-// ✅ (ADICIONADO) Quantas falhas seguidas antes de derrubar
+// ✅ Quantas falhas seguidas antes de derrubar
 const INVALID_STREAK_LIMIT = 3;
 
-// ✅ (NOVO) chave de localStorage para compartilhar session_version entre abas
+// ✅ chave de localStorage para compartilhar session_version entre abas
 const getSessionStorageKey = (userId) => `dp_session_version_${userId || "anon"}`;
 
 export const AuthProvider = ({ children }) => {
@@ -120,7 +121,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // =========================
-  // PREMIUM ✅ (CORRIGIDO PRA NÃO JOGAR ATIVO PRA /plans)
+  // PREMIUM ✅ (PATCH FAIL-OPEN: NÃO DERRUBA ATIVO PRA /plans)
   // =========================
   const checkPremiumStatus = useCallback(
     async (userId) => {
@@ -144,17 +145,26 @@ export const AuthProvider = ({ children }) => {
           .order("created_at", { ascending: false })
           .limit(5);
 
+        // ✅ (PATCH) se der erro, NÃO derruba forçando false
         if (error) {
-          // ✅ MUITO IMPORTANTE: se der erro (policy/RLS etc), não derruba o cara à força.
           console.error("Error checking premium status (query):", error);
           return;
         }
 
-        const now = new Date();
         const subs = Array.isArray(subscriptions) ? subscriptions : [];
 
-        const normalizeStatus = (s) =>
-          String(s ?? "").trim().toLowerCase();
+        // ✅ (PATCH CRÍTICO) Se veio vazio, NÃO conclui "não premium".
+        // Mantém o estado atual (só mantém true se já era true).
+        if (subs.length === 0) {
+          const keep = !!isPremiumRef.current;
+          console.warn("[premium] subscriptions vazio — mantendo estado atual:", keep);
+          setIsPremium(keep);
+          return;
+        }
+
+        const now = new Date();
+
+        const normalizeStatus = (s) => String(s ?? "").trim().toLowerCase();
 
         const parseDateSafe = (v) => {
           if (!v) return null;
@@ -170,7 +180,6 @@ export const AuthProvider = ({ children }) => {
 
         const hasActiveSub = subs.some((sub) => {
           const status = normalizeStatus(sub?.status);
-
           if (!ACTIVE_STATUSES.has(status)) return false;
 
           const endDate =
@@ -184,7 +193,7 @@ export const AuthProvider = ({ children }) => {
           // ✅ se tem data, precisa ser futura
           if (endDate) return endDate > now;
 
-          // ✅ se NÃO tem data mas status está ativo, libera (volta ao normal e evita falso negativo)
+          // ✅ se NÃO tem data mas status está ativo, libera
           return true;
         });
 
@@ -194,7 +203,7 @@ export const AuthProvider = ({ children }) => {
         if (hasActiveSub) stopPremiumPolling();
       } catch (err) {
         console.error("Error checking premium status (fatal):", err);
-        // ✅ aqui também: não “derruba” forçando false, só mantém o estado atual
+        // ✅ não força false aqui
       } finally {
         setCheckingPremium(false);
       }
@@ -246,7 +255,7 @@ export const AuthProvider = ({ children }) => {
   // ✅ 1 DISPOSITIVO (EDGE FUNCTIONS)
   // =========================
 
-  // ✅ (ALTERADO) agora reutiliza session_version do localStorage entre abas
+  // ✅ agora reutiliza session_version do localStorage entre abas
   const startSingleSession = useCallback(
     async (opts = {}) => {
       const force = !!opts.force;
@@ -271,16 +280,12 @@ export const AuthProvider = ({ children }) => {
       setCheckingSession(true);
 
       try {
-        const { data, error } = await supabase.functions.invoke(
-          START_SESSION_FN,
-          {
-            body: {
-              force, // ✅ ALTERAÇÃO: envia force pro backend
-              user_agent:
-                typeof navigator !== "undefined" ? navigator.userAgent : null,
-            },
-          }
-        );
+        const { data, error } = await supabase.functions.invoke(START_SESSION_FN, {
+          body: {
+            force,
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+          },
+        });
 
         if (error) throw error;
 
@@ -294,7 +299,6 @@ export const AuthProvider = ({ children }) => {
         if (!v) {
           console.warn("[start-session] resposta sem session_version:", data);
           sessionVersionRef.current = null;
-          // ✅ não salva nada e não pune
           return true;
         }
 
@@ -305,7 +309,6 @@ export const AuthProvider = ({ children }) => {
         return true;
       } catch (e) {
         console.error("Error startSingleSession:", e);
-        // falha não derruba
         sessionVersionRef.current = null;
         return true;
       } finally {
@@ -337,12 +340,9 @@ export const AuthProvider = ({ children }) => {
     validateInFlightRef.current = true;
 
     try {
-      const { data, error } = await supabase.functions.invoke(
-        VALIDATE_SESSION_FN,
-        {
-          body: { session_version: sessionVersionRef.current },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke(VALIDATE_SESSION_FN, {
+        body: { session_version: sessionVersionRef.current },
+      });
 
       if (error) throw error;
 
@@ -357,11 +357,10 @@ export const AuthProvider = ({ children }) => {
         return true;
       }
 
-      // ✅ (NOVO) se vier inválido, tenta reassumir 1x antes de considerar falha real
+      // ✅ se vier inválido, tenta reassumir 1x antes de considerar falha real
       if (valid === false) {
         await startSingleSession({ force: true });
 
-        // se não conseguiu nem pegar versão, não pune
         if (!sessionVersionRef.current) return true;
 
         const { data: data2, error: error2 } = await supabase.functions.invoke(
@@ -433,12 +432,7 @@ export const AuthProvider = ({ children }) => {
 
       invalidStreakRef.current = 0;
     }, SESSION_POLL_MS);
-  }, [
-    forceSignOut,
-    startSingleSession,
-    stopSessionPolling,
-    validateSingleSession,
-  ]);
+  }, [forceSignOut, startSingleSession, stopSessionPolling, validateSingleSession]);
 
   // =========================
   // INIT + AUTH LISTENER
@@ -519,10 +513,7 @@ export const AuthProvider = ({ children }) => {
         const t1 = setTimeout(() => checkPremiumStatus(currentUser.id), 0);
         const t2 = setTimeout(() => startPremiumPolling(currentUser.id), 0);
 
-        const t3 = setTimeout(
-          () => startSessionPolling(),
-          GRACE_AFTER_LOGIN_MS
-        );
+        const t3 = setTimeout(() => startSessionPolling(), GRACE_AFTER_LOGIN_MS);
 
         timersRef.current.push(t1, t2, t3);
       } else {
@@ -572,10 +563,9 @@ export const AuthProvider = ({ children }) => {
       if (!activeUserIdRef.current) return;
 
       await checkPremiumStatus(activeUserIdRef.current);
-      if (isPremiumRef.current === false)
-        startPremiumPolling(activeUserIdRef.current);
+      if (isPremiumRef.current === false) startPremiumPolling(activeUserIdRef.current);
 
-      // ✅ (ALTERADO) reassume só se precisar (usa localStorage primeiro)
+      // ✅ reassume só se precisar (usa localStorage primeiro)
       await startSingleSession();
       invalidStreakRef.current = 0;
     };
