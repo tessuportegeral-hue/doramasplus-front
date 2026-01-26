@@ -215,6 +215,12 @@ function App() {
     <>
       <Helmet>
         <title>DoramaStream - Assista seus Dramas Asiáticos Favoritos</title>
+
+        {/* ✅ Meta Domain Verification (Meta Business) */}
+        <meta
+          name="facebook-domain-verification"
+          content="20d3ocykxiy1pg1edp1q37295xlwhm"
+        />
       </Helmet>
 
       <AuthProvider>
