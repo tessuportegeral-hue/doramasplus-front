@@ -4,19 +4,16 @@
 // Não muda lógica / rotas / auth / nada do funcionamento.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
-  useLocation,
-  useNavigate,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
-import { supabase } from '@/lib/supabaseClient';
-import { useAuth, AuthProvider } from '@/contexts/SupabaseAuthContext';
+import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 
 // ============================================================
 // Páginas (mantido exatamente como está)
