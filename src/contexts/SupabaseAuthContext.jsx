@@ -16,7 +16,8 @@ const AuthContext = createContext(null);
 // =========================
 
 // ✅ ATIVA a regra de 1 dispositivo por vez (Netflix mode)
-const ENABLE_SINGLE_SESSION = true;
+// ❗ (EDITADO) DESLIGADO temporariamente pra não quebrar checkout/pix (erro user_sessions.device_id)
+const ENABLE_SINGLE_SESSION = false;
 
 // ✅ Edge Functions (nomes que você criou no Supabase)
 const START_SESSION_FN = "start-session";
