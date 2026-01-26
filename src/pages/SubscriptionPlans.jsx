@@ -65,10 +65,23 @@ const SubscriptionPlans = () => {
 
       // Alguns erros vem com contexto mais rico
       const ctx = error?.context;
-      const ctxMsg =
-        (typeof ctx?.body === 'string' && ctx.body) ||
-        (typeof ctx?.error === 'string' && ctx.error) ||
-        null;
+
+      // ✅ (CORREÇÃO) se ctx.body for objeto, mostra string
+      const ctxBody =
+        ctx?.body != null
+          ? typeof ctx.body === 'string'
+            ? ctx.body
+            : JSON.stringify(ctx.body)
+          : null;
+
+      const ctxError =
+        ctx?.error != null
+          ? typeof ctx.error === 'string'
+            ? ctx.error
+            : JSON.stringify(ctx.error)
+          : null;
+
+      const ctxMsg = ctxBody || ctxError || null;
 
       const parts = [];
       if (status) parts.push(`HTTP ${status}`);
@@ -77,8 +90,7 @@ const SubscriptionPlans = () => {
 
       const base = parts.length ? parts.join(' • ') : fallback;
 
-      // Se tiver corpo/erro no contexto, anexa um pedaço
-      if (ctxMsg) return `${base} • ${String(ctxMsg).slice(0, 180)}`;
+      if (ctxMsg) return `${base} • ${String(ctxMsg).slice(0, 220)}`;
 
       return base || fallback;
     } catch {
@@ -109,7 +121,7 @@ const SubscriptionPlans = () => {
 
       fireInitiateCheckout({ planType, planName, value });
 
-      // 1) sessão ao vivo
+      // ✅ garante que tem sessão (o invoke já manda o JWT sozinho)
       const { data: s, error: sErr } = await supabase.auth.getSession();
       if (sErr) throw sErr;
 
@@ -123,14 +135,11 @@ const SubscriptionPlans = () => {
         return;
       }
 
-      // 2) chama a Edge Function (Stripe)
+      // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita duplicação / preflight estranho)
       const { data, error } = await supabase.functions.invoke(
         'create-checkout-session',
         {
           body: { plan: planType },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       );
 
@@ -177,6 +186,7 @@ const SubscriptionPlans = () => {
     setLoadingPlan(`pix_${planType}`);
 
     try {
+      // ✅ garante sessão viva (invoke já manda o JWT sozinho)
       const { data: s, error: sErr } = await supabase.auth.getSession();
       if (sErr) throw sErr;
 
@@ -197,13 +207,11 @@ const SubscriptionPlans = () => {
 
       const event_id = fireInitiateCheckout({ planType, planName, value });
 
+      // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)
       const { data, error } = await supabase.functions.invoke(
         'infinitepay-create-checkout',
         {
           body: { plan: planType, event_id },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       );
 
