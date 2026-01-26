@@ -53,22 +53,30 @@ import AdminRoute from '@/components/AdminRoute';
 import Landing from '@/pages/Landing';
 
 // ============================================================
-// DeviceGuard (mantido, mas DESATIVADO o legado de user_sessions/device_id)
-// Motivo: você NÃO usa mais esse método antigo, e ele está dando 400
-// (column user_sessions.device_id does not exist) + spam no console.
+// DeviceGuard (mantido exatamente como está)
 // ============================================================
 
 // ✅ Guard global: derruba INSTANTÂNEO via Realtime quando outro device entrar
 function DeviceGuard({ children }) {
+  // ✅ (MUDANÇA MÍNIMA NECESSÁRIA)
+  // A lógica antiga de device_id / user_sessions estava quebrando (erro 42703)
+  // então aqui fica desativada sem mexer em rotas/auth.
+  return children;
+
+  // ------------------------------------------------------------
+  // ⚠️ CÓDIGO ANTIGO (DESATIVADO)
+  // Se quiser reativar no futuro, primeiro garanta que existe:
+  // - tabela public.user_sessions
+  // - coluna device_id
+  // - policies corretas
+  // ------------------------------------------------------------
+
+  /*
   const { user, loading: authLoading } = useAuth();
   const location = useLocation(); // mantido (não removi), mas não uso nas deps
   const navigate = useNavigate();
 
   const DEVICE_KEY = 'dp_device_id';
-
-  // ✅ DESATIVA a validação LEGADA (user_sessions/device_id)
-  // Não altera login, rotas, premium, checkout, nada. Só para de bater 400.
-  const ENABLE_LEGACY_DEVICE_GUARD = false;
 
   const getStoredDeviceId = () => {
     try {
@@ -95,9 +103,6 @@ function DeviceGuard({ children }) {
       try {
         if (cancelled) return;
         if (authLoading || !user) return;
-
-        // ✅ PATCH: não roda mais o método antigo
-        if (!ENABLE_LEGACY_DEVICE_GUARD) return;
 
         const localDeviceId = getStoredDeviceId();
         if (!localDeviceId) {
@@ -132,9 +137,6 @@ function DeviceGuard({ children }) {
       try {
         if (cancelled) return;
         if (authLoading || !user) return;
-
-        // ✅ PATCH: se guard legado tá off, não cria realtime/polls/heartbeat
-        if (!ENABLE_LEGACY_DEVICE_GUARD) return;
 
         // Checa uma vez ao entrar
         await checkOnce();
@@ -214,6 +216,7 @@ function DeviceGuard({ children }) {
   }, [authLoading, user, navigate]);
 
   return children;
+  */
 }
 
 // ============================================================
