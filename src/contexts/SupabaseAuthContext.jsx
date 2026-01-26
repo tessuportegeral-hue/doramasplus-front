@@ -136,11 +136,10 @@ export const AuthProvider = ({ children }) => {
 
       try {
         // ✅ NÃO filtra status aqui (porque pode vir "Active", "paid", etc)
+        // ✅ (FIX) NÃO pede colunas que não existem (isso estava dando 400 e derrubando geral)
         const { data: subscriptions, error } = await supabase
           .from("subscriptions")
-          .select(
-            "status, end_at, current_period_end, expires_at, current_period_end_at, period_end, created_at"
-          )
+          .select("status, end_at, current_period_end, created_at")
           .eq("user_id", userId)
           .order("created_at", { ascending: false })
           .limit(5);
@@ -185,9 +184,6 @@ export const AuthProvider = ({ children }) => {
           const endDate =
             parseDateSafe(sub?.end_at) ||
             parseDateSafe(sub?.current_period_end) ||
-            parseDateSafe(sub?.expires_at) ||
-            parseDateSafe(sub?.current_period_end_at) ||
-            parseDateSafe(sub?.period_end) ||
             null;
 
           // ✅ se tem data, precisa ser futura
