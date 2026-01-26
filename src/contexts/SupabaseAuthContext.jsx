@@ -120,7 +120,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // =========================
-  // PREMIUM (mantido)
+  // PREMIUM (mantido) ✅ (ALTERADO: mais campos de data)
   // =========================
   const checkPremiumStatus = useCallback(
     async (userId) => {
@@ -136,7 +136,9 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data: subscriptions, error } = await supabase
           .from("subscriptions")
-          .select("status, end_at, current_period_end")
+          .select(
+            "status, end_at, current_period_end, expires_at, current_period_end_at, period_end"
+          )
           .eq("user_id", userId)
           .in("status", ["active", "trialing"]);
 
@@ -146,7 +148,14 @@ export const AuthProvider = ({ children }) => {
         const subs = subscriptions || [];
 
         const hasActiveSub = subs.some((sub) => {
-          const endDate = sub.end_at || sub.current_period_end;
+          const endDate =
+            sub.end_at ||
+            sub.current_period_end ||
+            sub.expires_at ||
+            sub.current_period_end_at ||
+            sub.period_end ||
+            null;
+
           return endDate && new Date(endDate) > now;
         });
 
