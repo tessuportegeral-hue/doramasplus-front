@@ -5,6 +5,18 @@ import { useNavigate } from "react-router-dom";
 export default function ComoFunciona() {
   const navigate = useNavigate();
 
+  // ✅ PageView no "Como Funciona" (não quebra se o pixel não estiver carregado)
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      if (typeof window.fbq === "function") {
+        window.fbq("track", "PageView");
+      }
+    } catch (e) {
+      console.error("[pixel] PageView ComoFunciona error:", e);
+    }
+  }, []);
+
   // 🎬 Vídeo explicativo (Bunny CDN)
   const videoSrc = "https://doramasplus.b-cdn.net/Video-apresentacao.mp4";
 
@@ -86,7 +98,7 @@ export default function ComoFunciona() {
               Seu navegador não suporta vídeo.
             </video>
 
-            {/* ✅ Overlay "toque pra ouvir" igual seu outro site */}
+            {/* ✅ Overlay "toque pra ouvir" */}
             {showTapToUnmute && (
               <button
                 type="button"
@@ -121,9 +133,7 @@ export default function ComoFunciona() {
           Falar com o suporte no WhatsApp
         </a>
 
-        <p style={styles.smallNote}>
-          Número: <b>18 99679-6654</b> (mensagem automática já vai pronta)
-        </p>
+        {/* ✅ REMOVIDO: linha branca com número abaixo do botão */}
       </div>
     </div>
   );
@@ -238,10 +248,5 @@ const styles = {
   whatsIcon: {
     fontSize: 18,
     lineHeight: 1,
-  },
-  smallNote: {
-    marginTop: 10,
-    fontSize: 13,
-    opacity: 0.85,
   },
 };
