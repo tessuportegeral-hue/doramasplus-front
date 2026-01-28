@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { CheckCircle, Loader2, AlertTriangle } from "lucide-react";
@@ -18,8 +18,66 @@ const CheckoutSuccess = () => {
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const gateway = useMemo(() => (params.get("gateway") || "").toLowerCase(), [params]);
   const orderNsu = useMemo(() => params.get("order_nsu") || "", [params]);
+  const eventIdFromUrl = useMemo(() => params.get("event_id") || "", [params]);
 
   const canVerify = useMemo(() => gateway === "infinitepay" && !!orderNsu, [gateway, orderNsu]);
+
+  // ✅ Pixel Purchase no front (dedup com o backend via event_id)
+  const purchaseSentRef = useRef(false);
+
+  const parsePlanFromOrderNSU = useCallback((order) => {
+    const parts = String(order || "").split("|");
+    return parts.length >= 3 ? parts[2] : null; // monthly | quarterly
+  }, []);
+
+  const valueFromPlan = useCallback((plan) => {
+    if (plan === "quarterly") return 43.9;
+    if (plan === "monthly") return 15.9;
+    return null;
+  }, []);
+
+  const sendPurchasePixelOnce = useCallback(() => {
+    try {
+      if (purchaseSentRef.current) return;
+
+      // só dispara se vier do infinitepay e tiver order_nsu
+      if (!canVerify) return;
+
+      const eventId = (eventIdFromUrl || orderNsu || "").trim();
+      if (!eventId) return;
+
+      // evita duplicar em refresh/voltar
+      const key = `dp_purchase_sent_${eventId}`;
+      if (localStorage.getItem(key) === "1") {
+        purchaseSentRef.current = true;
+        return;
+      }
+
+      const plan = parsePlanFromOrderNSU(orderNsu);
+      const value = valueFromPlan(plan);
+
+      if (typeof value !== "number") return;
+
+      if (typeof window !== "undefined" && typeof window.fbq === "function") {
+        window.fbq(
+          "track",
+          "Purchase",
+          {
+            value,
+            currency: "BRL",
+            content_name: plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrão",
+          },
+          { eventID: eventId } // ✅ dedup com CAPI
+        );
+
+        localStorage.setItem(key, "1");
+        purchaseSentRef.current = true;
+      }
+    } catch (e) {
+      // não quebra a página
+      console.warn("purchase pixel error:", e);
+    }
+  }, [canVerify, eventIdFromUrl, orderNsu, parsePlanFromOrderNSU, valueFromPlan]);
 
   const verifyPayment = useCallback(async () => {
     if (!canVerify) return;
@@ -64,11 +122,12 @@ const CheckoutSuccess = () => {
   }, [canVerify, orderNsu, navigate]);
 
   useEffect(() => {
-    // Só tenta verificar automaticamente quando for infinitepay + tiver order_nsu
+    // ✅ dispara Purchase no front assim que cair na página (não depende da verificação)
     if (canVerify) {
+      sendPurchasePixelOnce();
       verifyPayment();
     }
-  }, [canVerify, verifyPayment]);
+  }, [canVerify, verifyPayment, sendPurchasePixelOnce]);
 
   const titleText = useMemo(() => {
     if (verified) return "Assinatura Confirmada!";
