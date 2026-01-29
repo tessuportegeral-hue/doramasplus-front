@@ -108,7 +108,7 @@ export default function ComoFunciona() {
 
         {/* ✅ Botão de acesso à plataforma */}
         <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
-          Quero Assistir os Doramas
+          Acessar DoramasPlus
         </button>
 
         {/* ✅ Botão WhatsApp */}
