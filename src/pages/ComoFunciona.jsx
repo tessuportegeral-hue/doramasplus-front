@@ -1,11 +1,13 @@
 // src/pages/ComoFunciona.jsx
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 export default function ComoFunciona() {
   const navigate = useNavigate();
+  const videoRef = useRef(null);
+  const [showUnmute, setShowUnmute] = useState(true);
 
-  // ✅ PageView no "Como Funciona" (seguro mesmo se o pixel não carregar)
+  // ✅ PageView no "Como Funciona"
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -17,11 +19,44 @@ export default function ComoFunciona() {
     }
   }, []);
 
-  // 🎬 Vídeo (Bunny CDN)
+  // 🎬 Vídeo
   const videoSrc =
     "https://doramasplus.b-cdn.net/WhatsApp%20Video%202026-01-29%20at%2018.46.38.mp4";
 
-  // WhatsApp suporte (com mensagem pré-definida)
+  // ✅ força autoplay muted (mobile friendly)
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    v.muted = true;
+    v.playsInline = true;
+
+    const tryPlay = async () => {
+      try {
+        await v.play();
+      } catch {
+        // se o browser bloquear, usuário dá play manual
+      }
+    };
+
+    tryPlay();
+  }, []);
+
+  const handleUnmute = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    try {
+      v.muted = false;
+      await v.play();
+    } catch {
+      // ignore
+    } finally {
+      setShowUnmute(false);
+    }
+  };
+
+  // WhatsApp
   const whatsappNumber = "5518996796654";
   const whatsappMessage =
     "Ola eu vim do anuncio pelo site e estou com uma duvida. Você pode me ajudar?";
@@ -32,34 +67,51 @@ export default function ComoFunciona() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        {/* 🎬 PLAYER DE VÍDEO */}
+        {/* 🎬 VÍDEO */}
         <div style={styles.videoWrap}>
           <video
+            ref={videoRef}
             style={styles.video}
-            controls
+            autoPlay
+            muted
             playsInline
             preload="metadata"
+            controls
           >
             <source src={videoSrc} type="video/mp4" />
             Seu navegador não suporta vídeo.
           </video>
+
+          {/* 🔊 Overlay para ativar som */}
+          {showUnmute && (
+            <button
+              type="button"
+              onClick={handleUnmute}
+              style={styles.unmuteOverlay}
+            >
+              <div style={styles.unmuteBox}>
+                <div style={styles.unmuteTitle}>🔊 O vídeo já começou</div>
+                <div style={styles.unmuteSub}>
+                  Toque aqui para ativar o som
+                </div>
+              </div>
+            </button>
+          )}
         </div>
 
-        {/* ✅ Botão de acesso à plataforma */}
+        {/* CTA */}
         <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
           Quero fazer o teste grátis
         </button>
 
-        {/* ✅ Botão WhatsApp */}
+        {/* WhatsApp */}
         <a
           href={whatsappLink}
           target="_blank"
           rel="noreferrer"
           style={styles.whatsBtn}
         >
-          <span style={styles.whatsIcon} aria-hidden="true">
-            💬
-          </span>
+          <span style={styles.whatsIcon}>💬</span>
           Falar com o suporte no WhatsApp
         </a>
       </div>
@@ -91,6 +143,7 @@ const styles = {
     borderRadius: 16,
     overflow: "hidden",
     background: "#000",
+    position: "relative",
     border: "1px solid rgba(255,255,255,0.08)",
     boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
   },
@@ -98,6 +151,35 @@ const styles = {
     width: "100%",
     display: "block",
     background: "#000",
+  },
+
+  // Overlay som
+  unmuteOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(0,0,0,0.25)",
+    border: "none",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unmuteBox: {
+    background: "rgba(0,0,0,0.7)",
+    padding: "14px 16px",
+    borderRadius: 14,
+    textAlign: "center",
+    border: "1px solid rgba(255,255,255,0.15)",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+  },
+  unmuteTitle: {
+    fontWeight: 900,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  unmuteSub: {
+    fontSize: 13,
+    opacity: 0.95,
   },
 
   // Botão principal
@@ -113,7 +195,7 @@ const styles = {
     color: "#0b0b10",
   },
 
-  // Botão WhatsApp
+  // WhatsApp
   whatsBtn: {
     width: "100%",
     display: "flex",
