@@ -74,10 +74,10 @@ export default function ComoFunciona() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <h1 style={styles.h1}>Como fazer o teste grátis no DoramasPlus 💜</h1>
+        <h1 style={styles.h1}>Como Assistir Doramas no DoramasPlus 💜</h1>
 
         <p style={styles.p}>
-          Assista o vídeo abaixo e veja como entrar no teste grátis, criar
+          Assista o vídeo abaixo e veja como entrar na plataforma, criar
           cadastro e assinar quando quiser.
         </p>
 
