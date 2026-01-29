@@ -17,6 +17,10 @@ export default function ComoFunciona() {
     }
   }, []);
 
+  // 🎬 Vídeo (Bunny CDN)
+  const videoSrc =
+    "https://doramasplus.b-cdn.net/WhatsApp%20Video%202026-01-29%20at%2018.46.38.mp4";
+
   // WhatsApp suporte (com mensagem pré-definida)
   const whatsappNumber = "5518996796654";
   const whatsappMessage =
@@ -28,6 +32,19 @@ export default function ComoFunciona() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
+        {/* 🎬 PLAYER DE VÍDEO */}
+        <div style={styles.videoWrap}>
+          <video
+            style={styles.video}
+            controls
+            playsInline
+            preload="metadata"
+          >
+            <source src={videoSrc} type="video/mp4" />
+            Seu navegador não suporta vídeo.
+          </video>
+        </div>
+
         {/* ✅ Botão de acesso à plataforma */}
         <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
           Quero fazer o teste grátis
@@ -68,6 +85,22 @@ const styles = {
     gap: 14,
   },
 
+  // 🎬 Vídeo
+  videoWrap: {
+    width: "100%",
+    borderRadius: 16,
+    overflow: "hidden",
+    background: "#000",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+  },
+  video: {
+    width: "100%",
+    display: "block",
+    background: "#000",
+  },
+
+  // Botão principal
   cta: {
     width: "100%",
     padding: "16px",
