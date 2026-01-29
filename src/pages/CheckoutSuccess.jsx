@@ -11,6 +11,7 @@ const CheckoutSuccess = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // ✅ Mantém estados pra UI, mas NÃO vai mais chamar verify-payment
   const [isVerifying, setIsVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -79,6 +80,12 @@ const CheckoutSuccess = () => {
     }
   }, [canVerify, eventIdFromUrl, orderNsu, parsePlanFromOrderNSU, valueFromPlan]);
 
+  /**
+   * ✅ ALTERAÇÃO PRINCIPAL:
+   * NÃO chama mais infinitepay-verify-payment.
+   * Agora a liberação é feita via webhook/clever-worker.
+   * Essa função só controla UX: mostra “confirmando” por alguns segundos e manda pro Dashboard.
+   */
   const verifyPayment = useCallback(async () => {
     if (!canVerify) return;
 
@@ -86,40 +93,24 @@ const CheckoutSuccess = () => {
     setErrorMsg("");
 
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "infinitepay-verify-payment",
-        { body: { order_nsu: orderNsu } }
-      );
+      // 🔒 Não chamar verify-payment (evita somar meses / duplicar liberação)
+      // await supabase.functions.invoke("infinitepay-verify-payment", { body: { order_nsu: orderNsu } });
 
-      if (error) {
-        console.error("verify invoke error:", error);
-        setErrorMsg("Erro ao verificar pagamento. Tente novamente em instantes.");
-        setIsVerifying(false);
-        return;
-      }
+      // ⏳ Dá um tempinho pra webhook/clever-worker processar
+      await new Promise((r) => setTimeout(r, 2500));
 
-      // data.success === true -> liberou
-      if (data?.success === true) {
-        setVerified(true);
-        setIsVerifying(false);
-        // ✅ redireciona
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-
-      // Se retornou success:false mas sem erro (ex.: ainda não confirmou)
-      const msg =
-        data?.message ||
-        "Pagamento ainda não confirmado. Se você acabou de pagar, aguarde alguns segundos e tente novamente.";
-
-      setErrorMsg(msg);
       setIsVerifying(false);
+
+      // ✅ Em vez de tentar “verificar”, manda pro Dashboard (onde o status vai refletir quando liberar)
+      navigate("/dashboard", { replace: true });
     } catch (e) {
-      console.error("verify exception:", e);
-      setErrorMsg("Falha inesperada ao verificar. Tente novamente.");
+      console.error("verify (disabled) exception:", e);
       setIsVerifying(false);
+      setErrorMsg(
+        "Pagamento recebido! Se sua conta ainda não liberou, aguarde 1 minuto e atualize o Dashboard."
+      );
     }
-  }, [canVerify, orderNsu, navigate]);
+  }, [canVerify, navigate]);
 
   useEffect(() => {
     // ✅ dispara Purchase no front assim que cair na página (não depende da verificação)
@@ -142,7 +133,7 @@ const CheckoutSuccess = () => {
     }
 
     if (canVerify && isVerifying) {
-      return "Estamos confirmando seu pagamento com segurança. Isso pode levar alguns segundos...";
+      return "Estamos aguardando a confirmação do Pix. Normalmente libera em instantes...";
     }
 
     if (canVerify && errorMsg) {
@@ -188,15 +179,15 @@ const CheckoutSuccess = () => {
 
             <p className="text-slate-400 mb-8">{descText}</p>
 
-            {/* Se for InfinitePay e deu “não confirmado”, mostra botão de tentar de novo */}
+            {/* ✅ Agora não faz sentido "tentar verificar" no backend.
+                Se deu algum atraso, só manda pro Dashboard pra atualizar. */}
             {canVerify && !verified && !!errorMsg ? (
               <div className="space-y-3">
                 <Button
-                  onClick={verifyPayment}
-                  disabled={isVerifying}
+                  onClick={() => navigate("/dashboard")}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-lg"
                 >
-                  {isVerifying ? "Verificando..." : "Tentar novamente"}
+                  Ir para o Dashboard
                 </Button>
 
                 <Link to="/dashboard">
@@ -204,7 +195,7 @@ const CheckoutSuccess = () => {
                     variant="secondary"
                     className="w-full bg-slate-800 hover:bg-slate-700 text-white h-12 text-lg"
                   >
-                    Ir para o Dashboard
+                    Atualizar depois
                   </Button>
                 </Link>
               </div>
