@@ -36,11 +36,9 @@ export default function ComoFunciona() {
     const v = videoRef.current;
     if (!v) return;
 
-    // garante autoplay no mobile
     v.muted = true;
     v.playsInline = true;
 
-    // tenta dar play (alguns browsers só deixam depois de interação)
     const tryPlay = async () => {
       try {
         await v.play();
@@ -67,21 +65,13 @@ export default function ComoFunciona() {
   };
 
   const handleAnyUserPlay = () => {
-    // se a pessoa clicar no vídeo e der play, a gente mantém o overlay,
-    // porque ainda tá mutado. Se quiser sumir só no unmute, deixa assim.
+    // mantém como está (overlay só some no unmute)
   };
 
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <h1 style={styles.h1}>Como Assistir Doramas no DoramasPlus 💜</h1>
-
-        <p style={styles.p}>
-          Assista o vídeo abaixo e veja como entrar na plataforma, criar
-          cadastro e assinar quando quiser.
-        </p>
-
-        {/* ✅ Vídeo menor (mais "fino") e centralizado */}
+        {/* ✅ Somente o vídeo */}
         <div style={styles.videoOuter}>
           <div style={styles.videoWrap}>
             <video
@@ -116,11 +106,12 @@ export default function ComoFunciona() {
           </div>
         </div>
 
+        {/* ✅ Botão de acesso à plataforma */}
         <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
           Quero fazer o teste grátis
         </button>
 
-        {/* BOTÃO WHATSAPP */}
+        {/* ✅ Botão WhatsApp */}
         <a
           href={whatsappLink}
           target="_blank"
@@ -132,8 +123,6 @@ export default function ComoFunciona() {
           </span>
           Falar com o suporte no WhatsApp
         </a>
-
-        {/* ✅ REMOVIDO: linha branca com número abaixo do botão */}
       </div>
     </div>
   );
@@ -152,18 +141,8 @@ const styles = {
     width: "100%",
     maxWidth: 720,
   },
-  h1: {
-    fontSize: 28,
-    marginBottom: 8,
-    lineHeight: 1.2,
-  },
-  p: {
-    marginBottom: 18,
-    opacity: 0.9,
-    lineHeight: 1.5,
-  },
 
-  // ✅ deixa o vídeo menor na página
+  // ✅ vídeo centralizado
   videoOuter: {
     width: "100%",
     display: "flex",
@@ -171,7 +150,7 @@ const styles = {
   },
   videoWrap: {
     width: "100%",
-    maxWidth: 520, // <<< diminui aqui (ex.: 480 / 520 / 560)
+    maxWidth: 520,
     borderRadius: 16,
     overflow: "hidden",
     background: "#111",
