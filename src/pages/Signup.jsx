@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { Play, Mail, Lock, User, ArrowRight } from 'lucide-react';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 
 const Signup = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // ✅ (ADICIONADO) pra capturar ?src=
   const { isAuthenticated } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -23,9 +24,23 @@ const Signup = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      // ✅ (AJUSTE MÍNIMO) mantém ?src=ads ao redirecionar
+      navigate(`/dashboard${location.search ? location.search : ''}`);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, location.search]);
+
+  // ✅ (ADICIONADO) captura o parâmetro src (ex.: ?src=ads) e salva no localStorage
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(location.search);
+      const src = (params.get('src') || '').trim().toLowerCase();
+      if (src) {
+        localStorage.setItem('dp_traffic_src', src);
+        localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
+      }
+    } catch {}
+  }, [location.search]);
 
   const handleChange = (e) => {
     setFormData({
@@ -69,12 +84,19 @@ const Signup = () => {
           title: 'Conta criada!',
           description: 'Bem-vindo ao DoramasPlus!',
         });
+
+        // ✅ (AJUSTE MÍNIMO) se já logou, mantém ?src=ads ao ir pro dashboard
+        navigate(`/dashboard${location.search ? location.search : ''}`);
       } else {
         toast({
           title: 'Conta criada!',
           description: 'Verifique seu e-mail para confirmar sua conta.',
         });
-        setTimeout(() => navigate('/login'), 2000);
+        // ✅ (AJUSTE MÍNIMO) mantém ?src=ads ao ir pro login
+        setTimeout(
+          () => navigate(`/login${location.search ? location.search : ''}`),
+          2000
+        );
       }
 
     } catch (error) {
@@ -233,7 +255,7 @@ const Signup = () => {
               <p className="text-slate-400">
                 Já tem uma conta?{' '}
                 <Link
-                  to="/login"
+                  to={`/login${location.search ? location.search : ''}`} // ✅ (AJUSTE MÍNIMO) mantém ?src=ads
                   className="text-purple-400 hover:text-purple-300 font-semibold"
                 >
                   Entrar
