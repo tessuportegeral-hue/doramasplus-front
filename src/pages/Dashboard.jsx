@@ -446,7 +446,16 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const [neverSubscribed, setNeverSubscribed] = useState(false);
 
   const PLANS_URL = "https://doramasplus.com.br/plans";
+
+  // ✅ (ALTERAÇÃO NECESSÁRIA) mantém tudo igual, só acrescenta ?src=ads quando o tráfego veio de ads
   const goPlans = () => {
+    try {
+      const src = (localStorage.getItem("dp_traffic_src") || "").trim().toLowerCase();
+      if (src === "ads") {
+        window.location.href = `${PLANS_URL}?src=ads`;
+        return;
+      }
+    } catch {}
     window.location.href = PLANS_URL;
   };
 
