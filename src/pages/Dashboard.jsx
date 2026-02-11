@@ -1,7 +1,7 @@
 // src/pages/Dashboard.jsx
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Helmet } from "react-helmet";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
@@ -359,10 +359,24 @@ const DoramaSection = ({ title, icon, doramas, loading, error, id }) => {
 const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // ✅ (ADICIONADO) para capturar ?src=
 
   // ✅ (ADICIONADO) Pixel ID e chave do "dedupe" de Purchase
   const META_PIXEL_ID = "1424314778637167";
   const PURCHASE_SESSION_KEY = `dp_purchase_tracked_${META_PIXEL_ID}`;
+
+  // ✅ (ADICIONADO) captura o parâmetro src (ex.: ?src=ads) e salva no localStorage
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(location.search);
+      const src = (params.get("src") || "").trim().toLowerCase();
+      if (src) {
+        localStorage.setItem("dp_traffic_src", src);
+        localStorage.setItem("dp_traffic_src_ts", String(Date.now()));
+      }
+    } catch {}
+  }, [location.search]);
 
   const [doramas, setDoramas] = useState({
     featured: [],
