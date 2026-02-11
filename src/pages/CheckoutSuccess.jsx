@@ -113,12 +113,11 @@ const CheckoutSuccess = () => {
   }, [canVerify, navigate]);
 
   useEffect(() => {
-    // ✅ dispara Purchase no front assim que cair na página (não depende da verificação)
+    // ✅ NÃO dispara Purchase no front (Purchase fica SOMENTE no BACKEND/CAPI)
     if (canVerify) {
-      sendPurchasePixelOnce();
       verifyPayment();
     }
-  }, [canVerify, verifyPayment, sendPurchasePixelOnce]);
+  }, [canVerify, verifyPayment]);
 
   const titleText = useMemo(() => {
     if (verified) return "Assinatura Confirmada!";
