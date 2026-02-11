@@ -200,11 +200,19 @@ const SubscriptionPlans = () => {
         return;
       }
 
-      // ✅ (NOVO) pega a origem do tráfego pela URL: /plans?src=ads | /plans?src=org
+      // ✅ (AJUSTE MÍNIMO) origem do tráfego:
+      // 1) prioriza o que o Dashboard salvou (ex.: "ads" / "org")
+      // 2) fallback pro /plans?src=...
+      // 3) fallback "direct"
       let source = 'direct';
       try {
-        const params = new URLSearchParams(window.location.search);
-        source = (params.get('src') || 'direct').toLowerCase();
+        const fromLocal = (localStorage.getItem('dp_traffic_src') || '').trim().toLowerCase();
+        if (fromLocal) {
+          source = fromLocal;
+        } else {
+          const params = new URLSearchParams(window.location.search);
+          source = (params.get('src') || 'direct').toLowerCase();
+        }
       } catch {}
 
       // ✅ dispara InitiateCheckout no clique do Pix
