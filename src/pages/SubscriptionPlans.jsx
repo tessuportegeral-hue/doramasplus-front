@@ -206,12 +206,15 @@ const SubscriptionPlans = () => {
       // 3) fallback "direct"
       let source = 'direct';
       try {
-        const fromLocal = (localStorage.getItem('dp_traffic_src') || '').trim().toLowerCase();
+        const fromLocal = (localStorage.getItem('dp_traffic_src') || '')
+          .trim()
+          .toLowerCase();
+
         if (fromLocal) {
           source = fromLocal;
         } else {
           const params = new URLSearchParams(window.location.search);
-          source = (params.get('src') || 'direct').toLowerCase();
+          source = ((params.get('src') || '')).trim().toLowerCase() || 'direct';
         }
       } catch {}
 
