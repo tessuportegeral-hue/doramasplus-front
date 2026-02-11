@@ -1,9 +1,10 @@
 // src/pages/ComoFunciona.jsx
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function ComoFunciona() {
   const navigate = useNavigate();
+  const location = useLocation(); // ✅ (ADICIONADO) pra capturar ?src=
   const videoRef = useRef(null);
   const [showUnmute, setShowUnmute] = useState(true);
 
@@ -18,6 +19,19 @@ export default function ComoFunciona() {
       console.error("[pixel] PageView ComoFunciona error:", e);
     }
   }, []);
+
+  // ✅ (ADICIONADO) captura o parâmetro src (ex.: ?src=ads) e salva no localStorage
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(location.search);
+      const src = (params.get("src") || "").trim().toLowerCase();
+      if (src) {
+        localStorage.setItem("dp_traffic_src", src);
+        localStorage.setItem("dp_traffic_src_ts", String(Date.now()));
+      }
+    } catch {}
+  }, [location.search]);
 
   // 🎬 Vídeo
   const videoSrc =
@@ -91,16 +105,21 @@ export default function ComoFunciona() {
             >
               <div style={styles.unmuteBox}>
                 <div style={styles.unmuteTitle}>🔊 O vídeo já começou</div>
-                <div style={styles.unmuteSub}>
-                  Toque aqui para ativar o som
-                </div>
+                <div style={styles.unmuteSub}>Toque aqui para ativar o som</div>
               </div>
             </button>
           )}
         </div>
 
         {/* CTA */}
-        <button style={styles.cta} onClick={() => navigate("/teste-gratis")}>
+        <button
+          style={styles.cta}
+          onClick={() =>
+            navigate(
+              `/teste-gratis${location.search ? location.search : ""}` // ✅ (ADICIONADO) mantém ?src=ads
+            )
+          }
+        >
           Quero fazer o teste grátis
         </button>
 
