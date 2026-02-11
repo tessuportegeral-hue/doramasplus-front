@@ -201,20 +201,27 @@ const SubscriptionPlans = () => {
       }
 
       // ✅ (AJUSTE MÍNIMO) origem do tráfego:
-      // 1) prioriza o que o Dashboard salvou (ex.: "ads" / "org")
-      // 2) fallback pro /plans?src=...
+      // 1) prioriza /plans?src=...
+      // 2) senão usa localStorage dp_traffic_src (mas só se for recente)
       // 3) fallback "direct"
       let source = 'direct';
       try {
-        const fromLocal = (localStorage.getItem('dp_traffic_src') || '')
-          .trim()
-          .toLowerCase();
+        const params = new URLSearchParams(window.location.search);
+        const fromUrl = (params.get('src') || '').trim().toLowerCase();
 
-        if (fromLocal) {
-          source = fromLocal;
+        if (fromUrl) {
+          source = fromUrl;
         } else {
-          const params = new URLSearchParams(window.location.search);
-          source = ((params.get('src') || '')).trim().toLowerCase() || 'direct';
+          const fromLocal = (localStorage.getItem('dp_traffic_src') || '')
+            .trim()
+            .toLowerCase();
+
+          const ts = Number(localStorage.getItem('dp_traffic_src_ts') || '0');
+
+          // considera válido por 7 dias
+          const isFresh = ts && Date.now() - ts < 7 * 24 * 60 * 60 * 1000;
+
+          if (fromLocal && isFresh) source = fromLocal;
         }
       } catch {}
 
