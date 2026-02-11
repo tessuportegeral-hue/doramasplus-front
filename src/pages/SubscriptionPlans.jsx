@@ -200,6 +200,13 @@ const SubscriptionPlans = () => {
         return;
       }
 
+      // ✅ (NOVO) pega a origem do tráfego pela URL: /plans?src=ads | /plans?src=org
+      let source = 'direct';
+      try {
+        const params = new URLSearchParams(window.location.search);
+        source = (params.get('src') || 'direct').toLowerCase();
+      } catch {}
+
       // ✅ dispara InitiateCheckout no clique do Pix
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
@@ -211,7 +218,7 @@ const SubscriptionPlans = () => {
       const { data, error } = await supabase.functions.invoke(
         'infinitepay-create-checkout',
         {
-          body: { plan: planType, event_id },
+          body: { plan: planType, event_id, source },
         }
       );
 
