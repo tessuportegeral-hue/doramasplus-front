@@ -74,9 +74,9 @@ const Signup = () => {
       return;
     }
 
-    // ✅ validação leve do telefone (não trava, só guia)
+    // ✅ AGORA OBRIGATÓRIO: valida sempre
     const phoneDigits = normalizePhone(formData.phone);
-    if (formData.phone && phoneDigits.length < 10) {
+    if (phoneDigits.length < 10) {
       toast({
         title: 'WhatsApp inválido',
         description: 'Digite seu WhatsApp com DDD. Ex: (11) 99999-9999',
@@ -94,7 +94,7 @@ const Signup = () => {
 
       if (error) throw error;
 
-      // ✅ NOVO: salva phone no profile (não quebra o signup se falhar)
+      // ✅ salva phone no profile (não quebra o signup se falhar)
       try {
         const userId = data?.user?.id || data?.session?.user?.id || null;
         if (userId && phoneDigits) {
@@ -241,6 +241,7 @@ const Signup = () => {
                     id="phone"
                     name="phone"
                     type="tel"
+                    required
                     value={formData.phone}
                     onChange={handleChange}
                     placeholder="(11) 99999-9999"
@@ -249,7 +250,7 @@ const Signup = () => {
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  Opcional agora (você pode adicionar depois).
+                  Usamos seu WhatsApp apenas para avisos e promoções.
                 </p>
               </div>
 
