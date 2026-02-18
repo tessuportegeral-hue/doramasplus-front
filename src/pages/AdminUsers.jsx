@@ -63,6 +63,15 @@ const AdminUsers = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordActionLoading, setPasswordActionLoading] = useState(false);
 
+  // ✅ NOVO: modal criar conta rápida
+  const [isQuickCreateModalOpen, setIsQuickCreateModalOpen] = useState(false);
+  const [quickCreateData, setQuickCreateData] = useState({
+    name: '',
+    phone: '',
+    password: '123456',
+  });
+  const [quickCreateLoading, setQuickCreateLoading] = useState(false);
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -432,6 +441,90 @@ const AdminUsers = () => {
     }
   };
 
+  // ✅ NOVO: criar conta rápida (Edge Function admin-quick-create-user)
+  const handleQuickCreateUser = async () => {
+    if (!quickCreateData.name?.trim() || !quickCreateData.phone?.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha nome e WhatsApp.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const pwd = String(quickCreateData.password || '').trim();
+    if (!pwd || pwd.length < 6) {
+      toast({
+        title: 'Senha inválida',
+        description: 'A senha precisa ter pelo menos 6 caracteres (ex: 123456).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setQuickCreateLoading(true);
+
+      // pega access_token do admin (JWT ligado)
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      if (sessionErr) throw sessionErr;
+
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        toast({
+          title: 'Sessão inválida',
+          description: 'Você precisa estar logado como admin (Supabase Auth). Faça login novamente.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('admin-quick-create-user', {
+        body: {
+          name: quickCreateData.name.trim(),
+          phone: quickCreateData.phone.trim(),
+          password: pwd,
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      });
+
+      if (error) throw error;
+
+      if (!data?.ok) {
+        toast({
+          title: 'Não foi possível criar',
+          description:
+            data?.error === 'already_exists'
+              ? 'Já existe usuário com esse WhatsApp.'
+              : 'Falha ao criar a conta. Veja logs da Edge Function.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Conta criada!',
+        description: 'Usuário criado com sucesso.',
+        className: 'bg-green-600 text-white',
+      });
+
+      setIsQuickCreateModalOpen(false);
+      setQuickCreateData({ name: '', phone: '', password: '123456' });
+    } catch (err) {
+      console.error('Quick create error:', err);
+      toast({
+        title: 'Erro ao criar conta',
+        description: err?.message || 'Falha ao criar conta. Verifique a Edge Function.',
+        variant: 'destructive',
+      });
+    } finally {
+      setQuickCreateLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('isAdmin');
     navigate('/admin/login');
@@ -503,10 +596,22 @@ const AdminUsers = () => {
             Gerenciar Usuários
           </h1>
 
-          <Button onClick={handleLogout} variant="destructive" size="sm">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sair
-          </Button>
+          {/* ✅ NOVO: Botão criar conta rápida + sair (mesmo lugar, sem mexer no resto) */}
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setIsQuickCreateModalOpen(true)}
+              className="bg-purple-600 hover:bg-purple-700"
+              size="sm"
+            >
+              <PlusCircle className="w-4 h-4 mr-2" />
+              Criar Conta Rápida
+            </Button>
+
+            <Button onClick={handleLogout} variant="destructive" size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sair
+            </Button>
+          </div>
         </header>
 
         <main className="max-w-7xl mx-auto">
@@ -900,6 +1005,73 @@ const AdminUsers = () => {
                   <>
                     <KeyRound className="w-4 h-4 mr-2" />
                     Alterar senha
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ NOVO: MODAL Criar Conta Rápida */}
+        <Dialog open={isQuickCreateModalOpen} onOpenChange={setIsQuickCreateModalOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-slate-100">
+            <DialogHeader>
+              <DialogTitle className="text-purple-400">
+                Criar Conta Rápida
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="grid gap-3 py-2">
+              <input
+                type="text"
+                value={quickCreateData.name}
+                onChange={(e) => setQuickCreateData((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Nome do usuário"
+                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+
+              <input
+                type="text"
+                value={quickCreateData.phone}
+                onChange={(e) => setQuickCreateData((prev) => ({ ...prev, phone: e.target.value }))}
+                placeholder="WhatsApp com DDD (ex: 11999999999)"
+                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+
+              <input
+                type="text"
+                value={quickCreateData.password}
+                onChange={(e) =>
+                  setQuickCreateData((prev) => ({ ...prev, password: e.target.value }))
+                }
+                placeholder="Senha (ex: 123456)"
+                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+
+              <p className="text-xs text-slate-500">
+                O usuário entra com <b>WhatsApp + senha</b>.
+              </p>
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancelar</Button>
+              </DialogClose>
+
+              <Button
+                onClick={handleQuickCreateUser}
+                disabled={quickCreateLoading}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {quickCreateLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="w-4 h-4 mr-2" />
+                    Criar
                   </>
                 )}
               </Button>
