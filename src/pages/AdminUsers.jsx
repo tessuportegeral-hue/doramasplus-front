@@ -113,6 +113,23 @@ const AdminUsers = () => {
     return { text: 'Ativo (Stripe)', color: 'green' };
   };
 
+  // ✅ ÚNICA CORREÇÃO: normaliza telefone BR ao colar (remove 55, junta, injeta 9 se faltar)
+  const normalizeBRPhone = (raw) => {
+    if (!raw) return '';
+    let d = String(raw).replace(/\D/g, '');
+
+    // remove DDI 55 se vier
+    if (d.startsWith('55')) d = d.slice(2);
+
+    // se vier 10 dígitos (DDD + 8 dígitos), injeta o 9 depois do DDD
+    if (d.length === 10) d = d.slice(0, 2) + '9' + d.slice(2);
+
+    // corta excesso
+    if (d.length > 11) d = d.slice(0, 11);
+
+    return d;
+  };
+
   // Busca principal (um usuário pelo email)
   const fetchUserDataAndSubs = async (email) => {
     setLoading(true);
@@ -259,8 +276,6 @@ const AdminUsers = () => {
         provider: 'manual',
         is_manual: true,
         notes: `Assinatura manual adicionada/atualizada pelo admin (PIX) – ${planName} por ${durationDays} dias.`,
-
-        // ✅ ÚNICA ADIÇÃO: marca a renovação manual no momento do upsert
         last_renewed_at: new Date().toISOString(),
       };
 
@@ -394,7 +409,6 @@ const AdminUsers = () => {
     try {
       setPasswordActionLoading(true);
 
-      // ✅ AJUSTE: pegar access_token do admin e mandar no header
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) throw sessionErr;
 
@@ -415,7 +429,7 @@ const AdminUsers = () => {
         },
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, // ajuda em alguns setups
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
       });
 
@@ -465,7 +479,6 @@ const AdminUsers = () => {
     try {
       setQuickCreateLoading(true);
 
-      // pega access_token do admin (JWT ligado)
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) throw sessionErr;
 
@@ -798,7 +811,9 @@ const AdminUsers = () => {
                             <p>
                               Início:{' '}
                               <span className="text-slate-200">
-                                {formatDate(sub.start_at || sub.current_period_start || sub.created_at)}
+                                {formatDate(
+                                  sub.start_at || sub.current_period_start || sub.created_at
+                                )}
                               </span>
                             </p>
 
@@ -1030,9 +1045,12 @@ const AdminUsers = () => {
                 type="text"
                 value={quickCreateData.phone}
                 onChange={(e) =>
-                  setQuickCreateData((prev) => ({ ...prev, phone: e.target.value }))
+                  setQuickCreateData((prev) => ({
+                    ...prev,
+                    phone: normalizeBRPhone(e.target.value), // ✅ CORREÇÃO AQUI
+                  }))
                 }
-                placeholder="WhatsApp com DDD (ex: 11999999999)"
+                placeholder="WhatsApp com DDD (ex: 85989826267)"
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
 
