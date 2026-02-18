@@ -11,7 +11,8 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [email, setEmail] = useState("");
+  // ✅ agora é campo único: email OU whatsapp
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
 
   // 👇 começa com senha escondida
@@ -43,13 +44,30 @@ const Login = () => {
     }
   };
 
+  // ✅ helper: detecta se parece whatsapp e converte pra email fake
+  const normalizeLoginToEmail = (value) => {
+    const v = String(value || "").trim();
+
+    // se já parece email, usa direto
+    if (v.includes("@")) return v.toLowerCase();
+
+    // remove tudo que não for número (permite +55, espaços, parênteses etc.)
+    const digits = v.replace(/\D/g, "");
+
+    // se não tem número suficiente, retorna como está (vai dar erro e mostrar mensagem)
+    if (digits.length < 10) return v;
+
+    // ✅ padrão do seu "email fake"
+    return `${digits}@gmail.com`.toLowerCase();
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!email || !password) {
+    if (!login || !password) {
       toast({
         title: "Atenção",
-        description: "Preencha email e senha.",
+        description: "Preencha email/WhatsApp e senha.",
         variant: "destructive",
       });
       return;
@@ -58,7 +76,9 @@ const Login = () => {
     try {
       setLoading(true);
 
-      // ✅ login
+      const email = normalizeLoginToEmail(login);
+
+      // ✅ login (sempre email+senha no Supabase)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -68,7 +88,7 @@ const Login = () => {
         console.error("Erro login:", error);
         toast({
           title: "Erro ao entrar",
-          description: "Email ou senha incorretos.",
+          description: "Login ou senha incorretos.",
           variant: "destructive",
         });
         return;
@@ -125,14 +145,14 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* EMAIL */}
+            {/* ✅ EMAIL OU WHATSAPP */}
             <div>
-              <label className="text-sm mb-1 block">Email</label>
+              <label className="text-sm mb-1 block">Email ou WhatsApp</label>
               <Input
-                type="email"
-                placeholder="Digite seu email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                placeholder="Digite seu email ou WhatsApp com DDD"
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
                 className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
               />
             </div>
