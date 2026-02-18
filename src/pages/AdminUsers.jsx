@@ -527,7 +527,7 @@ const AdminUsers = () => {
       });
 
       setIsQuickCreateModalOpen(false);
-      setQuickCreateData({ name: '', phone: '', password: '123456', days: 30 }); // ✅ mantém padrão
+      setQuickCreateData({ name: '', phone: '', password: '123456', days: 30 });
     } catch (err) {
       console.error('Quick create error:', err);
       toast({
@@ -1049,7 +1049,7 @@ const AdminUsers = () => {
                 onChange={(e) =>
                   setQuickCreateData((prev) => ({
                     ...prev,
-                    phone: normalizeBRPhone(e.target.value),
+                    phone: normalizeBRPhone(e.target.value), // ✅ CORREÇÃO AQUI
                   }))
                 }
                 placeholder="WhatsApp com DDD (ex: 85989826267)"
@@ -1066,7 +1066,7 @@ const AdminUsers = () => {
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
 
-              {/* ✅ NOVO: botões 7/30/90 + status */}
+              {/* ✅ botões 7/30/90 */}
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1104,6 +1104,20 @@ const AdminUsers = () => {
                   90 dias
                 </button>
               </div>
+
+              {/* ✅ NOVO: campo dias personalizado */}
+              <input
+                type="number"
+                value={quickCreateData.days}
+                onChange={(e) =>
+                  setQuickCreateData((prev) => ({
+                    ...prev,
+                    days: Number(e.target.value || 0),
+                  }))
+                }
+                placeholder="Dias personalizados"
+                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
 
               <p className="text-xs text-slate-500">
                 Acesso: <b>{quickCreateData.days}</b> dias • O usuário entra com <b>WhatsApp + senha</b>.
