@@ -69,6 +69,7 @@ const AdminUsers = () => {
     name: '',
     phone: '',
     password: '123456',
+    days: 30, // ✅ NOVO
   });
   const [quickCreateLoading, setQuickCreateLoading] = useState(false);
 
@@ -497,6 +498,7 @@ const AdminUsers = () => {
           name: quickCreateData.name.trim(),
           phone: quickCreateData.phone.trim(),
           password: pwd,
+          days: Number(quickCreateData.days || 0), // ✅ NOVO
         },
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -525,7 +527,7 @@ const AdminUsers = () => {
       });
 
       setIsQuickCreateModalOpen(false);
-      setQuickCreateData({ name: '', phone: '', password: '123456' });
+      setQuickCreateData({ name: '', phone: '', password: '123456', days: 30 }); // ✅ mantém padrão
     } catch (err) {
       console.error('Quick create error:', err);
       toast({
@@ -1047,7 +1049,7 @@ const AdminUsers = () => {
                 onChange={(e) =>
                   setQuickCreateData((prev) => ({
                     ...prev,
-                    phone: normalizeBRPhone(e.target.value), // ✅ CORREÇÃO AQUI
+                    phone: normalizeBRPhone(e.target.value),
                   }))
                 }
                 placeholder="WhatsApp com DDD (ex: 85989826267)"
@@ -1064,8 +1066,47 @@ const AdminUsers = () => {
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
 
+              {/* ✅ NOVO: botões 7/30/90 + status */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickCreateData((p) => ({ ...p, days: 7 }))}
+                  className={`flex-1 text-sm px-3 py-2 rounded-md border ${
+                    quickCreateData.days === 7
+                      ? 'border-purple-500 bg-purple-600/20 text-purple-200'
+                      : 'border-slate-600 bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  7 dias
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuickCreateData((p) => ({ ...p, days: 30 }))}
+                  className={`flex-1 text-sm px-3 py-2 rounded-md border ${
+                    quickCreateData.days === 30
+                      ? 'border-purple-500 bg-purple-600/20 text-purple-200'
+                      : 'border-slate-600 bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  30 dias
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuickCreateData((p) => ({ ...p, days: 90 }))}
+                  className={`flex-1 text-sm px-3 py-2 rounded-md border ${
+                    quickCreateData.days === 90
+                      ? 'border-purple-500 bg-purple-600/20 text-purple-200'
+                      : 'border-slate-600 bg-slate-800 text-slate-200'
+                  }`}
+                >
+                  90 dias
+                </button>
+              </div>
+
               <p className="text-xs text-slate-500">
-                O usuário entra com <b>WhatsApp + senha</b>.
+                Acesso: <b>{quickCreateData.days}</b> dias • O usuário entra com <b>WhatsApp + senha</b>.
               </p>
             </div>
 
