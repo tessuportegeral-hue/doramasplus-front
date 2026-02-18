@@ -549,9 +549,7 @@ const AdminUsers = () => {
 
   const UserInfoCard = ({ profile }) => (
     <div className="bg-slate-900 p-5 rounded-lg border border-slate-800">
-      <h2 className="text-xl font-bold text-purple-400 mb-4">
-        Informações do Usuário
-      </h2>
+      <h2 className="text-xl font-bold text-purple-400 mb-4">Informações do Usuário</h2>
 
       <div className="space-y-3 text-slate-300">
         <div className="flex items-center gap-2">
@@ -591,12 +589,13 @@ const AdminUsers = () => {
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8">
-        <header className="flex justify-between items-center mb-8 max-w-7xl mx-auto">
+        {/* ✅ ÚNICA ALTERAÇÃO: header com flex-wrap + z-index pra botão não sumir */}
+        <header className="relative z-10 flex flex-wrap justify-between items-center gap-3 mb-8 max-w-7xl mx-auto">
           <h1 className="text-2xl sm:text-3xl font-bold text-purple-400">
             Gerenciar Usuários
           </h1>
 
-          {/* ✅ NOVO: Botão criar conta rápida + sair (mesmo lugar, sem mexer no resto) */}
+          {/* ✅ NOVO: Botão criar conta rápida + sair */}
           <div className="flex items-center gap-2">
             <Button
               onClick={() => setIsQuickCreateModalOpen(true)}
@@ -637,9 +636,7 @@ const AdminUsers = () => {
                         onClick={() => handleSelectSuggestion(u)}
                       >
                         <div className="font-medium">{u.email}</div>
-                        {u.name && (
-                          <div className="text-xs text-slate-400">{u.name}</div>
-                        )}
+                        {u.name && <div className="text-xs text-slate-400">{u.name}</div>}
                       </button>
                     ))}
                   </div>
@@ -703,9 +700,7 @@ const AdminUsers = () => {
 
                   <p className="text-xs text-slate-400 mt-2">
                     Usuário selecionado:{' '}
-                    <span className="font-medium text-slate-100">
-                      {userProfile.email}
-                    </span>
+                    <span className="font-medium text-slate-100">{userProfile.email}</span>
                   </p>
 
                   <Button
@@ -970,7 +965,8 @@ const AdminUsers = () => {
 
             <div className="grid gap-3 py-2">
               <p className="text-sm text-slate-300">
-                Usuário: <span className="text-slate-100 font-medium">{userProfile?.email}</span>
+                Usuário:{' '}
+                <span className="text-slate-100 font-medium">{userProfile?.email}</span>
               </p>
 
               <input
@@ -1016,16 +1012,16 @@ const AdminUsers = () => {
         <Dialog open={isQuickCreateModalOpen} onOpenChange={setIsQuickCreateModalOpen}>
           <DialogContent className="bg-slate-900 border-slate-700 text-slate-100">
             <DialogHeader>
-              <DialogTitle className="text-purple-400">
-                Criar Conta Rápida
-              </DialogTitle>
+              <DialogTitle className="text-purple-400">Criar Conta Rápida</DialogTitle>
             </DialogHeader>
 
             <div className="grid gap-3 py-2">
               <input
                 type="text"
                 value={quickCreateData.name}
-                onChange={(e) => setQuickCreateData((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) =>
+                  setQuickCreateData((prev) => ({ ...prev, name: e.target.value }))
+                }
                 placeholder="Nome do usuário"
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
@@ -1033,7 +1029,9 @@ const AdminUsers = () => {
               <input
                 type="text"
                 value={quickCreateData.phone}
-                onChange={(e) => setQuickCreateData((prev) => ({ ...prev, phone: e.target.value }))}
+                onChange={(e) =>
+                  setQuickCreateData((prev) => ({ ...prev, phone: e.target.value }))
+                }
                 placeholder="WhatsApp com DDD (ex: 11999999999)"
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
