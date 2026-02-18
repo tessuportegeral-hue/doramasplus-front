@@ -11,11 +11,10 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ agora é campo único: email OU whatsapp
-  const [login, setLogin] = useState("");
+  // ✅ Agora é 1 campo só
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
 
-  // 👇 começa com senha escondida
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +33,6 @@ const Login = () => {
       }
       return id;
     } catch (e) {
-      // Se o navegador bloquear storage (modo anônimo etc), gera um id "da sessão"
       console.warn("[device] localStorage indisponível:", e);
       const fallback =
         (typeof crypto !== "undefined" && crypto.randomUUID
@@ -44,30 +42,46 @@ const Login = () => {
     }
   };
 
-  // ✅ helper: detecta se parece whatsapp e converte pra email fake
-  const normalizeLoginToEmail = (value) => {
-    const v = String(value || "").trim();
+  const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
-    // se já parece email, usa direto
-    if (v.includes("@")) return v.toLowerCase();
+  // ✅ Converte WhatsApp em email fake
+  const normalizeIdentifierToEmail = (raw) => {
+    const v = String(raw || "").trim().toLowerCase();
+    if (!v) return "";
 
-    // remove tudo que não for número (permite +55, espaços, parênteses etc.)
-    const digits = v.replace(/\D/g, "");
+    // se já é email, usa como está
+    if (v.includes("@")) return v;
 
-    // se não tem número suficiente, retorna como está (vai dar erro e mostrar mensagem)
-    if (digits.length < 10) return v;
+    // se é telefone, limpa e converte
+    let d = digitsOnly(v);
 
-    // ✅ padrão do seu "email fake"
-    return `${digits}@gmail.com`.toLowerCase();
+    // ✅ se o cara digitar +55... remove o 55
+    if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+
+    // precisa ter pelo menos 10 dígitos (DDD + número)
+    if (d.length < 10) return "";
+
+    return `${d}@doramasplus.com`;
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!login || !password) {
+    if (!identifier || !password) {
       toast({
         title: "Atenção",
-        description: "Preencha email/WhatsApp e senha.",
+        description: "Preencha WhatsApp (ou email) e senha.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const email = normalizeIdentifierToEmail(identifier);
+
+    if (!email) {
+      toast({
+        title: "WhatsApp inválido",
+        description: "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
         variant: "destructive",
       });
       return;
@@ -76,9 +90,7 @@ const Login = () => {
     try {
       setLoading(true);
 
-      const email = normalizeLoginToEmail(login);
-
-      // ✅ login (sempre email+senha no Supabase)
+      // ✅ login
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -88,7 +100,7 @@ const Login = () => {
         console.error("Erro login:", error);
         toast({
           title: "Erro ao entrar",
-          description: "Login ou senha incorretos.",
+          description: "WhatsApp/email ou senha incorretos.",
           variant: "destructive",
         });
         return;
@@ -111,7 +123,6 @@ const Login = () => {
 
           if (sessErr) {
             console.error("[user_sessions] erro ao registrar device:", sessErr);
-            // não bloqueia o login aqui, só loga o erro
           }
         }
       } catch (e2) {
@@ -145,16 +156,20 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ✅ EMAIL OU WHATSAPP */}
+            {/* ✅ Email OU WhatsApp */}
             <div>
               <label className="text-sm mb-1 block">Email ou WhatsApp</label>
               <Input
                 type="text"
-                placeholder="Digite seu email ou WhatsApp com DDD"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
+                inputMode="numeric"
+                placeholder="Ex: 11999999999 ou email@..."
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
               />
+              <p className="text-xs text-slate-500 mt-1">
+                Se digitar WhatsApp, use com DDD (somente números).
+              </p>
             </div>
 
             {/* SENHA + OLHINHO */}
@@ -199,7 +214,6 @@ const Login = () => {
             </Button>
           </form>
 
-          {/* Esqueci a senha */}
           <Link
             to="/reset-password"
             className="block mt-4 text-sm text-purple-400 hover:underline text-center"
@@ -207,7 +221,6 @@ const Login = () => {
             Esqueci minha senha
           </Link>
 
-          {/* Criar conta */}
           <p className="text-slate-400 text-sm mt-6 text-center">
             Não tem conta?{" "}
             <Link to="/signup" className="text-purple-400 hover:underline">
