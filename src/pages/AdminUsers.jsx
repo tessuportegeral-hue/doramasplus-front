@@ -63,18 +63,14 @@ const AdminUsers = () => {
   const [newPassword, setNewPassword] = useState('');
   const [passwordActionLoading, setPasswordActionLoading] = useState(false);
 
-  // ✅ modal criar conta rápida
+  // ✅ NOVO: modal criar conta rápida
   const [isQuickCreateModalOpen, setIsQuickCreateModalOpen] = useState(false);
   const [quickCreateData, setQuickCreateData] = useState({
     name: '',
     phone: '',
     password: '123456',
-    days: 30, // ✅ já fica default em 30
   });
   const [quickCreateLoading, setQuickCreateLoading] = useState(false);
-
-  // ✅ NOVO: guarda os dados do último “criar conta rápida” pra copiar/abrir zap com msg pronta
-  const [lastQuickCreated, setLastQuickCreated] = useState(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -102,6 +98,7 @@ const AdminUsers = () => {
 
     if (!activeSub) return { text: 'Inativo', color: 'red' };
 
+    // Identificação mais segura (não depende só de type)
     const provider = (activeSub.provider || activeSub.source || '').toString().toLowerCase();
     const type = (activeSub.type || '').toString().toLowerCase();
 
@@ -116,106 +113,21 @@ const AdminUsers = () => {
     return { text: 'Ativo (Stripe)', color: 'green' };
   };
 
-  // ✅ normaliza telefone BR ao colar (remove 55, junta, injeta 9 se faltar)
+  // ✅ ÚNICA CORREÇÃO: normaliza telefone BR ao colar (remove 55, junta, injeta 9 se faltar)
   const normalizeBRPhone = (raw) => {
     if (!raw) return '';
     let d = String(raw).replace(/\D/g, '');
 
+    // remove DDI 55 se vier
     if (d.startsWith('55')) d = d.slice(2);
 
     // se vier 10 dígitos (DDD + 8 dígitos), injeta o 9 depois do DDD
     if (d.length === 10) d = d.slice(0, 2) + '9' + d.slice(2);
 
+    // corta excesso
     if (d.length > 11) d = d.slice(0, 11);
 
     return d;
-  };
-
-  // ✅ NOVO: template salvo + mensagem com DIAS
-  const ACCESS_MSG_TEMPLATE =
-    `🎉 Acesso liberado com sucesso!\n\n` +
-    `Seu cadastro na DoramasPlus já está ativo ✅\n` +
-    `⏳ Acesso válido por {DIAS} dias\n\n` +
-    `📱 Acesse agora:\n` +
-    `👉 https://www.doramasplus.com.br/login\n\n` +
-    `👤 Login: {LOGIN}\n` +
-    `🔑 Senha: {SENHA}\n\n` +
-    `🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n` +
-    `https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k\n\n` +
-    `Qualquer dúvida é só me chamar 😊\n` +
-    `*Ah, e adiciona meu número pra você ficar por dentro das novidades*`;
-
-  // ✅ NOVO: monta mensagem com base no que você digitou/selecionou
-  const buildAccessMessage = (opts = {}) => {
-    const phone = normalizeBRPhone(opts.phone ?? quickCreateData.phone ?? '');
-    const senha = String(opts.password ?? quickCreateData.password ?? '123456').trim() || '123456';
-    const dias = Number(opts.days ?? quickCreateData.days ?? 0) || 30;
-
-    return ACCESS_MSG_TEMPLATE
-      .replace('{LOGIN}', phone)
-      .replace('{SENHA}', senha)
-      .replace('{DIAS}', String(dias));
-  };
-
-  // ✅ NOVO: copiar msg
-  const copyAccessMessage = async () => {
-    try {
-      const payload = lastQuickCreated || quickCreateData;
-      const msg = buildAccessMessage(payload);
-
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(msg);
-      } else {
-        // fallback
-        const ta = document.createElement('textarea');
-        ta.value = msg;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-
-      toast({
-        title: 'Mensagem copiada!',
-        description: 'Agora é só colar no WhatsApp.',
-        className: 'bg-green-600 text-white',
-      });
-    } catch (e) {
-      console.error('copy message error:', e);
-      toast({
-        title: 'Não consegui copiar',
-        description: 'Seu navegador bloqueou a cópia. Tenta manualmente.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // ✅ NOVO: abrir WhatsApp já com msg pronta (cai direto no chat do cliente)
-  const openWhatsAppWithMessage = () => {
-    try {
-      const payload = lastQuickCreated || quickCreateData;
-      const phone = normalizeBRPhone(payload?.phone || '');
-      if (!phone) {
-        toast({
-          title: 'WhatsApp inválido',
-          description: 'Preencha o WhatsApp antes.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const msg = buildAccessMessage(payload);
-      const url = `https://wa.me/55${phone}?text=${encodeURIComponent(msg)}`;
-
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (e) {
-      console.error('open whatsapp error:', e);
-      toast({
-        title: 'Erro ao abrir WhatsApp',
-        description: 'Tenta copiar a mensagem e mandar manualmente.',
-        variant: 'destructive',
-      });
-    }
   };
 
   // Busca principal (um usuário pelo email)
@@ -474,7 +386,7 @@ const AdminUsers = () => {
     }
   };
 
-  // ✅ trocar senha direto no painel (Edge Function admin-set-password)
+  // ✅ NOVO: trocar senha direto no painel (Edge Function admin-set-password)
   const handleSetUserPassword = async () => {
     if (!userProfile?.id) {
       toast({
@@ -510,7 +422,7 @@ const AdminUsers = () => {
         return;
       }
 
-      const { error } = await supabase.functions.invoke('admin-set-password', {
+      const { data, error } = await supabase.functions.invoke('admin-set-password', {
         body: {
           user_id: userProfile.id,
           new_password: newPassword.trim(),
@@ -543,7 +455,7 @@ const AdminUsers = () => {
     }
   };
 
-  // ✅ criar conta rápida (Edge Function admin-quick-create-user)
+  // ✅ NOVO: criar conta rápida (Edge Function admin-quick-create-user)
   const handleQuickCreateUser = async () => {
     if (!quickCreateData.name?.trim() || !quickCreateData.phone?.trim()) {
       toast({
@@ -559,16 +471,6 @@ const AdminUsers = () => {
       toast({
         title: 'Senha inválida',
         description: 'A senha precisa ter pelo menos 6 caracteres (ex: 123456).',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const days = Number(quickCreateData.days || 0);
-    if (!days || days <= 0) {
-      toast({
-        title: 'Dias inválidos',
-        description: 'Informe quantos dias de acesso (ex: 7, 30, 90).',
         variant: 'destructive',
       });
       return;
@@ -590,12 +492,10 @@ const AdminUsers = () => {
         return;
       }
 
-      const phoneNorm = normalizeBRPhone(quickCreateData.phone.trim());
-
       const { data, error } = await supabase.functions.invoke('admin-quick-create-user', {
         body: {
           name: quickCreateData.name.trim(),
-          phone: phoneNorm,
+          phone: quickCreateData.phone.trim(),
           password: pwd,
         },
         headers: {
@@ -618,55 +518,14 @@ const AdminUsers = () => {
         return;
       }
 
-      // ✅ cria/atualiza assinatura manual automaticamente com os DIAS escolhidos
-      try {
-        const userId = data?.user_id;
-        if (userId) {
-          const startDate = new Date();
-          const endDate = new Date(startDate);
-          endDate.setDate(endDate.getDate() + days);
-
-          const planName =
-            days === 90 ? 'DoramasPlus Trimestral' : days === 7 ? 'DoramasPlus 7 Dias' : 'DoramasPlus Padrão';
-
-          const upsertData = {
-            user_id: userId,
-            type: 'manual',
-            status: 'active',
-            start_at: startDate.toISOString(),
-            end_at: endDate.toISOString(),
-            current_period_start: startDate.toISOString(),
-            current_period_end: endDate.toISOString(),
-            plan_name: planName,
-            plan_interval: `${days}d`,
-            source: 'admin_quick_create',
-            provider: 'manual',
-            is_manual: true,
-            notes: `Assinatura manual adicionada/atualizada pelo admin (Conta Rápida) – ${planName} por ${days} dias.`,
-            last_renewed_at: new Date().toISOString(),
-          };
-
-          await supabase.from('subscriptions').upsert(upsertData, { onConflict: 'user_id' });
-        }
-      } catch (e) {
-        console.error('[quick-create] assinatura manual falhou:', e);
-      }
-
       toast({
         title: 'Conta criada!',
         description: 'Usuário criado com sucesso.',
         className: 'bg-green-600 text-white',
       });
 
-      // ✅ guarda pra você clicar “Abrir WhatsApp” e já cair no chat com msg pronta
-      setLastQuickCreated({
-        name: quickCreateData.name.trim(),
-        phone: phoneNorm,
-        password: pwd,
-        days,
-      });
-
-      // mantém modal aberto pra você usar os botões (copiar / abrir whatsapp)
+      setIsQuickCreateModalOpen(false);
+      setQuickCreateData({ name: '', phone: '', password: '123456' });
     } catch (err) {
       console.error('Quick create error:', err);
       toast({
@@ -743,17 +602,16 @@ const AdminUsers = () => {
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8">
+        {/* ✅ ÚNICA ALTERAÇÃO: header com flex-wrap + z-index pra botão não sumir */}
         <header className="relative z-10 flex flex-wrap justify-between items-center gap-3 mb-8 max-w-7xl mx-auto">
           <h1 className="text-2xl sm:text-3xl font-bold text-purple-400">
             Gerenciar Usuários
           </h1>
 
+          {/* ✅ NOVO: Botão criar conta rápida + sair */}
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => {
-                setIsQuickCreateModalOpen(true);
-                setLastQuickCreated(null);
-              }}
+              onClick={() => setIsQuickCreateModalOpen(true)}
               className="bg-purple-600 hover:bg-purple-700"
               size="sm"
             >
@@ -769,6 +627,7 @@ const AdminUsers = () => {
         </header>
 
         <main className="max-w-7xl mx-auto">
+          {/* Busca com auto-complete */}
           <div className="bg-slate-900 p-6 rounded-lg border border-slate-800 shadow-lg mb-8">
             <div className="relative flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
@@ -841,6 +700,7 @@ const AdminUsers = () => {
               <aside className="lg:col-span-1 flex flex-col gap-6">
                 <UserInfoCard profile={userProfile} />
 
+                {/* Card senha (RECUPERAÇÃO + TROCA DIRETA) */}
                 <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
                   <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                     <Lock className="w-4 h-4 text-slate-300" />
@@ -951,7 +811,9 @@ const AdminUsers = () => {
                             <p>
                               Início:{' '}
                               <span className="text-slate-200">
-                                {formatDate(sub.start_at || sub.current_period_start || sub.created_at)}
+                                {formatDate(
+                                  sub.start_at || sub.current_period_start || sub.created_at
+                                )}
                               </span>
                             </p>
 
@@ -1161,9 +1023,10 @@ const AdminUsers = () => {
           </DialogContent>
         </Dialog>
 
-        {/* ✅ MODAL Criar Conta Rápida */}
+        {/* ✅ NOVO: MODAL Criar Conta Rápida */}
         <Dialog open={isQuickCreateModalOpen} onOpenChange={setIsQuickCreateModalOpen}>
-          <DialogContent className="bg-slate-900 border-slate-700 text-slate-100">
+          {/* ✅ ÚNICA MUDANÇA: FULLSCREEN MOBILE estilo app nativo + scroll interno */}
+          <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 w-[100vw] h-[100dvh] max-w-none rounded-none overflow-y-auto sm:w-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-lg">
             <DialogHeader>
               <DialogTitle className="text-purple-400">Criar Conta Rápida</DialogTitle>
             </DialogHeader>
@@ -1185,7 +1048,7 @@ const AdminUsers = () => {
                 onChange={(e) =>
                   setQuickCreateData((prev) => ({
                     ...prev,
-                    phone: normalizeBRPhone(e.target.value),
+                    phone: normalizeBRPhone(e.target.value), // ✅ CORREÇÃO AQUI
                   }))
                 }
                 placeholder="WhatsApp com DDD (ex: 85989826267)"
@@ -1202,90 +1065,9 @@ const AdminUsers = () => {
                 className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
 
-              {/* ✅ NOVO: botões 7/30/90 + input dias */}
-              <div className="flex flex-col gap-2 pt-2">
-                <span className="text-sm text-slate-200">Dias de acesso</span>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQuickCreateData((prev) => ({ ...prev, days: 7 }))}
-                    className={`flex-1 text-xs sm:text-sm px-3 py-2 rounded-md border ${
-                      Number(quickCreateData.days) === 7
-                        ? 'border-purple-500 bg-purple-600/20 text-purple-200'
-                        : 'border-slate-600 bg-slate-800 text-slate-200'
-                    }`}
-                  >
-                    7 dias
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setQuickCreateData((prev) => ({ ...prev, days: 30 }))}
-                    className={`flex-1 text-xs sm:text-sm px-3 py-2 rounded-md border ${
-                      Number(quickCreateData.days) === 30
-                        ? 'border-purple-500 bg-purple-600/20 text-purple-200'
-                        : 'border-slate-600 bg-slate-800 text-slate-200'
-                    }`}
-                  >
-                    30 dias
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setQuickCreateData((prev) => ({ ...prev, days: 90 }))}
-                    className={`flex-1 text-xs sm:text-sm px-3 py-2 rounded-md border ${
-                      Number(quickCreateData.days) === 90
-                        ? 'border-purple-500 bg-purple-600/20 text-purple-200'
-                        : 'border-slate-600 bg-slate-800 text-slate-200'
-                    }`}
-                  >
-                    90 dias
-                  </button>
-                </div>
-
-                <input
-                  type="number"
-                  value={quickCreateData.days}
-                  onChange={(e) =>
-                    setQuickCreateData((prev) => ({ ...prev, days: e.target.value }))
-                  }
-                  placeholder="Dias (ex: 7, 30, 90)"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-
-                <p className="text-xs text-slate-500">
-                  O usuário entra com <b>WhatsApp + senha</b>.
-                </p>
-              </div>
-
-              {/* ✅ NOVO: preview + botões (copiar / abrir whatsapp) */}
-              <div className="pt-3">
-                <p className="text-xs text-slate-500 mb-2">Mensagem que será enviada:</p>
-                <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 whitespace-pre-wrap">
-                  {buildAccessMessage(lastQuickCreated || quickCreateData)}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                  <Button
-                    type="button"
-                    onClick={copyAccessMessage}
-                    className="w-full bg-slate-800 hover:bg-slate-700"
-                    disabled={quickCreateLoading}
-                  >
-                    Copiar mensagem
-                  </Button>
-
-                  <Button
-                    type="button"
-                    onClick={openWhatsAppWithMessage}
-                    className="w-full bg-green-600 hover:bg-green-700"
-                    disabled={quickCreateLoading}
-                  >
-                    Abrir WhatsApp com mensagem
-                  </Button>
-                </div>
-              </div>
+              <p className="text-xs text-slate-500">
+                O usuário entra com <b>WhatsApp + senha</b>.
+              </p>
             </div>
 
             <DialogFooter>
