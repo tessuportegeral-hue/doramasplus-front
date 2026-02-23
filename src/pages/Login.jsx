@@ -10,9 +10,8 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ 2 campos (WhatsApp + Email)
-  const [whatsapp, setWhatsapp] = useState("");
-  const [emailInput, setEmailInput] = useState("");
+  // ✅ 1 campo: WhatsApp OU Email
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -44,14 +43,21 @@ const Login = () => {
 
   const digitsOnly = (v: any) => String(v || "").replace(/\D/g, "");
 
-  const whatsappToFakeEmail = (raw: any) => {
-    const v = String(raw || "").trim();
+  // ✅ Converte WhatsApp em email fake
+  const normalizeIdentifierToEmail = (raw: any) => {
+    const v = String(raw || "").trim().toLowerCase();
     if (!v) return "";
 
+    // se já é email, usa como está
+    if (v.includes("@")) return v;
+
+    // se é telefone, limpa e converte
     let d = digitsOnly(v);
 
+    // ✅ se o cara digitar +55... remove o 55
     if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
 
+    // precisa ter pelo menos 10 dígitos (DDD + número)
     if (d.length < 10) return "";
 
     return `${d}@doramasplus.com`;
@@ -60,40 +66,33 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const email = String(emailInput || "").trim().toLowerCase();
-    const wpp = String(whatsapp || "").trim();
-
-    if ((!email && !wpp) || !password) {
+    if (!identifier || !password) {
       toast({
         title: "Atenção",
-        description: "Preencha WhatsApp ou email e senha.",
+        description: "Preencha WhatsApp (ou email) e senha.",
         variant: "destructive",
       });
       return;
     }
 
-    // ✅ Prioriza EMAIL se foi preenchido
-    let finalEmail = "";
-    if (email) {
-      finalEmail = email;
-    } else {
-      finalEmail = whatsappToFakeEmail(wpp);
-      if (!finalEmail) {
-        toast({
-          title: "WhatsApp inválido",
-          description:
-            "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
-          variant: "destructive",
-        });
-        return;
-      }
+    const email = normalizeIdentifierToEmail(identifier);
+
+    if (!email) {
+      toast({
+        title: "WhatsApp inválido",
+        description:
+          "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
+        variant: "destructive",
+      });
+      return;
     }
 
     try {
       setLoading(true);
 
+      // ✅ login
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: finalEmail,
+        email,
         password,
       });
 
@@ -161,37 +160,26 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ✅ WhatsApp (nativo) */}
+            {/* ✅ Campo único com teclado de LETRAS no celular */}
             <div>
-              <label className="text-sm mb-1 block">WhatsApp</label>
+              <label className="text-sm mb-1 block">Email ou WhatsApp</label>
               <input
-                type="tel"
-                inputMode="numeric"
-                placeholder="Ex: 11999999999"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
+                type="text"
+                inputMode="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="Ex: 11999999999 ou email@..."
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className={inputBase}
               />
               <p className="text-xs text-slate-500 mt-1">
-                Use com DDD (somente números). Se preferir, use o email abaixo.
+                WhatsApp: use com DDD (somente números). Email: digite normal com @.
               </p>
             </div>
 
-            {/* ✅ Email (nativo) */}
-            <div>
-              <label className="text-sm mb-1 block">Email</label>
-              <input
-                type="email"
-                placeholder="Ex: email@..."
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                autoCapitalize="none"
-                autoCorrect="off"
-                className={inputBase}
-              />
-            </div>
-
-            {/* SENHA + OLHINHO (mantive seu estilo) */}
+            {/* SENHA + OLHINHO */}
             <div>
               <label className="text-sm mb-1 block">Senha</label>
               <div className="relative">
