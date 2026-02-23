@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
+import { useLocation } from "react-router-dom";
 
 const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
@@ -17,6 +18,16 @@ export default function RequirePhoneGate({ children }) {
   const auth = useAuth();
   const user = auth?.user || null;
   const loading = !!auth?.loading;
+  const location = useLocation();
+
+  // ✅ libera rotas de auth/login pra você não ficar preso
+  const path = location?.pathname || "";
+  const isAuthRoute =
+    path === "/login" ||
+    path.startsWith("/login/") ||
+    path.startsWith("/auth") ||
+    path.startsWith("/reset") ||
+    path.startsWith("/signup");
 
   const [checking, setChecking] = useState(true);
   const [needsPhone, setNeedsPhone] = useState(false);
@@ -30,7 +41,16 @@ export default function RequirePhoneGate({ children }) {
 
     const run = async () => {
       try {
-        // ✅ Enquanto auth tá carregando, NÃO libera o app antes da checagem
+        // ✅ se estiver em rota de login/auth, não gateia
+        if (isAuthRoute) {
+          if (!cancelled) {
+            setNeedsPhone(false);
+            setChecking(false);
+          }
+          return;
+        }
+
+        // ✅ Enquanto auth tá carregando, segura a tela
         if (loading) {
           if (!cancelled) setChecking(true);
           return;
@@ -38,7 +58,7 @@ export default function RequirePhoneGate({ children }) {
 
         setErrMsg("");
 
-        // ✅ Se não tem user (e loading já terminou), libera navegação
+        // ✅ Se não tem user, libera
         if (!user) {
           if (!cancelled) {
             setNeedsPhone(false);
@@ -47,7 +67,7 @@ export default function RequirePhoneGate({ children }) {
           return;
         }
 
-        // ✅ Se tem user, checa profiles.phone
+        // ✅ Checa profiles.phone
         const { data, error } = await supabase
           .from("profiles")
           .select("phone")
@@ -58,9 +78,10 @@ export default function RequirePhoneGate({ children }) {
 
         if (error) {
           console.error("[RequirePhoneGate] SELECT error:", error);
-          setErrMsg("Não consegui verificar seu WhatsApp agora. Recarregue a página.");
-          // por segurança: trava
-          setNeedsPhone(true);
+          setErrMsg(
+            "Não consegui verificar seu WhatsApp agora. Recarregue a página."
+          );
+          setNeedsPhone(true); // por segurança: trava
           setChecking(false);
           return;
         }
@@ -85,7 +106,7 @@ export default function RequirePhoneGate({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [user, loading]);
+  }, [user, loading, isAuthRoute]);
 
   const handleSave = async () => {
     try {
@@ -100,23 +121,28 @@ export default function RequirePhoneGate({ children }) {
 
       setSaving(true);
 
+      // ✅ UPSERT: cria o profile se não existir (resolve o “outro email” travado)
       const { error } = await supabase
         .from("profiles")
-        .update({
-          phone: normalized,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
+        .upsert(
+          {
+            id: user.id,
+            phone: normalized,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
 
       if (error) {
-        console.error("[RequirePhoneGate] UPDATE error:", error);
+        console.error("[RequirePhoneGate] UPSERT error:", error);
         setErrMsg("Não consegui salvar agora. Tente novamente.");
         return;
       }
 
-      // ✅ Revalida (pra evitar caso raro de atraso/permissão/cache)
+      // ✅ re-checa pra liberar com certeza
       setChecking(true);
       setNeedsPhone(false);
+      setPhone("");
     } catch (e) {
       console.error("[RequirePhoneGate] save exception:", e);
       setErrMsg("Erro ao salvar. Tente novamente.");
@@ -125,7 +151,15 @@ export default function RequirePhoneGate({ children }) {
     }
   };
 
-  // ✅ Enquanto checa, segura a tela (pra não “pular” e parecer que não existe gate)
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error("[RequirePhoneGate] signOut exception:", e);
+    }
+  };
+
+  // ✅ Enquanto checa, segura a tela
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
@@ -133,6 +167,9 @@ export default function RequirePhoneGate({ children }) {
       </div>
     );
   }
+
+  // ✅ se estiver em login/auth, não mostra gate
+  if (isAuthRoute) return children;
 
   if (!needsPhone) return children;
 
@@ -168,6 +205,14 @@ export default function RequirePhoneGate({ children }) {
           className="mt-4 w-full h-11 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold disabled:opacity-60"
         >
           {saving ? "Salvando..." : "Salvar e continuar"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="mt-3 w-full h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm"
+        >
+          Sair / trocar conta
         </button>
       </div>
     </div>
