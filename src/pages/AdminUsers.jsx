@@ -147,7 +147,8 @@ const AdminUsers = () => {
     `Seu cadastro na DoramasPlus já está ativo ✅\n` +
     `⏳ Acesso válido por {DIAS} dias\n\n` +
     `📱 Acesse agora:\n` +
-    `👉 https://www.doramasplus.com.br/login\n\n` +
+    `👉 https://www.doramasplus.com.br\n\n` +
+    `➡️ Depois clique no botão *Entrar* (no topo da tela) e use os dados abaixo:\n\n` +
     `👤 Login: {LOGIN}\n` +
     `🔑 Senha: {SENHA}\n\n` +
     `🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n` +
