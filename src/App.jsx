@@ -15,6 +15,9 @@ import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 
+// ✅ (NOVO) Gate obrigatório do WhatsApp/phone
+import RequirePhoneGate from '@/components/RequirePhoneGate';
+
 // ============================================================
 // Páginas (mantido exatamente como está)
 // ============================================================
@@ -238,142 +241,145 @@ function App() {
       <AuthProvider>
         <Router>
           <DeviceGuard>
-            <Routes>
-              {/* 🔓 CATÁLOGO PÚBLICO */}
-              <Route
-                path="/"
-                element={
-                  <Dashboard
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                  />
-                }
-              />
+            {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
+            <RequirePhoneGate>
+              <Routes>
+                {/* 🔓 CATÁLOGO PÚBLICO */}
+                <Route
+                  path="/"
+                  element={
+                    <Dashboard
+                      searchQuery={searchQuery}
+                      setSearchQuery={setSearchQuery}
+                    />
+                  }
+                />
 
-              {/* ✅ (ADICIONADO) Alias pra evitar bugs de código antigo que manda pra /dashboard */}
-              <Route
-                path="/dashboard"
-                element={
-                  <Dashboard
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                  />
-                }
-              />
+                {/* ✅ (ADICIONADO) Alias pra evitar bugs de código antigo que manda pra /dashboard */}
+                <Route
+                  path="/dashboard"
+                  element={
+                    <Dashboard
+                      searchQuery={searchQuery}
+                      setSearchQuery={setSearchQuery}
+                    />
+                  }
+                />
 
-              {/* ✅ (ADICIONADO) Página do vídeo (conversão) */}
-              <Route path="/como-funciona" element={<ComoFunciona />} />
+                {/* ✅ (ADICIONADO) Página do vídeo (conversão) */}
+                <Route path="/como-funciona" element={<ComoFunciona />} />
 
-              {/* Landing */}
-              <Route path="/landing" element={<Landing />} />
+                {/* Landing */}
+                <Route path="/landing" element={<Landing />} />
 
-              {/* Auth */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+                {/* Auth */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
 
-              {/* 🔓 DETALHE DO DORAMA PÚBLICO */}
-              <Route path="/dorama/:id" element={<DoramaDetail />} />
+                {/* 🔓 DETALHE DO DORAMA PÚBLICO */}
+                <Route path="/dorama/:id" element={<DoramaDetail />} />
 
-              {/* 🎬 PLAYER (gate fica DENTRO da página) */}
-              <Route path="/dorama/:id/watch" element={<DoramaWatch />} />
+                {/* 🎬 PLAYER (gate fica DENTRO da página) */}
+                <Route path="/dorama/:id/watch" element={<DoramaWatch />} />
 
-              {/* Categorias (mantidas protegidas, igual antes) */}
-              <Route
-                path="/exclusivos"
-                element={
-                  <ProtectedRoute>
-                    <ExclusiveDoramas />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/novos"
-                element={
-                  <ProtectedRoute>
-                    <NewDoramas />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/recomendados"
-                element={
-                  <ProtectedRoute>
-                    <RecommendedDoramas />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dublados"
-                element={
-                  <ProtectedRoute>
-                    <DubbedDoramas />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Categorias (mantidas protegidas, igual antes) */}
+                <Route
+                  path="/exclusivos"
+                  element={
+                    <ProtectedRoute>
+                      <ExclusiveDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/novos"
+                  element={
+                    <ProtectedRoute>
+                      <NewDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/recomendados"
+                  element={
+                    <ProtectedRoute>
+                      <RecommendedDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dublados"
+                  element={
+                    <ProtectedRoute>
+                      <DubbedDoramas />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* ✅ Planos */}
-              <Route
-                path="/plans"
-                element={
-                  <ProtectedRoute>
-                    <SubscriptionPlans />
-                  </ProtectedRoute>
-                }
-              />
+                {/* ✅ Planos */}
+                <Route
+                  path="/plans"
+                  element={
+                    <ProtectedRoute>
+                      <SubscriptionPlans />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Checkout */}
-              <Route
-                path="/checkout/sucesso"
-                element={
-                  <ProtectedRoute>
-                    <CheckoutSuccess />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/checkout/cancelado"
-                element={
-                  <ProtectedRoute>
-                    <CheckoutCanceled />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Checkout */}
+                <Route
+                  path="/checkout/sucesso"
+                  element={
+                    <ProtectedRoute>
+                      <CheckoutSuccess />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/checkout/cancelado"
+                  element={
+                    <ProtectedRoute>
+                      <CheckoutCanceled />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Outros */}
-              <Route path="/teste-bunny" element={<TesteBunny />} />
+                {/* Outros */}
+                <Route path="/teste-bunny" element={<TesteBunny />} />
 
-              {/* ADMIN */}
-              <Route path="/admin/login" element={<AdminLogin />} />
-              <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
-              <Route
-                path="/admin/analytics"
-                element={
-                  <AdminRoute>
-                    <AdminAnalytics />
-                  </AdminRoute>
-                }
-              />
-              <Route
-                path="/admin/doramas"
-                element={
-                  <AdminRoute>
-                    <AdminDoramas />
-                  </AdminRoute>
-                }
-              />
-              <Route
-                path="/admin/users"
-                element={
-                  <AdminRoute>
-                    <AdminUsers />
-                  </AdminRoute>
-                }
-              />
+                {/* ADMIN */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
+                <Route
+                  path="/admin/analytics"
+                  element={
+                    <AdminRoute>
+                      <AdminAnalytics />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/doramas"
+                  element={
+                    <AdminRoute>
+                      <AdminDoramas />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <AdminRoute>
+                      <AdminUsers />
+                    </AdminRoute>
+                  }
+                />
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </RequirePhoneGate>
           </DeviceGuard>
         </Router>
       </AuthProvider>
