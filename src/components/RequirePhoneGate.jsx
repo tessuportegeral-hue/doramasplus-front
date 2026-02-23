@@ -135,7 +135,18 @@ export default function RequirePhoneGate({ children }) {
 
       if (error) {
         console.error("[RequirePhoneGate] UPSERT error:", error);
-        setErrMsg("Não consegui salvar agora. Tente novamente.");
+
+        const msg = String(error.message || "").toLowerCase();
+        const isDup =
+          error.code === "23505" ||
+          msg.includes("duplicate") ||
+          msg.includes("unique");
+
+        setErrMsg(
+          isDup
+            ? "Esse WhatsApp já está vinculado a outra conta."
+            : `Não consegui salvar agora. ${error.message || "Tente novamente."}`
+        );
         return;
       }
 
