@@ -182,9 +182,22 @@ const Signup = () => {
             <h1 className="text-3xl font-bold text-white mb-2 text-center">
               Criar Conta
             </h1>
-            <p className="text-slate-400 text-center mb-8">
+            <p className="text-slate-400 text-center mb-4">
               Comece sua jornada nos doramas hoje mesmo
             </p>
+
+            {/* ✅ MOVIDO PRA CIMA: "Já tem uma conta? Entrar" */}
+            <div className="mb-8 text-center">
+              <p className="text-slate-400">
+                Já tem uma conta?{' '}
+                <Link
+                  to={`/login${location.search ? location.search : ''}`} // ✅ (AJUSTE MÍNIMO) mantém ?src=ads
+                  className="text-purple-400 hover:text-purple-300 font-semibold"
+                >
+                  Entrar
+                </Link>
+              </p>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
 
@@ -317,17 +330,7 @@ const Signup = () => {
               </Button>
             </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-slate-400">
-                Já tem uma conta?{' '}
-                <Link
-                  to={`/login${location.search ? location.search : ''}`} // ✅ (AJUSTE MÍNIMO) mantém ?src=ads
-                  className="text-purple-400 hover:text-purple-300 font-semibold"
-                >
-                  Entrar
-                </Link>
-              </p>
-            </div>
+            {/* ✅ REMOVIDO DAQUI: bloco "Entrar" (foi movido pra cima) */}
           </div>
         </motion.div>
       </div>
