@@ -5,24 +5,18 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
-// Normaliza telefone: aceita 11 dígitos (DDD+número) e também 13 com 55 na frente
 const normalizeBRPhone = (raw) => {
   let d = digitsOnly(raw);
-
-  // remove +55/55 se vier junto
   if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
-
-  // precisa ter pelo menos 10 (DDD+fixo) mas ideal 11 (DDD+celular)
   if (d.length < 10) return "";
-
-  // se tiver mais que 11 por algum motivo, corta no final
   if (d.length > 11) d = d.slice(-11);
-
   return d;
 };
 
 export default function RequirePhoneGate({ children }) {
-  const { user, loading } = useAuth();
+  const auth = useAuth();
+  const user = auth?.user || null;
+  const loading = !!auth?.loading;
 
   const [checking, setChecking] = useState(true);
   const [needsPhone, setNeedsPhone] = useState(false);
@@ -34,15 +28,21 @@ export default function RequirePhoneGate({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    const checkPhone = async () => {
+    const run = async () => {
       try {
+        console.log("[RequirePhoneGate] mount", { hasUser: !!user, loading });
+
         setErrMsg("");
 
-        // ainda carregando auth -> espera
-        if (loading) return;
-
-        // ✅ não logado -> não trava nada
+        // ✅ Se NÃO tem user:
+        // - se ainda está carregando auth, espera
+        // - se não está carregando, libera
         if (!user) {
+          if (loading) {
+            console.log("[RequirePhoneGate] waiting auth...");
+            return;
+          }
+          console.log("[RequirePhoneGate] no user -> free");
           if (!cancelled) {
             setNeedsPhone(false);
             setChecking(false);
@@ -50,7 +50,9 @@ export default function RequirePhoneGate({ children }) {
           return;
         }
 
-        // ✅ logado -> checa profiles.phone
+        // ✅ Se TEM user, checa profiles.phone (independente do loading)
+        console.log("[RequirePhoneGate] checking profiles.phone for user:", user.id);
+
         const { data, error } = await supabase
           .from("profiles")
           .select("phone")
@@ -60,10 +62,9 @@ export default function RequirePhoneGate({ children }) {
         if (cancelled) return;
 
         if (error) {
-          console.error("[RequirePhoneGate] erro SELECT profiles.phone:", error);
-          // Se der erro aqui, a gente NÃO libera silencioso sem você ver:
-          setErrMsg("Não consegui verificar seu WhatsApp agora. Tente recarregar a página.");
-          // por segurança, trava (gate)
+          console.error("[RequirePhoneGate] SELECT error:", error);
+          setErrMsg("Não consegui verificar seu WhatsApp agora. Recarregue a página.");
+          // por segurança: trava
           setNeedsPhone(true);
           setChecking(false);
           return;
@@ -71,6 +72,8 @@ export default function RequirePhoneGate({ children }) {
 
         const currentPhone = String(data?.phone || "").trim();
         const hasPhone = !!normalizeBRPhone(currentPhone);
+
+        console.log("[RequirePhoneGate] phone:", currentPhone, "hasPhone:", hasPhone);
 
         setNeedsPhone(!hasPhone);
         setChecking(false);
@@ -84,12 +87,13 @@ export default function RequirePhoneGate({ children }) {
       }
     };
 
-    checkPhone();
+    run();
 
+    // ✅ Se estava esperando auth (loading), tenta de novo quando mudar loading/user
     return () => {
       cancelled = true;
     };
-  }, [loading, user]);
+  }, [user, loading]);
 
   const handleSave = async () => {
     try {
@@ -100,7 +104,6 @@ export default function RequirePhoneGate({ children }) {
         setErrMsg("Digite seu WhatsApp com DDD. Ex: 11999999999");
         return;
       }
-
       if (!user) return;
 
       setSaving(true);
@@ -114,28 +117,26 @@ export default function RequirePhoneGate({ children }) {
         .eq("id", user.id);
 
       if (error) {
-        console.error("[RequirePhoneGate] erro UPDATE profiles.phone:", error);
+        console.error("[RequirePhoneGate] UPDATE error:", error);
         setErrMsg("Não consegui salvar agora. Tente novamente.");
         return;
       }
 
-      // ✅ liberou
+      console.log("[RequirePhoneGate] saved phone:", normalized);
       setNeedsPhone(false);
     } catch (e) {
-      console.error("[RequirePhoneGate] exception save:", e);
+      console.error("[RequirePhoneGate] save exception:", e);
       setErrMsg("Erro ao salvar. Tente novamente.");
     } finally {
       setSaving(false);
     }
   };
 
-  // Enquanto checa, deixa carregando
+  // Enquanto checa, NÃO muda nada na navegação (mas agora a checagem roda de verdade)
   if (checking) return children;
 
-  // Se não precisa de phone, libera tudo
   if (!needsPhone) return children;
 
-  // ✅ Gate bloqueando tudo
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
       <div className="max-w-md w-full bg-slate-900/95 p-6 rounded-2xl border border-slate-800 shadow-lg">
@@ -144,8 +145,8 @@ export default function RequirePhoneGate({ children }) {
         </h1>
 
         <p className="text-slate-300 text-sm">
-          Para continuar assistindo e receber avisos, informe seu WhatsApp com DDD.
-          Isso é rápido e você só faz uma vez.
+          Para continuar usando a plataforma, informe seu WhatsApp com DDD.
+          Você só faz isso uma vez.
         </p>
 
         <div className="mt-4">
