@@ -81,7 +81,8 @@ const Login = () => {
     if (!email) {
       toast({
         title: "WhatsApp inválido",
-        description: "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
+        description:
+          "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
         variant: "destructive",
       });
       return;
@@ -142,6 +143,9 @@ const Login = () => {
     }
   };
 
+  // ✅ inputMode inteligente: se parecer email, libera teclado de email no celular
+  const looksLikeEmail = /[a-zA-Z@._-]/.test(identifier);
+
   return (
     <>
       <Helmet>
@@ -161,7 +165,7 @@ const Login = () => {
               <label className="text-sm mb-1 block">Email ou WhatsApp</label>
               <Input
                 type="text"
-                inputMode="numeric"
+                inputMode={looksLikeEmail ? "email" : "numeric"}
                 placeholder="Ex: 11999999999 ou email@..."
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
