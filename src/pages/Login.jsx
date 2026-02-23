@@ -11,8 +11,9 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Agora é 1 campo só
-  const [identifier, setIdentifier] = useState("");
+  // ✅ Agora são 2 campos (WhatsApp + Email)
+  const [whatsapp, setWhatsapp] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -42,17 +43,13 @@ const Login = () => {
     }
   };
 
-  const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
+  const digitsOnly = (v: any) => String(v || "").replace(/\D/g, "");
 
   // ✅ Converte WhatsApp em email fake
-  const normalizeIdentifierToEmail = (raw) => {
-    const v = String(raw || "").trim().toLowerCase();
+  const whatsappToFakeEmail = (raw: any) => {
+    const v = String(raw || "").trim();
     if (!v) return "";
 
-    // se já é email, usa como está
-    if (v.includes("@")) return v;
-
-    // se é telefone, limpa e converte
     let d = digitsOnly(v);
 
     // ✅ se o cara digitar +55... remove o 55
@@ -64,28 +61,36 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!identifier || !password) {
+    const email = String(emailInput || "").trim().toLowerCase();
+    const wpp = String(whatsapp || "").trim();
+
+    if ((!email && !wpp) || !password) {
       toast({
         title: "Atenção",
-        description: "Preencha WhatsApp (ou email) e senha.",
+        description: "Preencha WhatsApp ou email e senha.",
         variant: "destructive",
       });
       return;
     }
 
-    const email = normalizeIdentifierToEmail(identifier);
-
-    if (!email) {
-      toast({
-        title: "WhatsApp inválido",
-        description:
-          "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
-        variant: "destructive",
-      });
-      return;
+    // ✅ Prioriza EMAIL se foi preenchido
+    let finalEmail = "";
+    if (email) {
+      finalEmail = email;
+    } else {
+      finalEmail = whatsappToFakeEmail(wpp);
+      if (!finalEmail) {
+        toast({
+          title: "WhatsApp inválido",
+          description:
+            "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     try {
@@ -93,7 +98,7 @@ const Login = () => {
 
       // ✅ login
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: finalEmail,
         password,
       });
 
@@ -143,9 +148,6 @@ const Login = () => {
     }
   };
 
-  // ✅ inputMode inteligente: se parecer email, libera teclado de email no celular
-  const looksLikeEmail = /[a-zA-Z@._-]/.test(identifier);
-
   return (
     <>
       <Helmet>
@@ -160,20 +162,35 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ✅ Email OU WhatsApp */}
+            {/* ✅ WhatsApp */}
             <div>
-              <label className="text-sm mb-1 block">Email ou WhatsApp</label>
+              <label className="text-sm mb-1 block">WhatsApp</label>
               <Input
-                type="text"
-                inputMode={looksLikeEmail ? "email" : "numeric"}
-                placeholder="Ex: 11999999999 ou email@..."
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                type="tel"
+                inputMode="numeric"
+                placeholder="Ex: 11999999999"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
                 className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Se digitar WhatsApp, use com DDD (somente números).
+                Use com DDD (somente números). Se preferir, use o email abaixo.
               </p>
+            </div>
+
+            {/* ✅ Email */}
+            <div>
+              <label className="text-sm mb-1 block">Email</label>
+              <Input
+                type="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="Ex: email@..."
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
+              />
             </div>
 
             {/* SENHA + OLHINHO */}
