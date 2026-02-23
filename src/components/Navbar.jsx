@@ -431,12 +431,30 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
             )}
           </div>
 
-          <button
-            className="md:hidden text-slate-300 hover:text-white"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {/* ✅ ÚNICA ALTERAÇÃO: no mobile, mostrar Entrar/Cadastrar no topo */}
+          <div className="md:hidden flex items-center gap-2">
+            {!isAuthenticated && (
+              <>
+                <Link to="/login">
+                  <Button variant="ghost" className="h-9 px-3">
+                    Entrar
+                  </Button>
+                </Link>
+                <Link to="/signup">
+                  <Button className="h-9 px-3 bg-purple-600 hover:bg-purple-700">
+                    Cadastrar
+                  </Button>
+                </Link>
+              </>
+            )}
+
+            <button
+              className="text-slate-300 hover:text-white"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </div>
 
