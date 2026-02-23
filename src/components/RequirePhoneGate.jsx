@@ -30,19 +30,16 @@ export default function RequirePhoneGate({ children }) {
 
     const run = async () => {
       try {
-        console.log("[RequirePhoneGate] mount", { hasUser: !!user, loading });
+        // ✅ Enquanto auth tá carregando, NÃO libera o app antes da checagem
+        if (loading) {
+          if (!cancelled) setChecking(true);
+          return;
+        }
 
         setErrMsg("");
 
-        // ✅ Se NÃO tem user:
-        // - se ainda está carregando auth, espera
-        // - se não está carregando, libera
+        // ✅ Se não tem user (e loading já terminou), libera navegação
         if (!user) {
-          if (loading) {
-            console.log("[RequirePhoneGate] waiting auth...");
-            return;
-          }
-          console.log("[RequirePhoneGate] no user -> free");
           if (!cancelled) {
             setNeedsPhone(false);
             setChecking(false);
@@ -50,9 +47,7 @@ export default function RequirePhoneGate({ children }) {
           return;
         }
 
-        // ✅ Se TEM user, checa profiles.phone (independente do loading)
-        console.log("[RequirePhoneGate] checking profiles.phone for user:", user.id);
-
+        // ✅ Se tem user, checa profiles.phone
         const { data, error } = await supabase
           .from("profiles")
           .select("phone")
@@ -73,8 +68,6 @@ export default function RequirePhoneGate({ children }) {
         const currentPhone = String(data?.phone || "").trim();
         const hasPhone = !!normalizeBRPhone(currentPhone);
 
-        console.log("[RequirePhoneGate] phone:", currentPhone, "hasPhone:", hasPhone);
-
         setNeedsPhone(!hasPhone);
         setChecking(false);
       } catch (e) {
@@ -89,7 +82,6 @@ export default function RequirePhoneGate({ children }) {
 
     run();
 
-    // ✅ Se estava esperando auth (loading), tenta de novo quando mudar loading/user
     return () => {
       cancelled = true;
     };
@@ -122,7 +114,8 @@ export default function RequirePhoneGate({ children }) {
         return;
       }
 
-      console.log("[RequirePhoneGate] saved phone:", normalized);
+      // ✅ Revalida (pra evitar caso raro de atraso/permissão/cache)
+      setChecking(true);
       setNeedsPhone(false);
     } catch (e) {
       console.error("[RequirePhoneGate] save exception:", e);
@@ -132,8 +125,14 @@ export default function RequirePhoneGate({ children }) {
     }
   };
 
-  // Enquanto checa, NÃO muda nada na navegação (mas agora a checagem roda de verdade)
-  if (checking) return children;
+  // ✅ Enquanto checa, segura a tela (pra não “pular” e parecer que não existe gate)
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
+        <div className="text-slate-300 text-sm">Carregando...</div>
+      </div>
+    );
+  }
 
   if (!needsPhone) return children;
 
