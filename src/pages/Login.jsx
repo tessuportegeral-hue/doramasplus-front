@@ -3,7 +3,6 @@ import { Helmet } from "react-helmet";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 
@@ -11,7 +10,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ Agora são 2 campos (WhatsApp + Email)
+  // ✅ 2 campos (WhatsApp + Email)
   const [whatsapp, setWhatsapp] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [password, setPassword] = useState("");
@@ -45,17 +44,14 @@ const Login = () => {
 
   const digitsOnly = (v: any) => String(v || "").replace(/\D/g, "");
 
-  // ✅ Converte WhatsApp em email fake
   const whatsappToFakeEmail = (raw: any) => {
     const v = String(raw || "").trim();
     if (!v) return "";
 
     let d = digitsOnly(v);
 
-    // ✅ se o cara digitar +55... remove o 55
     if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
 
-    // precisa ter pelo menos 10 dígitos (DDD + número)
     if (d.length < 10) return "";
 
     return `${d}@doramasplus.com`;
@@ -96,7 +92,6 @@ const Login = () => {
     try {
       setLoading(true);
 
-      // ✅ login
       const { data, error } = await supabase.auth.signInWithPassword({
         email: finalEmail,
         password,
@@ -148,6 +143,10 @@ const Login = () => {
     }
   };
 
+  const inputBase =
+    "w-full h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 rounded-md px-3 " +
+    "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
+
   return (
     <>
       <Helmet>
@@ -162,47 +161,46 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ✅ WhatsApp */}
+            {/* ✅ WhatsApp (nativo) */}
             <div>
               <label className="text-sm mb-1 block">WhatsApp</label>
-              <Input
+              <input
                 type="tel"
                 inputMode="numeric"
                 placeholder="Ex: 11999999999"
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
-                className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
+                className={inputBase}
               />
               <p className="text-xs text-slate-500 mt-1">
                 Use com DDD (somente números). Se preferir, use o email abaixo.
               </p>
             </div>
 
-            {/* ✅ Email */}
+            {/* ✅ Email (nativo) */}
             <div>
               <label className="text-sm mb-1 block">Email</label>
-              <Input
+              <input
                 type="email"
-                inputMode="email"
-                autoCapitalize="none"
-                autoCorrect="off"
                 placeholder="Ex: email@..."
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
+                autoCapitalize="none"
+                autoCorrect="off"
+                className={inputBase}
               />
             </div>
 
-            {/* SENHA + OLHINHO */}
+            {/* SENHA + OLHINHO (mantive seu estilo) */}
             <div>
               <label className="text-sm mb-1 block">Senha</label>
               <div className="relative">
-                <Input
+                <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Digite sua senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 text-base pr-10 bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500"
+                  className={inputBase + " pr-10"}
                 />
 
                 <button
