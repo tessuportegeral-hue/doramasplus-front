@@ -41,10 +41,10 @@ const Login = () => {
     }
   };
 
-  const digitsOnly = (v: any) => String(v || "").replace(/\D/g, "");
+  const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
   // ✅ Converte WhatsApp em email fake
-  const normalizeIdentifierToEmail = (raw: any) => {
+  const normalizeIdentifierToEmail = (raw) => {
     const v = String(raw || "").trim().toLowerCase();
     if (!v) return "";
 
@@ -63,7 +63,7 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
     if (!identifier || !password) {
