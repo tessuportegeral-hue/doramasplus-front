@@ -1,3 +1,4 @@
+// src/pages/AdminSupport.jsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -7,27 +8,68 @@ export default function AdminSupport() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
 
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
   useEffect(() => {
     loadConversations();
   }, []);
 
   async function loadConversations() {
-    const { data } = await supabase
-      .from("conversations")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    try {
+      setError("");
+      setLoadingConvs(true);
 
-    setConversations(data || []);
+      const { data, error } = await supabase
+        .from("conversations")
+        .select("*")
+        .order("updated_at", { ascending: false });
+
+      if (error) {
+        console.error("[AdminSupport] loadConversations error:", error);
+        setError(error.message || "Erro ao carregar conversas");
+        setConversations([]);
+        return;
+      }
+
+      setConversations(data || []);
+    } catch (e) {
+      console.error("[AdminSupport] loadConversations exception:", e);
+      setError(String(e?.message || e));
+      setConversations([]);
+    } finally {
+      setLoadingConvs(false);
+    }
   }
 
   async function loadMessages(id) {
-    const { data } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: true });
+    try {
+      setError("");
+      setLoadingMsgs(true);
 
-    setMessages(data || []);
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("[AdminSupport] loadMessages error:", error);
+        setError(error.message || "Erro ao carregar mensagens");
+        setMessages([]);
+        return;
+      }
+
+      setMessages(data || []);
+    } catch (e) {
+      console.error("[AdminSupport] loadMessages exception:", e);
+      setError(String(e?.message || e));
+      setMessages([]);
+    } finally {
+      setLoadingMsgs(false);
+    }
   }
 
   function openChat(conv) {
@@ -36,87 +78,200 @@ export default function AdminSupport() {
   }
 
   async function sendMessage() {
-    if (!text.trim()) return;
+    if (!selected) return;
+    const msg = text.trim();
+    if (!msg) return;
 
-    await supabase.functions.invoke("whatsapp-send-human", {
-      body: {
-        conversation_id: selected.id,
-        phone: selected.phone_number,
-        text,
-      },
-    });
+    try {
+      setSending(true);
+      setError("");
 
-    setText("");
-    loadMessages(selected.id);
+      const { data, error } = await supabase.functions.invoke(
+        "whatsapp-send-human",
+        {
+          body: {
+            conversation_id: selected.id,
+            phone: selected.phone_number,
+            text: msg,
+          },
+        }
+      );
+
+      if (error) {
+        console.error("[AdminSupport] sendMessage invoke error:", error);
+        setError(error.message || "Erro ao enviar mensagem");
+        return;
+      }
+
+      if (!data?.ok) {
+        setError(data?.error || "Falha ao enviar mensagem");
+        return;
+      }
+
+      setText("");
+      await loadMessages(selected.id);
+      await loadConversations();
+    } finally {
+      setSending(false);
+    }
   }
 
   async function setStatus(status) {
-    await supabase.functions.invoke("whatsapp-set-status", {
-      body: {
-        conversation_id: selected.id,
-        status,
-      },
-    });
+    if (!selected) return;
 
-    loadConversations();
+    try {
+      setError("");
+
+      const { data, error } = await supabase.functions.invoke(
+        "whatsapp-set-status",
+        {
+          body: {
+            conversation_id: selected.id,
+            status,
+          },
+        }
+      );
+
+      if (error) {
+        console.error("[AdminSupport] setStatus invoke error:", error);
+        setError(error.message || "Erro ao alterar status");
+        return;
+      }
+
+      if (!data?.ok) {
+        setError(data?.error || "Falha ao alterar status");
+        return;
+      }
+
+      await loadConversations();
+      // atualiza o selected na tela (status/step)
+      setSelected((prev) =>
+        prev ? { ...prev, status, current_step: status === "bot" ? "menu" : "humano" } : prev
+      );
+    } catch (e) {
+      setError(String(e?.message || e));
+    }
   }
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       {/* LISTA */}
-      <div style={{ width: 350, borderRight: "1px solid #ddd" }}>
-        {conversations.map((c) => (
-          <div
-            key={c.id}
-            onClick={() => openChat(c)}
-            style={{
-              padding: 10,
-              borderBottom: "1px solid #eee",
-              cursor: "pointer",
-            }}
-          >
-            <div>{c.phone_number}</div>
-            <small>Status: {c.status}</small>
+      <div style={{ width: 360, borderRight: "1px solid #2a2a2a" }}>
+        <div style={{ padding: 12, borderBottom: "1px solid #2a2a2a" }}>
+          <div style={{ fontWeight: 700 }}>Atendimento WhatsApp</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            /admin/support
           </div>
-        ))}
+
+          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+            <button onClick={loadConversations} style={{ padding: "6px 10px" }}>
+              Atualizar
+            </button>
+          </div>
+
+          {error ? (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#ff6b6b" }}>
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ overflowY: "auto", height: "calc(100vh - 70px)" }}>
+          {loadingConvs ? (
+            <div style={{ padding: 12, opacity: 0.8 }}>Carregando conversas…</div>
+          ) : conversations.length === 0 ? (
+            <div style={{ padding: 12, opacity: 0.8 }}>
+              Nenhuma conversa ainda.
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                Se isso for inesperado, pode ser RLS/policy bloqueando o SELECT.
+              </div>
+            </div>
+          ) : (
+            conversations.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => openChat(c)}
+                style={{
+                  padding: 12,
+                  borderBottom: "1px solid #1f1f1f",
+                  cursor: "pointer",
+                  background:
+                    selected?.id === c.id ? "rgba(255,255,255,0.06)" : "transparent",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontWeight: 600 }}>{c.phone_number}</div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>
+                    {c.status || "bot"}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                  step: {c.current_step || "—"}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* CHAT */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {selected && (
-          <>
-            <div style={{ padding: 10, borderBottom: "1px solid #ddd" }}>
-              <b>{selected.phone_number}</b>
+        <div style={{ padding: 12, borderBottom: "1px solid #2a2a2a" }}>
+          {selected ? (
+            <>
+              <div style={{ fontWeight: 700 }}>{selected.phone_number}</div>
+              <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
+              </div>
 
-              <div style={{ marginTop: 5 }}>
-                <button onClick={() => setStatus("humano")}>
+              <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                <button onClick={() => setStatus("humano")} style={{ padding: "6px 10px" }}>
                   Assumir Humano
                 </button>
-
-                <button onClick={() => setStatus("bot")}>
+                <button onClick={() => setStatus("bot")} style={{ padding: "6px 10px" }}>
                   Voltar Bot
                 </button>
               </div>
-            </div>
+            </>
+          ) : (
+            <div style={{ opacity: 0.8 }}>Selecione uma conversa na esquerda.</div>
+          )}
+        </div>
 
-            <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
-              {messages.map((m) => (
-                <div key={m.id} style={{ marginBottom: 10 }}>
-                  <b>{m.direction}</b>: {m.body}
-                </div>
-              ))}
-            </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+          {!selected ? null : loadingMsgs ? (
+            <div style={{ opacity: 0.8 }}>Carregando mensagens…</div>
+          ) : messages.length === 0 ? (
+            <div style={{ opacity: 0.8 }}>Sem mensagens nessa conversa.</div>
+          ) : (
+            messages.map((m) => (
+              <div key={m.id} style={{ marginBottom: 10 }}>
+                <b style={{ fontSize: 12, opacity: 0.85 }}>{m.direction}</b>:{" "}
+                <span>{m.body}</span>
+              </div>
+            ))
+          )}
+        </div>
 
-            <div style={{ padding: 10, borderTop: "1px solid #ddd" }}>
-              <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                style={{ width: "80%" }}
-              />
-              <button onClick={sendMessage}>Enviar</button>
-            </div>
-          </>
-        )}
+        {selected ? (
+          <div style={{ padding: 12, borderTop: "1px solid #2a2a2a", display: "flex", gap: 8 }}>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Digite sua resposta…"
+              style={{ flex: 1, padding: 8 }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+            />
+            <button onClick={sendMessage} disabled={sending} style={{ padding: "8px 12px" }}>
+              {sending ? "Enviando…" : "Enviar"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
