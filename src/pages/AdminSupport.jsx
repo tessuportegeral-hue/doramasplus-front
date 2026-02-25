@@ -13,8 +13,53 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ força o PostgREST a ler do schema whatsapp (compatível mesmo sem supabase.schema())
-  const WHATSAPP_PROFILE_HEADERS = { "Accept-Profile": "whatsapp" };
+  // ✅ PostgREST direto (compatível com qualquer versão do supabase-js)
+  const SUPABASE_URL =
+    import.meta?.env?.VITE_SUPABASE_URL || import.meta?.env?.VITE_PUBLIC_SUPABASE_URL || "";
+  const SUPABASE_ANON_KEY =
+    import.meta?.env?.VITE_SUPABASE_ANON_KEY || import.meta?.env?.VITE_PUBLIC_SUPABASE_ANON_KEY || "";
+
+  async function restGet(pathWithQuery) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error("VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não encontrado no frontend");
+    }
+
+    // Se tiver usuário logado, usa o access_token (melhor pra RLS / policies)
+    let token = SUPABASE_ANON_KEY;
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access = data?.session?.access_token;
+      if (access) token = access;
+    } catch {}
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathWithQuery}`, {
+      method: "GET",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+        "Accept-Profile": "whatsapp",
+        Prefer: "count=exact",
+      },
+    });
+
+    const txt = await res.text();
+    let json = null;
+    try {
+      json = txt ? JSON.parse(txt) : null;
+    } catch {
+      json = null;
+    }
+
+    if (!res.ok) {
+      const msg =
+        (json && (json.message || json.error || json.details)) ||
+        txt ||
+        `HTTP ${res.status}`;
+      throw new Error(String(msg));
+    }
+
+    return json || [];
+  }
 
   useEffect(() => {
     loadConversations();
@@ -25,20 +70,11 @@ export default function AdminSupport() {
       setError("");
       setLoadingConvs(true);
 
-      const { data, error } = await supabase
-        .from("conversations")
-        .select("*")
-        .order("updated_at", { ascending: false })
-        .headers(WHATSAPP_PROFILE_HEADERS);
+      // ✅ schema whatsapp via Accept-Profile
+      // order no PostgREST: order=updated_at.desc
+      const data = await restGet(`conversations?select=*&order=updated_at.desc`);
 
-      if (error) {
-        console.error("[AdminSupport] loadConversations error:", error);
-        setError(error.message || "Erro ao carregar conversas");
-        setConversations([]);
-        return;
-      }
-
-      setConversations(data || []);
+      setConversations(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("[AdminSupport] loadConversations exception:", e);
       setError(String(e?.message || e));
@@ -53,21 +89,12 @@ export default function AdminSupport() {
       setError("");
       setLoadingMsgs(true);
 
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", id)
-        .order("created_at", { ascending: true })
-        .headers(WHATSAPP_PROFILE_HEADERS);
+      // filter: conversation_id=eq.<id>
+      const data = await restGet(
+        `messages?select=*&conversation_id=eq.${encodeURIComponent(id)}&order=created_at.asc`
+      );
 
-      if (error) {
-        console.error("[AdminSupport] loadMessages error:", error);
-        setError(error.message || "Erro ao carregar mensagens");
-        setMessages([]);
-        return;
-      }
-
-      setMessages(data || []);
+      setMessages(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("[AdminSupport] loadMessages exception:", e);
       setError(String(e?.message || e));
@@ -193,7 +220,8 @@ export default function AdminSupport() {
                   padding: 12,
                   borderBottom: "1px solid #1f1f1f",
                   cursor: "pointer",
-                  background: selected?.id === c.id ? "rgba(255,255,255,0.06)" : "transparent",
+                  background:
+                    selected?.id === c.id ? "rgba(255,255,255,0.06)" : "transparent",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -249,7 +277,14 @@ export default function AdminSupport() {
         </div>
 
         {selected ? (
-          <div style={{ padding: 12, borderTop: "1px solid #2a2a2a", display: "flex", gap: 8 }}>
+          <div
+            style={{
+              padding: 12,
+              borderTop: "1px solid #2a2a2a",
+              display: "flex",
+              gap: 8,
+            }}
+          >
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
