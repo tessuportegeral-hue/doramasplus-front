@@ -1,6 +1,5 @@
 // src/pages/AdminSupport.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function AdminSupport() {
@@ -14,31 +13,8 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ Client do schema whatsapp (compatível com qualquer versão)
-  const db = useMemo(() => {
-    // Se existir supabase.schema(), usa (supabase-js v2)
-    if (typeof supabase?.schema === "function") {
-      return supabase.schema("whatsapp");
-    }
-
-    // Senão, cria um client novo com schema whatsapp (fallback)
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!url || !anon) {
-      // sem env não tem como criar client aqui, então força erro visível
-      return null;
-    }
-
-    return createClient(url, anon, {
-      db: { schema: "whatsapp" },
-      auth: { persistSession: true },
-    });
-  }, []);
-
   useEffect(() => {
     loadConversations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadConversations() {
@@ -46,16 +22,8 @@ export default function AdminSupport() {
       setError("");
       setLoadingConvs(true);
 
-      if (!db) {
-        setError(
-          "Não consegui criar client do schema whatsapp. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY."
-        );
-        setConversations([]);
-        return;
-      }
-
-      const { data, error } = await db
-        .from("conversations")
+      const { data, error } = await supabase
+        .from("whatsapp.conversations")
         .select("*")
         .order("updated_at", { ascending: false });
 
@@ -81,16 +49,8 @@ export default function AdminSupport() {
       setError("");
       setLoadingMsgs(true);
 
-      if (!db) {
-        setError(
-          "Não consegui criar client do schema whatsapp. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY."
-        );
-        setMessages([]);
-        return;
-      }
-
-      const { data, error } = await db
-        .from("messages")
+      const { data, error } = await supabase
+        .from("whatsapp.messages")
         .select("*")
         .eq("conversation_id", id)
         .order("created_at", { ascending: true });
@@ -178,9 +138,14 @@ export default function AdminSupport() {
       }
 
       await loadConversations();
+
       setSelected((prev) =>
         prev
-          ? { ...prev, status, current_step: status === "bot" ? "menu" : "humano" }
+          ? {
+              ...prev,
+              status,
+              current_step: status === "bot" ? "menu" : "humano",
+            }
           : prev
       );
     } catch (e) {
@@ -213,9 +178,7 @@ export default function AdminSupport() {
           {loadingConvs ? (
             <div style={{ padding: 12, opacity: 0.8 }}>Carregando conversas…</div>
           ) : conversations.length === 0 ? (
-            <div style={{ padding: 12, opacity: 0.8 }}>
-              Nenhuma conversa ainda.
-            </div>
+            <div style={{ padding: 12, opacity: 0.8 }}>Nenhuma conversa ainda.</div>
           ) : (
             conversations.map((c) => (
               <div
@@ -225,8 +188,7 @@ export default function AdminSupport() {
                   padding: 12,
                   borderBottom: "1px solid #1f1f1f",
                   cursor: "pointer",
-                  background:
-                    selected?.id === c.id ? "rgba(255,255,255,0.06)" : "transparent",
+                  background: selected?.id === c.id ? "rgba(255,255,255,0.06)" : "transparent",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -249,8 +211,7 @@ export default function AdminSupport() {
             <>
               <div style={{ fontWeight: 700 }}>{selected.phone_number}</div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                status: <b>{selected.status}</b> • step:{" "}
-                <b>{selected.current_step || "—"}</b>
+                status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
               </div>
 
               <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
@@ -283,14 +244,7 @@ export default function AdminSupport() {
         </div>
 
         {selected ? (
-          <div
-            style={{
-              padding: 12,
-              borderTop: "1px solid #2a2a2a",
-              display: "flex",
-              gap: 8,
-            }}
-          >
+          <div style={{ padding: 12, borderTop: "1px solid #2a2a2a", display: "flex", gap: 8 }}>
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
