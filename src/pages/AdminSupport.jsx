@@ -13,6 +13,9 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
+  // ✅ força o PostgREST a ler do schema whatsapp (compatível mesmo sem supabase.schema())
+  const WHATSAPP_PROFILE_HEADERS = { "Accept-Profile": "whatsapp" };
+
   useEffect(() => {
     loadConversations();
   }, []);
@@ -23,10 +26,10 @@ export default function AdminSupport() {
       setLoadingConvs(true);
 
       const { data, error } = await supabase
-        .schema("whatsapp")
         .from("conversations")
         .select("*")
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .headers(WHATSAPP_PROFILE_HEADERS);
 
       if (error) {
         console.error("[AdminSupport] loadConversations error:", error);
@@ -51,11 +54,11 @@ export default function AdminSupport() {
       setLoadingMsgs(true);
 
       const { data, error } = await supabase
-        .schema("whatsapp")
         .from("messages")
         .select("*")
         .eq("conversation_id", id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .headers(WHATSAPP_PROFILE_HEADERS);
 
       if (error) {
         console.error("[AdminSupport] loadMessages error:", error);
