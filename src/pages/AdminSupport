@@ -1,5 +1,6 @@
 // src/pages/AdminSupport.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function AdminSupport() {
@@ -13,17 +14,45 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ IMPORTANTE: suas tabelas estão no schema "whatsapp"
-  const db = supabase.schema("whatsapp");
+  // ✅ Client do schema whatsapp (compatível com qualquer versão)
+  const db = useMemo(() => {
+    // Se existir supabase.schema(), usa (supabase-js v2)
+    if (typeof supabase?.schema === "function") {
+      return supabase.schema("whatsapp");
+    }
+
+    // Senão, cria um client novo com schema whatsapp (fallback)
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!url || !anon) {
+      // sem env não tem como criar client aqui, então força erro visível
+      return null;
+    }
+
+    return createClient(url, anon, {
+      db: { schema: "whatsapp" },
+      auth: { persistSession: true },
+    });
+  }, []);
 
   useEffect(() => {
     loadConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadConversations() {
     try {
       setError("");
       setLoadingConvs(true);
+
+      if (!db) {
+        setError(
+          "Não consegui criar client do schema whatsapp. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY."
+        );
+        setConversations([]);
+        return;
+      }
 
       const { data, error } = await db
         .from("conversations")
@@ -51,6 +80,14 @@ export default function AdminSupport() {
     try {
       setError("");
       setLoadingMsgs(true);
+
+      if (!db) {
+        setError(
+          "Não consegui criar client do schema whatsapp. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY."
+        );
+        setMessages([]);
+        return;
+      }
 
       const { data, error } = await db
         .from("messages")
@@ -89,16 +126,13 @@ export default function AdminSupport() {
       setSending(true);
       setError("");
 
-      const { data, error } = await supabase.functions.invoke(
-        "whatsapp-send-human",
-        {
-          body: {
-            conversation_id: selected.id,
-            phone: selected.phone_number,
-            text: msg,
-          },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
+        body: {
+          conversation_id: selected.id,
+          phone: selected.phone_number,
+          text: msg,
+        },
+      });
 
       if (error) {
         console.error("[AdminSupport] sendMessage invoke error:", error);
@@ -125,15 +159,12 @@ export default function AdminSupport() {
     try {
       setError("");
 
-      const { data, error } = await supabase.functions.invoke(
-        "whatsapp-set-status",
-        {
-          body: {
-            conversation_id: selected.id,
-            status,
-          },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("whatsapp-set-status", {
+        body: {
+          conversation_id: selected.id,
+          status,
+        },
+      });
 
       if (error) {
         console.error("[AdminSupport] setStatus invoke error:", error);
@@ -149,11 +180,7 @@ export default function AdminSupport() {
       await loadConversations();
       setSelected((prev) =>
         prev
-          ? {
-              ...prev,
-              status,
-              current_step: status === "bot" ? "menu" : "humano",
-            }
+          ? { ...prev, status, current_step: status === "bot" ? "menu" : "humano" }
           : prev
       );
     } catch (e) {
@@ -256,7 +283,14 @@ export default function AdminSupport() {
         </div>
 
         {selected ? (
-          <div style={{ padding: 12, borderTop: "1px solid #2a2a2a", display: "flex", gap: 8 }}>
+          <div
+            style={{
+              padding: 12,
+              borderTop: "1px solid #2a2a2a",
+              display: "flex",
+              gap: 8,
+            }}
+          >
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
