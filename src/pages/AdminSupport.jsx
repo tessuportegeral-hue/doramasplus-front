@@ -13,6 +13,9 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
+  // ✅ IMPORTANTE: suas tabelas estão no schema "whatsapp"
+  const db = supabase.schema("whatsapp");
+
   useEffect(() => {
     loadConversations();
   }, []);
@@ -22,7 +25,7 @@ export default function AdminSupport() {
       setError("");
       setLoadingConvs(true);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("conversations")
         .select("*")
         .order("updated_at", { ascending: false });
@@ -49,7 +52,7 @@ export default function AdminSupport() {
       setError("");
       setLoadingMsgs(true);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("messages")
         .select("*")
         .eq("conversation_id", id)
@@ -144,9 +147,14 @@ export default function AdminSupport() {
       }
 
       await loadConversations();
-      // atualiza o selected na tela (status/step)
       setSelected((prev) =>
-        prev ? { ...prev, status, current_step: status === "bot" ? "menu" : "humano" } : prev
+        prev
+          ? {
+              ...prev,
+              status,
+              current_step: status === "bot" ? "menu" : "humano",
+            }
+          : prev
       );
     } catch (e) {
       setError(String(e?.message || e));
@@ -159,9 +167,7 @@ export default function AdminSupport() {
       <div style={{ width: 360, borderRight: "1px solid #2a2a2a" }}>
         <div style={{ padding: 12, borderBottom: "1px solid #2a2a2a" }}>
           <div style={{ fontWeight: 700 }}>Atendimento WhatsApp</div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            /admin/support
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>/admin/support</div>
 
           <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
             <button onClick={loadConversations} style={{ padding: "6px 10px" }}>
@@ -182,9 +188,6 @@ export default function AdminSupport() {
           ) : conversations.length === 0 ? (
             <div style={{ padding: 12, opacity: 0.8 }}>
               Nenhuma conversa ainda.
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                Se isso for inesperado, pode ser RLS/policy bloqueando o SELECT.
-              </div>
             </div>
           ) : (
             conversations.map((c) => (
@@ -201,9 +204,7 @@ export default function AdminSupport() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ fontWeight: 600 }}>{c.phone_number}</div>
-                  <div style={{ fontSize: 12, opacity: 0.8 }}>
-                    {c.status || "bot"}
-                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>{c.status || "bot"}</div>
                 </div>
                 <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
                   step: {c.current_step || "—"}
@@ -221,7 +222,8 @@ export default function AdminSupport() {
             <>
               <div style={{ fontWeight: 700 }}>{selected.phone_number}</div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
+                status: <b>{selected.status}</b> • step:{" "}
+                <b>{selected.current_step || "—"}</b>
               </div>
 
               <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
