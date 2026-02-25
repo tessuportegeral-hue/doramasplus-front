@@ -23,7 +23,8 @@ export default function AdminSupport() {
       setLoadingConvs(true);
 
       const { data, error } = await supabase
-        .from("whatsapp.conversations")
+        .schema("whatsapp")
+        .from("conversations")
         .select("*")
         .order("updated_at", { ascending: false });
 
@@ -50,7 +51,8 @@ export default function AdminSupport() {
       setLoadingMsgs(true);
 
       const { data, error } = await supabase
-        .from("whatsapp.messages")
+        .schema("whatsapp")
+        .from("messages")
         .select("*")
         .eq("conversation_id", id)
         .order("created_at", { ascending: true });
