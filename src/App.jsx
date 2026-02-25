@@ -49,6 +49,9 @@ import AdminAnalytics from '@/pages/AdminAnalytics';
 import AdminUsers from '@/pages/AdminUsers';
 import AdminRoute from '@/components/AdminRoute';
 
+// ✅ (NOVO) Painel de atendimento
+import AdminSupport from '@/pages/AdminSupport';
+
 // Landing
 import Landing from '@/pages/Landing';
 
@@ -372,6 +375,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminUsers />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ (NOVO) ADMIN SUPPORT */}
+                <Route
+                  path="/admin/support"
+                  element={
+                    <AdminRoute>
+                      <AdminSupport />
                     </AdminRoute>
                   }
                 />
