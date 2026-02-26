@@ -1,5 +1,5 @@
 // src/pages/AdminSupport.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -13,6 +13,15 @@ export default function AdminSupport() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+
+  // ✅ scroll anchor (pra não voltar pro começo)
+  const messagesEndRef = useRef(null);
+  function scrollToBottom(behavior = "auto") {
+    // timeout curto pra garantir que o DOM já renderizou as msgs
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+    }, 50);
+  }
 
   // ✅ Responsivo sem Tailwind: detecta mobile via matchMedia
   const [isMobile, setIsMobile] = useState(() => {
@@ -88,7 +97,8 @@ export default function AdminSupport() {
     }
   }
 
-  async function loadMessages(id) {
+  async function loadMessages(id, opts = {}) {
+    const { scroll = true, behavior = "auto" } = opts;
     try {
       setError("");
       setLoadingMsgs(true);
@@ -113,6 +123,9 @@ export default function AdminSupport() {
       }
 
       setMessages(data || []);
+
+      // ✅ mantém no final (sem voltar pro começo)
+      if (scroll) scrollToBottom(behavior);
     } catch (e) {
       console.error("[AdminSupport] loadMessages exception:", e);
       setError(String(e?.message || e));
@@ -124,7 +137,8 @@ export default function AdminSupport() {
 
   function openChat(conv) {
     setSelected(conv);
-    loadMessages(conv.id);
+    // ✅ ao abrir chat, já cai no final
+    loadMessages(conv.id, { scroll: true, behavior: "auto" });
   }
 
   async function sendMessage() {
@@ -157,7 +171,8 @@ export default function AdminSupport() {
       }
 
       setText("");
-      await loadMessages(selected.id);
+      // ✅ após enviar, recarrega e volta pro fim com smooth
+      await loadMessages(selected.id, { scroll: true, behavior: "smooth" });
       await loadConversations();
     } finally {
       setSending(false);
@@ -277,10 +292,7 @@ export default function AdminSupport() {
       padding: "2px 8px",
       borderRadius: 999,
       border: "1px solid rgba(255,255,255,0.14)",
-      background:
-        kind === "humano"
-          ? "rgba(255,107,107,0.10)"
-          : "rgba(70, 255, 170, 0.08)",
+      background: kind === "humano" ? "rgba(255,107,107,0.10)" : "rgba(70, 255, 170, 0.08)",
       opacity: 0.95,
       whiteSpace: "nowrap",
     }),
@@ -325,7 +337,13 @@ export default function AdminSupport() {
 
   // ===== Render helpers =====
   const ListPanel = (
-    <div style={{ ...S.column, width: isMobile ? "100%" : 360, borderRight: isMobile ? "none" : "1px solid #2a2a2a" }}>
+    <div
+      style={{
+        ...S.column,
+        width: isMobile ? "100%" : 360,
+        borderRight: isMobile ? "none" : "1px solid #2a2a2a",
+      }}
+    >
       <div style={S.panelHeader}>
         <div style={S.headerTitleRow}>
           <div>
@@ -335,11 +353,7 @@ export default function AdminSupport() {
 
           {/* no mobile: se estiver no chat, mostra botão de voltar aqui também */}
           {isMobile && selected ? (
-            <button
-              onClick={() => setSelected(null)}
-              style={S.btn}
-              title="Voltar"
-            >
+            <button onClick={() => setSelected(null)} style={S.btn} title="Voltar">
               ←
             </button>
           ) : null}
@@ -419,14 +433,18 @@ export default function AdminSupport() {
         ) : messages.length === 0 ? (
           <div style={{ opacity: 0.8 }}>Sem mensagens nessa conversa.</div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} style={S.msgRow(m.direction)}>
-              <div style={S.bubble(m.direction)}>
-                <div style={S.msgMeta}>{m.direction}</div>
-                <div>{m.body}</div>
+          <>
+            {messages.map((m) => (
+              <div key={m.id} style={S.msgRow(m.direction)}>
+                <div style={S.bubble(m.direction)}>
+                  <div style={S.msgMeta}>{m.direction}</div>
+                  <div>{m.body}</div>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+            {/* ✅ âncora do scroll */}
+            <div ref={messagesEndRef} />
+          </>
         )}
       </div>
 
@@ -457,17 +475,9 @@ export default function AdminSupport() {
   );
 
   // ===== Layout responsivo =====
-  // Mobile: 1 tela por vez (lista OU chat)
-  // Desktop: lista + chat lado a lado
   return (
     <div style={S.page}>
-      {isMobile ? (
-        selected ? (
-          ChatPanel
-        ) : (
-          ListPanel
-        )
-      ) : (
+      {isMobile ? (selected ? ChatPanel : ListPanel) : (
         <>
           {ListPanel}
           {ChatPanel}
