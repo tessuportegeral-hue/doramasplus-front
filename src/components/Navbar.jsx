@@ -384,9 +384,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                         <Settings className="w-6 h-6" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-slate-900 border-slate-800 text-slate-200 w-48 p-2">
+                    <DropdownMenuContent className="bg-slate-900 border-slate-800 text-slate-200 w-56 p-2">
                       <DropdownMenuItem onClick={() => navigate('/admin/analytics')}>
                         Painel Admin
+                      </DropdownMenuItem>
+
+                      {/* ✅ ADICIONADO: Admin Support (WhatsApp) */}
+                      <DropdownMenuItem onClick={() => navigate('/admin/support')}>
+                        Atendimento WhatsApp
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -495,6 +500,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       className="text-slate-200 text-sm text-left"
                     >
                       Painel Admin
+                    </button>
+
+                    {/* ✅ ADICIONADO: Admin Support (WhatsApp) no mobile */}
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); navigate('/admin/support'); }}
+                      className="mt-2 text-slate-200 text-sm text-left"
+                    >
+                      Atendimento WhatsApp
                     </button>
                   </div>
                 )}
