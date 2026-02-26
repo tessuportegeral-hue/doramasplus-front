@@ -17,11 +17,14 @@ export default function AdminSupport() {
   // ✅ scroll anchor (pra não voltar pro começo)
   const messagesEndRef = useRef(null);
   function scrollToBottom(behavior = "auto") {
-    // timeout curto pra garantir que o DOM já renderizou as msgs
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     }, 50);
   }
+
+  // ✅ Realtime refs
+  const realtimeChannelRef = useRef(null);
+  const lastMessageIdRef = useRef(null);
 
   // ✅ Responsivo sem Tailwind: detecta mobile via matchMedia
   const [isMobile, setIsMobile] = useState(() => {
@@ -34,7 +37,6 @@ export default function AdminSupport() {
     const mq = window.matchMedia("(max-width: 900px)");
     const onChange = () => setIsMobile(mq.matches);
     onChange();
-    // compat: Safari antigo não tem addEventListener em MediaQueryList
     if (mq.addEventListener) mq.addEventListener("change", onChange);
     else mq.addListener(onChange);
     return () => {
@@ -124,7 +126,6 @@ export default function AdminSupport() {
 
       setMessages(data || []);
 
-      // ✅ mantém no final (sem voltar pro começo)
       if (scroll) scrollToBottom(behavior);
     } catch (e) {
       console.error("[AdminSupport] loadMessages exception:", e);
@@ -137,7 +138,6 @@ export default function AdminSupport() {
 
   function openChat(conv) {
     setSelected(conv);
-    // ✅ ao abrir chat, já cai no final
     loadMessages(conv.id, { scroll: true, behavior: "auto" });
   }
 
@@ -218,6 +218,65 @@ export default function AdminSupport() {
       setError(String(e?.message || e));
     }
   }
+
+  // ✅ atualiza o lastMessageIdRef quando messages mudar (pra evitar duplicar)
+  useEffect(() => {
+    lastMessageIdRef.current = messages?.[messages.length - 1]?.id || null;
+  }, [messages]);
+
+  // ✅ Realtime: assina INSERT em whatsapp.messages por conversation_id
+  useEffect(() => {
+    // limpa canal antigo
+    if (realtimeChannelRef.current) {
+      try {
+        supportSupabase?.removeChannel(realtimeChannelRef.current);
+      } catch {}
+      realtimeChannelRef.current = null;
+    }
+
+    if (!supportSupabase || !selected?.id) return;
+
+    const channel = supportSupabase
+      .channel(`admin-support-${selected.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "whatsapp",
+          table: "messages",
+          filter: `conversation_id=eq.${selected.id}`,
+        },
+        (payload) => {
+          const newMsg = payload?.new;
+          if (!newMsg?.id) return;
+
+          // evita duplicar
+          if (newMsg.id === lastMessageIdRef.current) return;
+
+          setMessages((prev) => {
+            if (!prev) return [newMsg];
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+
+          scrollToBottom("smooth");
+          loadConversations();
+        }
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        try {
+          supportSupabase.removeChannel(realtimeChannelRef.current);
+        } catch {}
+        realtimeChannelRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supportSupabase, selected?.id]);
 
   // ===== Estilos (só UI) =====
   const S = {
@@ -351,7 +410,6 @@ export default function AdminSupport() {
             <div style={S.subtitle}>/admin/support</div>
           </div>
 
-          {/* no mobile: se estiver no chat, mostra botão de voltar aqui também */}
           {isMobile && selected ? (
             <button onClick={() => setSelected(null)} style={S.btn} title="Voltar">
               ←
@@ -405,7 +463,6 @@ export default function AdminSupport() {
                 </div>
               </div>
 
-              {/* mobile: botão voltar (bem visível) */}
               {isMobile ? (
                 <button onClick={() => setSelected(null)} style={S.btn}>
                   ← Voltar
@@ -442,7 +499,6 @@ export default function AdminSupport() {
                 </div>
               </div>
             ))}
-            {/* ✅ âncora do scroll */}
             <div ref={messagesEndRef} />
           </>
         )}
