@@ -27,6 +27,10 @@ export default function AdminSupport() {
   const [mediaType, setMediaType] = useState("auto"); // auto|image|video|audio|document|sticker
   const [mediaFile, setMediaFile] = useState(null);
 
+  // ✅ preview/modal de mídia (novo)
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewer, setViewer] = useState(null); // { type, url, caption, filename }
+
   // ✅ scroll
   const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -200,6 +204,76 @@ export default function AdminSupport() {
     const url = data?.publicUrl || "";
     if (!url) throw new Error("Não consegui gerar publicUrl do upload.");
     return { url, bucket, path };
+  }
+
+  // ✅ NOVO: detectar e renderizar mídia dentro do chat (inbound/outbound)
+  function extractMediaFromBody(body) {
+    const text = String(body || "").trim();
+    if (!text) return null;
+
+    // Formato do webhook inbound:
+    // 📎 IMAGE RECEBIDO
+    // https://...
+    // 📝 legenda
+    if (text.startsWith("📎")) {
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (lines.length >= 2 && /^https?:\/\//i.test(lines[1])) {
+        const typeMatch = lines[0].match(/📎\s*([A-Z]+)\s+RECEBIDO/i);
+        const type = (typeMatch?.[1] || "").toLowerCase() || "document";
+        const url = lines[1];
+        const captionLine = lines.find((l) => l.startsWith("📝"));
+        const caption = captionLine ? captionLine.replace(/^📝\s*/i, "").trim() : "";
+        return { type, url, caption, filename: null };
+      }
+    }
+
+    // Formato outbound que vamos salvar também:
+    // [media:image]
+    // https://...
+    // caption: ...
+    if (/^\[media:/i.test(text)) {
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      const first = lines[0];
+      const typeMatch = first.match(/^\[media:([a-z]+)\]/i);
+      const type = (typeMatch?.[1] || "").toLowerCase();
+      const url = lines.find((l) => /^https?:\/\//i.test(l)) || "";
+      const capLine = lines.find((l) => /^caption:/i.test(l));
+      const caption = capLine ? capLine.replace(/^caption:\s*/i, "").trim() : "";
+      const fnLine = lines.find((l) => /^filename:/i.test(l));
+      const filename = fnLine ? fnLine.replace(/^filename:\s*/i, "").trim() : null;
+      if (type && url) return { type, url, caption, filename };
+    }
+
+    // Se for apenas URL (às vezes você pode mandar só link)
+    const onlyUrl = text.match(/^(https?:\/\/\S+)$/i);
+    if (onlyUrl) {
+      const url = onlyUrl[1];
+      const type = inferTypeFromUrl(url);
+      if (type) return { type, url, caption: "", filename: null };
+    }
+
+    return null;
+  }
+
+  function inferTypeFromUrl(url) {
+    const u = String(url || "");
+    if (!/^https?:\/\//i.test(u)) return "";
+    if (/\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i.test(u)) return "image";
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) return "video";
+    if (/\.(mp3|ogg|wav|m4a|aac)(\?|#|$)/i.test(u)) return "audio";
+    if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z)(\?|#|$)/i.test(u)) return "document";
+    return "document";
+  }
+
+  function openViewer(media) {
+    if (!media?.url) return;
+    setViewer(media);
+    setViewerOpen(true);
+  }
+
+  function closeViewer() {
+    setViewerOpen(false);
+    setViewer(null);
   }
 
   // ✅ Realtime refs
@@ -399,7 +473,7 @@ export default function AdminSupport() {
         return;
       }
 
-      if (finalType === "auto") finalType = "image";
+      if (finalType === "auto") finalType = inferTypeFromUrl(finalUrl) || "image";
 
       const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
         body: {
@@ -422,6 +496,29 @@ export default function AdminSupport() {
         setError(data?.error || "Falha ao enviar mídia");
         return;
       }
+
+      // ✅ NOVO: otimista — salva imediatamente no chat (pra já aparecer imagem)
+      // (não mexe no backend; só coloca uma mensagem "fake" com o mesmo formato parseável)
+      try {
+        const optimistic = {
+          id: `local-${Date.now()}`,
+          conversation_id: selected.id,
+          direction: "outbound",
+          created_at: new Date().toISOString(),
+          body:
+            `[media:${finalType}]\n` +
+            `${finalUrl}\n` +
+            (filename ? `filename: ${filename}\n` : "") +
+            (mediaCaption?.trim() ? `caption: ${mediaCaption.trim()}` : ""),
+        };
+
+        setMessages((prev) => (prev ? [...prev, optimistic] : [optimistic]));
+        setPreviews((prev) => ({
+          ...prev,
+          [selected.id]: { body: optimistic.body, direction: "outbound", created_at: optimistic.created_at },
+        }));
+        scrollToBottom("smooth");
+      } catch {}
 
       setAttachOpen(false);
       setMediaUrl("");
@@ -562,6 +659,16 @@ export default function AdminSupport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportSupabase, selected?.id]);
 
+  // ✅ fechar modal com ESC (novo)
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") closeViewer();
+    }
+    if (viewerOpen) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewerOpen]);
+
   // ===== Estilos (só UI) =====
   const S = {
     page: {
@@ -569,6 +676,7 @@ export default function AdminSupport() {
       height: "100dvh",
       background: "#0b0b0b",
       color: "rgba(255,255,255,0.92)",
+      position: "relative",
     },
     column: {
       display: "flex",
@@ -752,11 +860,154 @@ export default function AdminSupport() {
       background: "rgba(255,255,255,0.05)",
       opacity: 0.95,
     },
+
+    // ✅ NOVO: render de mídia dentro do chat
+    mediaImg: {
+      maxWidth: 360,
+      width: "100%",
+      borderRadius: 12,
+      border: "1px solid rgba(255,255,255,0.10)",
+      display: "block",
+      cursor: "pointer",
+    },
+    mediaVideo: {
+      maxWidth: 420,
+      width: "100%",
+      borderRadius: 12,
+      border: "1px solid rgba(255,255,255,0.10)",
+      display: "block",
+      cursor: "pointer",
+    },
+    mediaAudio: {
+      width: 280,
+    },
+    mediaCaption: { marginTop: 8, fontSize: 12, opacity: 0.88 },
+
+    // ✅ NOVO: modal/zoom
+    modalBackdrop: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.72)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16,
+      zIndex: 9999,
+    },
+    modalCard: {
+      width: "min(980px, 96vw)",
+      maxHeight: "92vh",
+      overflow: "auto",
+      borderRadius: 16,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(10,10,10,0.98)",
+      padding: 12,
+    },
+    modalTop: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 10,
+    },
+    modalTitle: { fontWeight: 900, fontSize: 14, opacity: 0.95 },
+    modalClose: {
+      padding: "8px 10px",
+      borderRadius: 10,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.92)",
+      cursor: "pointer",
+    },
+    modalMedia: {
+      borderRadius: 14,
+      border: "1px solid rgba(255,255,255,0.10)",
+      width: "100%",
+      maxHeight: "75vh",
+      objectFit: "contain",
+      display: "block",
+    },
+    modalLinks: { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 },
+    linkBtn: {
+      padding: "8px 10px",
+      borderRadius: 10,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.92)",
+      cursor: "pointer",
+      textDecoration: "none",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+    },
   };
 
-  const canSendMedia = !!selected && (!sending) && (!!mediaFile || !!mediaUrl.trim());
+  const canSendMedia = !!selected && !sending && (!!mediaFile || !!mediaUrl.trim());
 
-  // ===== Render helpers =====
+  function renderMessageBody(m) {
+    const media = extractMediaFromBody(m?.body);
+    if (!media) return <div>{m?.body}</div>;
+
+    const type = (media.type || "").toLowerCase();
+    const url = media.url;
+
+    if (type === "image") {
+      return (
+        <div>
+          <img
+            src={url}
+            alt="Imagem"
+            style={S.mediaImg}
+            onClick={() => openViewer(media)}
+            loading="lazy"
+          />
+          {media.caption ? <div style={S.mediaCaption}>📝 {media.caption}</div> : null}
+        </div>
+      );
+    }
+
+    if (type === "video") {
+      return (
+        <div>
+          <video
+            src={url}
+            controls
+            style={S.mediaVideo}
+            onDoubleClick={() => openViewer(media)}
+          />
+          {media.caption ? <div style={S.mediaCaption}>📝 {media.caption}</div> : null}
+        </div>
+      );
+    }
+
+    if (type === "audio") {
+      return (
+        <div>
+          <audio src={url} controls style={S.mediaAudio} />
+          {media.caption ? <div style={S.mediaCaption}>📝 {media.caption}</div> : null}
+        </div>
+      );
+    }
+
+    // document / sticker / outros
+    return (
+      <div>
+        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+          📎 {type.toUpperCase()} recebido
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <a href={url} target="_blank" rel="noreferrer" style={S.linkBtn}>
+            Abrir
+          </a>
+          <a href={url} target="_blank" rel="noreferrer" style={S.linkBtn} download>
+            Baixar
+          </a>
+        </div>
+        {media.caption ? <div style={S.mediaCaption}>📝 {media.caption}</div> : null}
+      </div>
+    );
+  }
+
   const ListPanel = (
     <div
       style={{
@@ -889,7 +1140,9 @@ export default function AdminSupport() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 900 }}>{getDisplayTitle(selected)}</div>
                   {getDisplaySubtitle(selected) ? (
-                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{getDisplaySubtitle(selected)}</div>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                      {getDisplaySubtitle(selected)}
+                    </div>
                   ) : null}
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
                     status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
@@ -910,6 +1163,15 @@ export default function AdminSupport() {
               </button>
               <button onClick={() => setStatus("bot")} style={S.btnPrimary}>
                 Voltar Bot
+              </button>
+
+              <button
+                onClick={() => setAttachOpen((v) => !v)}
+                style={S.btn}
+                title="Anexar mídia"
+                disabled={sending}
+              >
+                {attachOpen ? "Fechar mídia" : "📎 Mídia"}
               </button>
             </div>
 
@@ -996,7 +1258,7 @@ export default function AdminSupport() {
                 <div style={S.hint}>
                   • Se você escolher arquivo, ele sobe no <b>Supabase Storage</b> (bucket padrão:{" "}
                   <b>{import.meta.env.VITE_WA_MEDIA_BUCKET || import.meta.env.VITE_SUPPORT_MEDIA_BUCKET || "whatsapp-media"}</b>).<br />
-                  • Se der erro de policy/bucket, agora vai aparecer aqui em vermelho.<br />
+                  • Se der erro de policy/bucket, aparece em vermelho acima.<br />
                   • Sua Edge Function precisa aceitar <b>type</b> + <b>media_url</b> + <b>caption</b>.
                 </div>
               </div>
@@ -1044,7 +1306,8 @@ export default function AdminSupport() {
                           <div style={S.msgMeta}>{m.direction}</div>
                           <div style={S.msgMeta}>{fmtTime(created)}</div>
                         </div>
-                        <div>{m.body}</div>
+
+                        {renderMessageBody(m)}
                       </div>
                     </div>
                   </React.Fragment>
@@ -1077,15 +1340,6 @@ export default function AdminSupport() {
 
       {selected ? (
         <div style={S.composer}>
-          <button
-            onClick={() => setAttachOpen((v) => !v)}
-            style={S.btn}
-            title="Anexar mídia"
-            disabled={sending}
-          >
-            📎
-          </button>
-
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -1111,15 +1365,76 @@ export default function AdminSupport() {
     </div>
   );
 
+  // ✅ Modal Viewer (novo)
+  const ViewerModal =
+    viewerOpen && viewer?.url ? (
+      <div
+        style={S.modalBackdrop}
+        onMouseDown={(e) => {
+          // clicar fora fecha
+          if (e.target === e.currentTarget) closeViewer();
+        }}
+      >
+        <div style={S.modalCard}>
+          <div style={S.modalTop}>
+            <div style={S.modalTitle}>
+              {viewer.type ? viewer.type.toUpperCase() : "MÍDIA"} {viewer.filename ? `• ${viewer.filename}` : ""}
+            </div>
+            <button style={S.modalClose} onClick={closeViewer}>
+              ✕ Fechar
+            </button>
+          </div>
+
+          {viewer.type === "image" ? (
+            <img src={viewer.url} alt="Imagem" style={S.modalMedia} />
+          ) : viewer.type === "video" ? (
+            <video src={viewer.url} controls style={S.modalMedia} />
+          ) : viewer.type === "audio" ? (
+            <audio src={viewer.url} controls style={{ width: "100%" }} />
+          ) : (
+            <div style={{ padding: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>Arquivo</div>
+              <a href={viewer.url} target="_blank" rel="noreferrer" style={S.linkBtn}>
+                Abrir
+              </a>
+            </div>
+          )}
+
+          {viewer.caption ? <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>📝 {viewer.caption}</div> : null}
+
+          <div style={S.modalLinks}>
+            <a href={viewer.url} target="_blank" rel="noreferrer" style={S.linkBtn}>
+              Abrir em nova aba
+            </a>
+            <a href={viewer.url} target="_blank" rel="noreferrer" style={S.linkBtn} download>
+              Baixar
+            </a>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
+            Dica: ESC fecha • Clique fora também fecha
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   // ===== Layout responsivo =====
   return (
     <div style={S.page}>
-      {isMobile ? (selected ? ChatPanel : ListPanel) : (
+      {isMobile ? (
+        selected ? (
+          ChatPanel
+        ) : (
+          ListPanel
+        )
+      ) : (
         <>
           {ListPanel}
           {ChatPanel}
         </>
       )}
+
+      {ViewerModal}
     </div>
   );
 }
