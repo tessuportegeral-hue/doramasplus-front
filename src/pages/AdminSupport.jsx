@@ -14,12 +14,57 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ scroll anchor (pra não voltar pro começo)
+  // ✅ melhorias
+  const [search, setSearch] = useState("");
+  const [previews, setPreviews] = useState({}); // { [conversationId]: { body, direction, created_at } }
+  const [unread, setUnread] = useState({}); // { [conversationId]: number }
+  const [hasNewMsgs, setHasNewMsgs] = useState(false);
+
+  // ✅ scroll
+  const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
   function scrollToBottom(behavior = "auto") {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     }, 50);
+  }
+
+  function isNearBottom(threshold = 120) {
+    const el = chatBodyRef.current;
+    if (!el) return true;
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return remaining < threshold;
+  }
+
+  function storageKeyRead(convId) {
+    return `admin_support_last_read_${convId}`;
+  }
+
+  function markRead(convId) {
+    try {
+      localStorage.setItem(storageKeyRead(convId), String(Date.now()));
+    } catch {}
+    setUnread((prev) => ({ ...prev, [convId]: 0 }));
+    setHasNewMsgs(false);
+  }
+
+  function playBeep() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = 880;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => {
+        o.stop();
+        ctx.close();
+      }, 120);
+    } catch {}
   }
 
   // ✅ Realtime refs
@@ -124,7 +169,20 @@ export default function AdminSupport() {
         return;
       }
 
-      setMessages(data || []);
+      const rows = data || [];
+      setMessages(rows);
+
+      // preview (última msg)
+      const last = rows[rows.length - 1];
+      if (last) {
+        setPreviews((prev) => ({
+          ...prev,
+          [id]: { body: last.body, direction: last.direction, created_at: last.created_at },
+        }));
+      }
+
+      // marcou como lido ao abrir/recarregar
+      markRead(id);
 
       if (scroll) scrollToBottom(behavior);
     } catch (e) {
@@ -138,6 +196,7 @@ export default function AdminSupport() {
 
   function openChat(conv) {
     setSelected(conv);
+    setHasNewMsgs(false);
     loadMessages(conv.id, { scroll: true, behavior: "auto" });
   }
 
@@ -171,7 +230,6 @@ export default function AdminSupport() {
       }
 
       setText("");
-      // ✅ após enviar, recarrega e volta pro fim com smooth
       await loadMessages(selected.id, { scroll: true, behavior: "smooth" });
       await loadConversations();
     } finally {
@@ -253,13 +311,44 @@ export default function AdminSupport() {
           // evita duplicar
           if (newMsg.id === lastMessageIdRef.current) return;
 
-          setMessages((prev) => {
-            if (!prev) return [newMsg];
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+          const convId = newMsg.conversation_id;
 
-          scrollToBottom("smooth");
+          // preview na lista
+          setPreviews((prev) => ({
+            ...prev,
+            [convId]: { body: newMsg.body, direction: newMsg.direction, created_at: newMsg.created_at },
+          }));
+
+          const isThisChatOpen = selected?.id === convId;
+
+          if (isThisChatOpen) {
+            setMessages((prev) => {
+              if (!prev) return [newMsg];
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+
+            // scroll inteligente
+            if (newMsg.direction === "outbound" || isNearBottom()) {
+              scrollToBottom("smooth");
+              markRead(convId);
+            } else {
+              setHasNewMsgs(true);
+            }
+
+            // inbound + lendo histórico => aumenta unread e beep
+            if (newMsg.direction === "inbound" && !isNearBottom()) {
+              setUnread((prev) => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
+              playBeep();
+            }
+          } else {
+            // chat não aberto -> unread em inbound
+            if (newMsg.direction === "inbound") {
+              setUnread((prev) => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
+              playBeep();
+            }
+          }
+
           loadConversations();
         }
       )
@@ -282,7 +371,7 @@ export default function AdminSupport() {
   const S = {
     page: {
       display: "flex",
-      height: "100dvh", // melhor no celular (teclado)
+      height: "100dvh",
       background: "#0b0b0b",
       color: "rgba(255,255,255,0.92)",
     },
@@ -423,6 +512,13 @@ export default function AdminSupport() {
           </button>
         </div>
 
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por número…"
+          style={{ ...S.input, marginTop: 10 }}
+        />
+
         {error ? <div style={S.error}>{error}</div> : null}
       </div>
 
@@ -432,19 +528,56 @@ export default function AdminSupport() {
         ) : conversations.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.8 }}>Nenhuma conversa ainda.</div>
         ) : (
-          conversations.map((c) => {
-            const active = selected?.id === c.id;
-            const st = (c.status || "bot").toLowerCase();
-            return (
-              <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active)}>
-                <div style={S.listTopRow}>
-                  <div style={S.phone}>{c.phone_number}</div>
-                  <div style={S.badge(st)}>{st}</div>
+          conversations
+            .filter((c) => String(c.phone_number || "").includes(search.trim()))
+            .map((c) => {
+              const active = selected?.id === c.id;
+              const st = (c.status || "bot").toLowerCase();
+              const prev = previews[c.id];
+              const unreadCount = unread[c.id] || 0;
+
+              return (
+                <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active)}>
+                  <div style={S.listTopRow}>
+                    <div style={S.phone}>{c.phone_number}</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {unreadCount > 0 ? (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            background: "rgba(70,255,170,0.15)",
+                            border: "1px solid rgba(70,255,170,0.25)",
+                          }}
+                        >
+                          {unreadCount}
+                        </div>
+                      ) : null}
+                      <div style={S.badge(st)}>{st}</div>
+                    </div>
+                  </div>
+
+                  <div style={S.meta}>step: {c.current_step || "—"}</div>
+
+                  {prev?.body ? (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        opacity: 0.7,
+                        marginTop: 2,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {prev.direction === "inbound" ? "👤 " : "🤖 "}
+                      {prev.body}
+                    </div>
+                  ) : null}
                 </div>
-                <div style={S.meta}>step: {c.current_step || "—"}</div>
-              </div>
-            );
-          })
+              );
+            })
         )}
       </div>
     </div>
@@ -484,7 +617,13 @@ export default function AdminSupport() {
         )}
       </div>
 
-      <div style={S.chatBody}>
+      <div
+        ref={chatBodyRef}
+        style={S.chatBody}
+        onScroll={() => {
+          if (isNearBottom()) setHasNewMsgs(false);
+        }}
+      >
         {!selected ? null : loadingMsgs ? (
           <div style={{ opacity: 0.8 }}>Carregando mensagens…</div>
         ) : messages.length === 0 ? (
@@ -499,6 +638,25 @@ export default function AdminSupport() {
                 </div>
               </div>
             ))}
+
+            {hasNewMsgs ? (
+              <button
+                onClick={() => {
+                  scrollToBottom("smooth");
+                  if (selected?.id) markRead(selected.id);
+                }}
+                style={{
+                  position: "sticky",
+                  bottom: 12,
+                  marginTop: 8,
+                  ...S.btnPrimary,
+                  alignSelf: "center",
+                }}
+              >
+                Novas mensagens ↓
+              </button>
+            ) : null}
+
             <div ref={messagesEndRef} />
           </>
         )}
