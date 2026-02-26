@@ -20,9 +20,17 @@ export default function AdminSupport() {
   const [unread, setUnread] = useState({}); // { [conversationId]: number }
   const [hasNewMsgs, setHasNewMsgs] = useState(false);
 
+  // ✅ anexos/mídia
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaCaption, setMediaCaption] = useState("");
+  const [mediaType, setMediaType] = useState("auto"); // auto|image|video|audio|document|sticker
+  const [mediaFile, setMediaFile] = useState(null);
+
   // ✅ scroll
   const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   function scrollToBottom(behavior = "auto") {
     setTimeout(() => {
@@ -90,7 +98,6 @@ export default function AdminSupport() {
   function dayKey(v) {
     const d = toDate(v);
     if (!d) return "unknown";
-    // chave estável dia-mês-ano no fuso do Brasil
     const parts = new Intl.DateTimeFormat("pt-BR", {
       year: "numeric",
       month: "2-digit",
@@ -111,7 +118,6 @@ export default function AdminSupport() {
     const kMsg = dayKey(d);
     const kNow = dayKey(now);
 
-    // ontem
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const kYes = dayKey(yesterday);
 
@@ -130,6 +136,67 @@ export default function AdminSupport() {
     const p = String(phone || "").replace(/\D/g, "");
     const last2 = p.slice(-2);
     return last2 ? `+${last2}` : "WA";
+  }
+
+  // ✅ nome do contato (sem quebrar: tenta vários campos comuns)
+  function getContactName(conv) {
+    if (!conv) return "";
+    return (
+      conv.contact_name ||
+      conv.profile_name ||
+      conv.push_name ||
+      conv.wa_name ||
+      conv.name ||
+      conv.display_name ||
+      ""
+    );
+  }
+
+  function getDisplayTitle(conv) {
+    const name = getContactName(conv);
+    return name ? name : conv?.phone_number || "";
+  }
+
+  function getDisplaySubtitle(conv) {
+    const name = getContactName(conv);
+    const phone = conv?.phone_number || "";
+    return name ? phone : "";
+  }
+
+  // ✅ detecta tipo pelo arquivo (pra enviar mídia)
+  function inferTypeFromFile(file) {
+    const t = String(file?.type || "");
+    if (t.startsWith("image/")) return "image";
+    if (t.startsWith("video/")) return "video";
+    if (t.startsWith("audio/")) return "audio";
+    return "document";
+  }
+
+  // ✅ pega public URL (upload) - bucket configurável
+  async function uploadToStorageGetPublicUrl(file) {
+    const bucket =
+      import.meta.env.VITE_WA_MEDIA_BUCKET ||
+      import.meta.env.VITE_SUPPORT_MEDIA_BUCKET ||
+      "whatsapp-media";
+
+    const ext = (file?.name || "").split(".").pop() || "bin";
+    const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || "bin";
+    const path = `support/${Date.now()}-${Math.random().toString(16).slice(2)}.${safeExt}`;
+
+    const { error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+
+    if (upErr) {
+      throw new Error(
+        `Upload falhou no bucket "${bucket}". Crie o bucket (public) ou set VITE_WA_MEDIA_BUCKET. Detalhe: ${upErr.message}`
+      );
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    const url = data?.publicUrl || "";
+    if (!url) throw new Error("Não consegui gerar publicUrl do upload.");
+    return { url, bucket, path };
   }
 
   // ✅ Realtime refs
@@ -237,7 +304,6 @@ export default function AdminSupport() {
       const rows = data || [];
       setMessages(rows);
 
-      // preview (última msg)
       const last = rows[rows.length - 1];
       if (last) {
         setPreviews((prev) => ({
@@ -246,7 +312,6 @@ export default function AdminSupport() {
         }));
       }
 
-      // marcou como lido ao abrir/recarregar
       markRead(id);
 
       if (scroll) scrollToBottom(behavior);
@@ -262,6 +327,11 @@ export default function AdminSupport() {
   function openChat(conv) {
     setSelected(conv);
     setHasNewMsgs(false);
+    setAttachOpen(false);
+    setMediaUrl("");
+    setMediaCaption("");
+    setMediaType("auto");
+    setMediaFile(null);
     loadMessages(conv.id, { scroll: true, behavior: "auto" });
   }
 
@@ -274,7 +344,6 @@ export default function AdminSupport() {
       setSending(true);
       setError("");
 
-      // ✅ Edge Function pode continuar usando seu client principal
       const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
         body: {
           conversation_id: selected.id,
@@ -295,6 +364,70 @@ export default function AdminSupport() {
       }
 
       setText("");
+      await loadMessages(selected.id, { scroll: true, behavior: "smooth" });
+      await loadConversations();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // ✅ envia mídia (URL ou arquivo -> upload storage -> URL)
+  async function sendMedia() {
+    if (!selected) return;
+
+    try {
+      setSending(true);
+      setError("");
+
+      let finalUrl = mediaUrl.trim();
+      let finalType = mediaType;
+
+      let filename = null;
+
+      if (mediaFile) {
+        // upload e pega url pública
+        const { url } = await uploadToStorageGetPublicUrl(mediaFile);
+        finalUrl = url;
+        filename = mediaFile?.name || null;
+        if (finalType === "auto") finalType = inferTypeFromFile(mediaFile);
+      }
+
+      if (!finalUrl) {
+        setError("Cola uma URL pública de mídia OU selecione um arquivo.");
+        return;
+      }
+
+      if (finalType === "auto") finalType = "image"; // fallback seguro
+
+      const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
+        body: {
+          conversation_id: selected.id,
+          phone: selected.phone_number,
+          type: finalType,
+          media_url: finalUrl,
+          caption: mediaCaption?.trim() || null,
+          filename: filename || null,
+        },
+      });
+
+      if (error) {
+        console.error("[AdminSupport] sendMedia invoke error:", error);
+        setError(error.message || "Erro ao enviar mídia");
+        return;
+      }
+
+      if (!data?.ok) {
+        setError(data?.error || "Falha ao enviar mídia");
+        return;
+      }
+
+      // limpa UI
+      setAttachOpen(false);
+      setMediaUrl("");
+      setMediaCaption("");
+      setMediaType("auto");
+      setMediaFile(null);
+
       await loadMessages(selected.id, { scroll: true, behavior: "smooth" });
       await loadConversations();
     } finally {
@@ -349,7 +482,6 @@ export default function AdminSupport() {
 
   // ✅ Realtime: assina INSERT em whatsapp.messages por conversation_id
   useEffect(() => {
-    // limpa canal antigo
     if (realtimeChannelRef.current) {
       try {
         supportSupabase?.removeChannel(realtimeChannelRef.current);
@@ -372,13 +504,10 @@ export default function AdminSupport() {
         (payload) => {
           const newMsg = payload?.new;
           if (!newMsg?.id) return;
-
-          // evita duplicar
           if (newMsg.id === lastMessageIdRef.current) return;
 
           const convId = newMsg.conversation_id;
 
-          // preview na lista
           setPreviews((prev) => ({
             ...prev,
             [convId]: { body: newMsg.body, direction: newMsg.direction, created_at: newMsg.created_at },
@@ -393,7 +522,6 @@ export default function AdminSupport() {
               return [...prev, newMsg];
             });
 
-            // scroll inteligente
             if (newMsg.direction === "outbound" || isNearBottom()) {
               scrollToBottom("smooth");
               markRead(convId);
@@ -401,13 +529,11 @@ export default function AdminSupport() {
               setHasNewMsgs(true);
             }
 
-            // inbound + lendo histórico => aumenta unread e beep
             if (newMsg.direction === "inbound" && !isNearBottom()) {
               setUnread((prev) => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
               playBeep();
             }
           } else {
-            // chat não aberto -> unread em inbound
             if (newMsg.direction === "inbound") {
               setUnread((prev) => ({ ...prev, [convId]: (prev[convId] || 0) + 1 }));
               playBeep();
@@ -500,6 +626,7 @@ export default function AdminSupport() {
     }),
     listTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
     phone: { fontWeight: 800, letterSpacing: 0.2 },
+    name: { fontWeight: 800, letterSpacing: 0.2 },
     badge: (kind) => ({
       fontSize: 12,
       padding: "2px 8px",
@@ -571,6 +698,7 @@ export default function AdminSupport() {
       display: "flex",
       gap: 8,
       background: "rgba(0,0,0,0.35)",
+      alignItems: "center",
     },
     input: {
       flex: 1,
@@ -582,6 +710,37 @@ export default function AdminSupport() {
       outline: "none",
       minWidth: 0,
     },
+
+    attachBox: {
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 12,
+      border: "1px solid #2a2a2a",
+      background: "rgba(255,255,255,0.03)",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+    },
+    row: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
+    smallInput: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 12,
+      border: "1px solid #2a2a2a",
+      background: "rgba(255,255,255,0.04)",
+      color: "rgba(255,255,255,0.92)",
+      outline: "none",
+      minWidth: 180,
+    },
+    select: {
+      padding: "10px 10px",
+      borderRadius: 12,
+      border: "1px solid #2a2a2a",
+      background: "rgba(255,255,255,0.04)",
+      color: "rgba(255,255,255,0.92)",
+      outline: "none",
+    },
+    hint: { fontSize: 12, opacity: 0.7, lineHeight: 1.3 },
   };
 
   // ===== Render helpers =====
@@ -616,7 +775,7 @@ export default function AdminSupport() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por número…"
+          placeholder="Buscar por número ou nome…"
           style={{ ...S.input, marginTop: 10 }}
         />
 
@@ -630,12 +789,20 @@ export default function AdminSupport() {
           <div style={{ padding: 12, opacity: 0.8 }}>Nenhuma conversa ainda.</div>
         ) : (
           conversations
-            .filter((c) => String(c.phone_number || "").includes(search.trim()))
+            .filter((c) => {
+              const q = search.trim();
+              if (!q) return true;
+              const phone = String(c.phone_number || "");
+              const nm = String(getContactName(c) || "");
+              return phone.includes(q) || nm.toLowerCase().includes(q.toLowerCase());
+            })
             .map((c) => {
               const active = selected?.id === c.id;
               const st = (c.status || "bot").toLowerCase();
               const prev = previews[c.id];
               const unreadCount = unread[c.id] || 0;
+              const title = getDisplayTitle(c);
+              const subtitle = getDisplaySubtitle(c);
 
               return (
                 <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active)}>
@@ -644,7 +811,7 @@ export default function AdminSupport() {
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={S.listTopRow}>
-                        <div style={S.phone}>{c.phone_number}</div>
+                        <div style={S.name}>{title}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                           {unreadCount > 0 ? (
                             <div
@@ -664,7 +831,10 @@ export default function AdminSupport() {
                       </div>
 
                       <div style={S.meta}>
-                        step: {c.current_step || "—"}
+                        {subtitle ? <span style={{ opacity: 0.9 }}>{subtitle}</span> : null}
+                        <span style={{ marginLeft: subtitle ? 10 : 0 }}>
+                          step: {c.current_step || "—"}
+                        </span>
                         {prev?.created_at ? (
                           <span style={{ marginLeft: 10, opacity: 0.8 }}>• {fmtTime(prev.created_at)}</span>
                         ) : null}
@@ -704,7 +874,10 @@ export default function AdminSupport() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 <div style={S.avatar}>{avatarTextFromPhone(selected.phone_number)}</div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800 }}>{selected.phone_number}</div>
+                  <div style={{ fontWeight: 900 }}>{getDisplayTitle(selected)}</div>
+                  {getDisplaySubtitle(selected) ? (
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{getDisplaySubtitle(selected)}</div>
+                  ) : null}
                   <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
                     status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
                   </div>
@@ -726,6 +899,89 @@ export default function AdminSupport() {
                 Voltar Bot
               </button>
             </div>
+
+            {/* ✅ Caixa de anexo (só UI) */}
+            {attachOpen ? (
+              <div style={S.attachBox}>
+                <div style={S.row}>
+                  <select value={mediaType} onChange={(e) => setMediaType(e.target.value)} style={S.select}>
+                    <option value="auto">auto</option>
+                    <option value="image">image</option>
+                    <option value="video">video</option>
+                    <option value="audio">audio</option>
+                    <option value="document">document</option>
+                    <option value="sticker">sticker</option>
+                  </select>
+
+                  <button
+                    style={S.btn}
+                    onClick={() => fileInputRef.current?.click?.()}
+                    title="Selecionar arquivo"
+                  >
+                    Escolher arquivo
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setMediaFile(f);
+                      if (f) setMediaUrl("");
+                    }}
+                  />
+
+                  <button
+                    style={S.btn}
+                    onClick={() => {
+                      setAttachOpen(false);
+                      setMediaUrl("");
+                      setMediaCaption("");
+                      setMediaType("auto");
+                      setMediaFile(null);
+                    }}
+                  >
+                    Fechar
+                  </button>
+                </div>
+
+                <div style={S.row}>
+                  <input
+                    value={mediaUrl}
+                    onChange={(e) => {
+                      setMediaUrl(e.target.value);
+                      if (e.target.value) setMediaFile(null);
+                    }}
+                    placeholder="OU cole uma URL pública (https://...)"
+                    style={S.smallInput}
+                  />
+                </div>
+
+                <div style={S.row}>
+                  <input
+                    value={mediaCaption}
+                    onChange={(e) => setMediaCaption(e.target.value)}
+                    placeholder="Legenda (opcional)"
+                    style={S.smallInput}
+                  />
+                  <button
+                    onClick={sendMedia}
+                    disabled={sending}
+                    style={{ ...S.btnPrimary, ...(sending ? S.btnDisabled : null) }}
+                  >
+                    {sending ? "Enviando…" : "Enviar mídia"}
+                  </button>
+                </div>
+
+                <div style={S.hint}>
+                  • Se você escolher arquivo, ele tenta subir no <b>Supabase Storage</b> (bucket:{" "}
+                  <b>{import.meta.env.VITE_WA_MEDIA_BUCKET || import.meta.env.VITE_SUPPORT_MEDIA_BUCKET || "whatsapp-media"}</b>).<br />
+                  • O bucket precisa existir e estar <b>public</b> (ou você usar URL pública).<br />
+                  • Sua Edge Function precisa estar com a versão que aceita: <b>type</b> + <b>media_url</b> + <b>caption</b>.
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <div style={{ opacity: 0.8 }}>Selecione uma conversa.</div>
@@ -800,6 +1056,15 @@ export default function AdminSupport() {
 
       {selected ? (
         <div style={S.composer}>
+          <button
+            onClick={() => setAttachOpen((v) => !v)}
+            style={S.btn}
+            title="Anexar mídia"
+            disabled={sending}
+          >
+            📎
+          </button>
+
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -827,7 +1092,13 @@ export default function AdminSupport() {
   // ===== Layout responsivo =====
   return (
     <div style={S.page}>
-      {isMobile ? (selected ? ChatPanel : ListPanel) : (
+      {isMobile ? (
+        selected ? (
+          ChatPanel
+        ) : (
+          ListPanel
+        )
+      ) : (
         <>
           {ListPanel}
           {ChatPanel}
