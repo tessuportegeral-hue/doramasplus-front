@@ -185,11 +185,14 @@ export default function AdminSupport() {
 
     const { error: upErr } = await supabase.storage
       .from(bucket)
-      .upload(path, file, { upsert: false, contentType: file.type || "application/octet-stream" });
+      .upload(path, file, {
+        upsert: false,
+        contentType: file.type || "application/octet-stream",
+      });
 
     if (upErr) {
       throw new Error(
-        `Upload falhou no bucket "${bucket}". Crie o bucket (public) ou set VITE_WA_MEDIA_BUCKET. Detalhe: ${upErr.message}`
+        `Upload falhou no bucket "${bucket}". Crie o bucket (public) ou ajuste policy. Detalhe: ${upErr.message}`
       );
     }
 
@@ -371,7 +374,7 @@ export default function AdminSupport() {
     }
   }
 
-  // ✅ envia mídia (URL ou arquivo -> upload storage -> URL)
+  // ✅ envia mídia (URL ou arquivo -> upload storage -> URL)  [AGORA COM ERRO VISÍVEL]
   async function sendMedia() {
     if (!selected) return;
 
@@ -385,7 +388,6 @@ export default function AdminSupport() {
       let filename = null;
 
       if (mediaFile) {
-        // upload e pega url pública
         const { url } = await uploadToStorageGetPublicUrl(mediaFile);
         finalUrl = url;
         filename = mediaFile?.name || null;
@@ -397,7 +399,7 @@ export default function AdminSupport() {
         return;
       }
 
-      if (finalType === "auto") finalType = "image"; // fallback seguro
+      if (finalType === "auto") finalType = "image";
 
       const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
         body: {
@@ -421,7 +423,6 @@ export default function AdminSupport() {
         return;
       }
 
-      // limpa UI
       setAttachOpen(false);
       setMediaUrl("");
       setMediaCaption("");
@@ -430,6 +431,9 @@ export default function AdminSupport() {
 
       await loadMessages(selected.id, { scroll: true, behavior: "smooth" });
       await loadConversations();
+    } catch (e) {
+      console.error("[AdminSupport] sendMedia fatal:", e);
+      setError(String(e?.message || e));
     } finally {
       setSending(false);
     }
@@ -625,7 +629,6 @@ export default function AdminSupport() {
       gap: 8,
     }),
     listTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
-    phone: { fontWeight: 800, letterSpacing: 0.2 },
     name: { fontWeight: 800, letterSpacing: 0.2 },
     badge: (kind) => ({
       fontSize: 12,
@@ -741,7 +744,17 @@ export default function AdminSupport() {
       outline: "none",
     },
     hint: { fontSize: 12, opacity: 0.7, lineHeight: 1.3 },
+    fileChip: {
+      fontSize: 12,
+      padding: "4px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.05)",
+      opacity: 0.95,
+    },
   };
+
+  const canSendMedia = !!selected && (!sending) && (!!mediaFile || !!mediaUrl.trim());
 
   // ===== Render helpers =====
   const ListPanel = (
@@ -900,7 +913,6 @@ export default function AdminSupport() {
               </button>
             </div>
 
-            {/* ✅ Caixa de anexo (só UI) */}
             {attachOpen ? (
               <div style={S.attachBox}>
                 <div style={S.row}>
@@ -917,6 +929,7 @@ export default function AdminSupport() {
                     style={S.btn}
                     onClick={() => fileInputRef.current?.click?.()}
                     title="Selecionar arquivo"
+                    disabled={sending}
                   >
                     Escolher arquivo
                   </button>
@@ -932,6 +945,8 @@ export default function AdminSupport() {
                     }}
                   />
 
+                  {mediaFile ? <div style={S.fileChip}>{mediaFile.name}</div> : null}
+
                   <button
                     style={S.btn}
                     onClick={() => {
@@ -941,6 +956,7 @@ export default function AdminSupport() {
                       setMediaType("auto");
                       setMediaFile(null);
                     }}
+                    disabled={sending}
                   >
                     Fechar
                   </button>
@@ -955,6 +971,7 @@ export default function AdminSupport() {
                     }}
                     placeholder="OU cole uma URL pública (https://...)"
                     style={S.smallInput}
+                    disabled={sending}
                   />
                 </div>
 
@@ -964,24 +981,28 @@ export default function AdminSupport() {
                     onChange={(e) => setMediaCaption(e.target.value)}
                     placeholder="Legenda (opcional)"
                     style={S.smallInput}
+                    disabled={sending}
                   />
                   <button
                     onClick={sendMedia}
-                    disabled={sending}
-                    style={{ ...S.btnPrimary, ...(sending ? S.btnDisabled : null) }}
+                    disabled={!canSendMedia}
+                    style={{ ...S.btnPrimary, ...(!canSendMedia ? S.btnDisabled : null) }}
+                    title={!canSendMedia ? "Selecione um arquivo ou cole uma URL pública" : "Enviar mídia"}
                   >
                     {sending ? "Enviando…" : "Enviar mídia"}
                   </button>
                 </div>
 
                 <div style={S.hint}>
-                  • Se você escolher arquivo, ele tenta subir no <b>Supabase Storage</b> (bucket:{" "}
+                  • Se você escolher arquivo, ele sobe no <b>Supabase Storage</b> (bucket padrão:{" "}
                   <b>{import.meta.env.VITE_WA_MEDIA_BUCKET || import.meta.env.VITE_SUPPORT_MEDIA_BUCKET || "whatsapp-media"}</b>).<br />
-                  • O bucket precisa existir e estar <b>public</b> (ou você usar URL pública).<br />
-                  • Sua Edge Function precisa estar com a versão que aceita: <b>type</b> + <b>media_url</b> + <b>caption</b>.
+                  • Se der erro de policy/bucket, agora vai aparecer aqui em vermelho.<br />
+                  • Sua Edge Function precisa aceitar <b>type</b> + <b>media_url</b> + <b>caption</b>.
                 </div>
               </div>
             ) : null}
+
+            {error ? <div style={S.error}>{error}</div> : null}
           </>
         ) : (
           <div style={{ opacity: 0.8 }}>Selecione uma conversa.</div>
@@ -1076,6 +1097,7 @@ export default function AdminSupport() {
                 sendMessage();
               }
             }}
+            disabled={sending}
           />
           <button
             onClick={sendMessage}
@@ -1092,13 +1114,7 @@ export default function AdminSupport() {
   // ===== Layout responsivo =====
   return (
     <div style={S.page}>
-      {isMobile ? (
-        selected ? (
-          ChatPanel
-        ) : (
-          ListPanel
-        )
-      ) : (
+      {isMobile ? (selected ? ChatPanel : ListPanel) : (
         <>
           {ListPanel}
           {ChatPanel}
