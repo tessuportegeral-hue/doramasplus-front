@@ -504,6 +504,18 @@ export default function AdminAnalytics() {
             >
               Usuários
             </button>
+
+            {/* ✅ NOVA ABA: SUPORTE (AdminSupport) */}
+            <button
+              onClick={() => goTab("/admin/support")}
+              className={`px-3 py-2 rounded-lg text-sm border ${
+                isActiveRoute("/admin/support")
+                  ? "bg-purple-500/20 border-purple-400/30"
+                  : "bg-white/5 border-white/10"
+              }`}
+            >
+              Suporte
+            </button>
           </div>
         </div>
 
