@@ -23,6 +23,7 @@ export default function AdminSupport() {
   // ✅ scroll
   const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
+
   function scrollToBottom(behavior = "auto") {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
@@ -65,6 +66,70 @@ export default function AdminSupport() {
         ctx.close();
       }, 120);
     } catch {}
+  }
+
+  // ✅ helpers de data/hora (pt-BR)
+  function toDate(v) {
+    if (!v) return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  function fmtTime(v) {
+    const d = toDate(v);
+    if (!d) return "";
+    return new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "America/Sao_Paulo",
+    }).format(d);
+  }
+
+  function dayKey(v) {
+    const d = toDate(v);
+    if (!d) return "unknown";
+    // chave estável dia-mês-ano no fuso do Brasil
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    }).formatToParts(d);
+    const dd = parts.find((p) => p.type === "day")?.value || "00";
+    const mm = parts.find((p) => p.type === "month")?.value || "00";
+    const yy = parts.find((p) => p.type === "year")?.value || "0000";
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  function dayLabel(v) {
+    const d = toDate(v);
+    if (!d) return "—";
+
+    const now = new Date();
+    const kMsg = dayKey(d);
+    const kNow = dayKey(now);
+
+    // ontem
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const kYes = dayKey(yesterday);
+
+    if (kMsg === kNow) return "Hoje";
+    if (kMsg === kYes) return "Ontem";
+
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "America/Sao_Paulo",
+    }).format(d);
+  }
+
+  function avatarTextFromPhone(phone) {
+    const p = String(phone || "").replace(/\D/g, "");
+    const last2 = p.slice(-2);
+    return last2 ? `+${last2}` : "WA";
   }
 
   // ✅ Realtime refs
@@ -390,7 +455,7 @@ export default function AdminSupport() {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 8,
+      gap: 10,
     },
     title: { fontWeight: 800 },
     subtitle: { fontSize: 12, opacity: 0.7, marginTop: 2 },
@@ -431,10 +496,10 @@ export default function AdminSupport() {
       background: active ? "rgba(255,255,255,0.06)" : "transparent",
       display: "flex",
       flexDirection: "column",
-      gap: 6,
+      gap: 8,
     }),
     listTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
-    phone: { fontWeight: 700, letterSpacing: 0.2 },
+    phone: { fontWeight: 800, letterSpacing: 0.2 },
     badge: (kind) => ({
       fontSize: 12,
       padding: "2px 8px",
@@ -446,7 +511,36 @@ export default function AdminSupport() {
     }),
     meta: { fontSize: 12, opacity: 0.75 },
 
+    avatar: {
+      width: 34,
+      height: 34,
+      borderRadius: 999,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
+      fontSize: 12,
+      fontWeight: 800,
+      flex: "0 0 auto",
+    },
+
     chatBody: { flex: 1, overflowY: "auto", padding: 12 },
+
+    daySep: {
+      display: "flex",
+      justifyContent: "center",
+      margin: "12px 0",
+    },
+    dayChip: {
+      fontSize: 12,
+      opacity: 0.85,
+      padding: "4px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.05)",
+    },
+
     msgRow: (dir) => ({
       display: "flex",
       justifyContent: dir === "outbound" ? "flex-end" : "flex-start",
@@ -462,7 +556,14 @@ export default function AdminSupport() {
       wordBreak: "break-word",
       lineHeight: 1.35,
     }),
-    msgMeta: { fontSize: 11, opacity: 0.65, marginBottom: 6 },
+    msgMetaRow: {
+      display: "flex",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 6,
+      alignItems: "center",
+    },
+    msgMeta: { fontSize: 11, opacity: 0.65 },
 
     composer: {
       padding: 12,
@@ -538,43 +639,54 @@ export default function AdminSupport() {
 
               return (
                 <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active)}>
-                  <div style={S.listTopRow}>
-                    <div style={S.phone}>{c.phone_number}</div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {unreadCount > 0 ? (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={S.avatar}>{avatarTextFromPhone(c.phone_number)}</div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={S.listTopRow}>
+                        <div style={S.phone}>{c.phone_number}</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          {unreadCount > 0 ? (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                background: "rgba(70,255,170,0.15)",
+                                border: "1px solid rgba(70,255,170,0.25)",
+                              }}
+                            >
+                              {unreadCount}
+                            </div>
+                          ) : null}
+                          <div style={S.badge(st)}>{st}</div>
+                        </div>
+                      </div>
+
+                      <div style={S.meta}>
+                        step: {c.current_step || "—"}
+                        {prev?.created_at ? (
+                          <span style={{ marginLeft: 10, opacity: 0.8 }}>• {fmtTime(prev.created_at)}</span>
+                        ) : null}
+                      </div>
+
+                      {prev?.body ? (
                         <div
                           style={{
                             fontSize: 12,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            background: "rgba(70,255,170,0.15)",
-                            border: "1px solid rgba(70,255,170,0.25)",
+                            opacity: 0.72,
+                            marginTop: 2,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          {unreadCount}
+                          {prev.direction === "inbound" ? "👤 " : "🤖 "}
+                          {prev.body}
                         </div>
                       ) : null}
-                      <div style={S.badge(st)}>{st}</div>
                     </div>
                   </div>
-
-                  <div style={S.meta}>step: {c.current_step || "—"}</div>
-
-                  {prev?.body ? (
-                    <div
-                      style={{
-                        fontSize: 12,
-                        opacity: 0.7,
-                        marginTop: 2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {prev.direction === "inbound" ? "👤 " : "🤖 "}
-                      {prev.body}
-                    </div>
-                  ) : null}
                 </div>
               );
             })
@@ -589,10 +701,13 @@ export default function AdminSupport() {
         {selected ? (
           <>
             <div style={S.headerTitleRow}>
-              <div>
-                <div style={{ fontWeight: 800 }}>{selected.phone_number}</div>
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                  status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={S.avatar}>{avatarTextFromPhone(selected.phone_number)}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800 }}>{selected.phone_number}</div>
+                  <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+                    status: <b>{selected.status}</b> • step: <b>{selected.current_step || "—"}</b>
+                  </div>
                 </div>
               </div>
 
@@ -630,14 +745,35 @@ export default function AdminSupport() {
           <div style={{ opacity: 0.8 }}>Sem mensagens nessa conversa.</div>
         ) : (
           <>
-            {messages.map((m) => (
-              <div key={m.id} style={S.msgRow(m.direction)}>
-                <div style={S.bubble(m.direction)}>
-                  <div style={S.msgMeta}>{m.direction}</div>
-                  <div>{m.body}</div>
-                </div>
-              </div>
-            ))}
+            {(() => {
+              let lastDay = null;
+              return messages.map((m) => {
+                const created = m.created_at || m.inserted_at || null;
+                const k = dayKey(created);
+                const showDay = k !== lastDay;
+                lastDay = k;
+
+                return (
+                  <React.Fragment key={m.id}>
+                    {showDay ? (
+                      <div style={S.daySep}>
+                        <div style={S.dayChip}>{dayLabel(created)}</div>
+                      </div>
+                    ) : null}
+
+                    <div style={S.msgRow(m.direction)}>
+                      <div style={S.bubble(m.direction)}>
+                        <div style={S.msgMetaRow}>
+                          <div style={S.msgMeta}>{m.direction}</div>
+                          <div style={S.msgMeta}>{fmtTime(created)}</div>
+                        </div>
+                        <div>{m.body}</div>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                );
+              });
+            })()}
 
             {hasNewMsgs ? (
               <button
