@@ -1,5 +1,6 @@
 // src/pages/AdminSupport.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function AdminSupport() {
@@ -13,43 +14,43 @@ export default function AdminSupport() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadConversations();
+  // ✅ Client separado SOMENTE pro schema whatsapp (não mexe no resto do projeto)
+  const supportSupabase = useMemo(() => {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!url || !anon) {
+      // vai cair no erro da tela, mas deixa claro o motivo
+      console.error("[AdminSupport] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+      return null;
+    }
+
+    return createClient(url, anon, {
+      auth: { persistSession: true },
+      db: { schema: "whatsapp" }, // 👈 aqui é o ponto
+    });
   }, []);
 
-  // ✅ helper: pega client no schema whatsapp (v2) com fallback (não quebra nada)
-  function whatsappClient() {
-    try {
-      const hasSchema = typeof supabase?.schema === "function";
-      return hasSchema ? supabase.schema("whatsapp") : supabase;
-    } catch {
-      return supabase;
-    }
-  }
+  useEffect(() => {
+    loadConversations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supportSupabase]);
 
   async function loadConversations() {
     try {
       setError("");
       setLoadingConvs(true);
 
-      const client = whatsappClient();
+      if (!supportSupabase) {
+        setConversations([]);
+        setError("VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não encontrado no frontend");
+        return;
+      }
 
-      // ✅ v2 correto: schema("whatsapp").from("conversations")
-      // ✅ fallback: se schema não existir, tenta view/table já no public
-      let res = await client
+      const { data, error } = await supportSupabase
         .from("conversations")
         .select("*")
         .order("updated_at", { ascending: false });
-
-      // 🔁 fallback extra (caso alguém tenha criado como whatsapp_conversations no public)
-      if (res.error && typeof supabase?.schema !== "function") {
-        res = await supabase
-          .from("whatsapp_conversations")
-          .select("*")
-          .order("updated_at", { ascending: false });
-      }
-
-      const { data, error } = res;
 
       if (error) {
         console.error("[AdminSupport] loadConversations error:", error);
@@ -73,24 +74,17 @@ export default function AdminSupport() {
       setError("");
       setLoadingMsgs(true);
 
-      const client = whatsappClient();
+      if (!supportSupabase) {
+        setMessages([]);
+        setError("VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não encontrado no frontend");
+        return;
+      }
 
-      let res = await client
+      const { data, error } = await supportSupabase
         .from("messages")
         .select("*")
         .eq("conversation_id", id)
         .order("created_at", { ascending: true });
-
-      // 🔁 fallback extra
-      if (res.error && typeof supabase?.schema !== "function") {
-        res = await supabase
-          .from("whatsapp_messages")
-          .select("*")
-          .eq("conversation_id", id)
-          .order("created_at", { ascending: true });
-      }
-
-      const { data, error } = res;
 
       if (error) {
         console.error("[AdminSupport] loadMessages error:", error);
@@ -123,6 +117,7 @@ export default function AdminSupport() {
       setSending(true);
       setError("");
 
+      // ✅ Edge Function pode continuar usando seu client principal
       const { data, error } = await supabase.functions.invoke("whatsapp-send-human", {
         body: {
           conversation_id: selected.id,
