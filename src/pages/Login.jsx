@@ -1,3 +1,4 @@
+// src/pages/Login.jsx
 import React, { useState } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, Link } from "react-router-dom";
@@ -10,54 +11,20 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ✅ 1 campo: WhatsApp OU Email
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ✅ device_id fixo por dispositivo (blindado)
-  const DEVICE_KEY = "dp_device_id";
-
-  const getDeviceId = () => {
-    try {
-      let id = localStorage.getItem(DEVICE_KEY);
-      if (!id) {
-        id =
-          (typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`) + "";
-        localStorage.setItem(DEVICE_KEY, id);
-      }
-      return id;
-    } catch (e) {
-      console.warn("[device] localStorage indisponível:", e);
-      const fallback =
-        (typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`) + "";
-      return fallback;
-    }
-  };
-
   const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
-  // ✅ Converte WhatsApp em email fake
   const normalizeIdentifierToEmail = (raw) => {
     const v = String(raw || "").trim().toLowerCase();
     if (!v) return "";
-
-    // se já é email, usa como está
     if (v.includes("@")) return v;
 
-    // se é telefone, limpa e converte
     let d = digitsOnly(v);
-
-    // ✅ se o cara digitar +55... remove o 55
     if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
-
-    // precisa ter pelo menos 10 dígitos (DDD + número)
     if (d.length < 10) return "";
 
     return `${d}@doramasplus.com`;
@@ -80,8 +47,7 @@ const Login = () => {
     if (!email) {
       toast({
         title: "WhatsApp inválido",
-        description:
-          "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
+        description: "Digite seu WhatsApp com DDD (somente números). Ex: 11999999999",
         variant: "destructive",
       });
       return;
@@ -90,7 +56,6 @@ const Login = () => {
     try {
       setLoading(true);
 
-      // ✅ login
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -106,27 +71,33 @@ const Login = () => {
         return;
       }
 
-      // ✅ registra o device autorizado (1 dispositivo por vez)
+      // ✅ Registra/sobrescreve a sessão deste dispositivo em active_sessions
+      // (o AuthProvider também faz isso via onAuthStateChange, mas aqui garante
+      //  que este device "toma posse" na hora exata do login)
       try {
         const userId = data?.user?.id;
         if (userId) {
-          const deviceId = getDeviceId();
+          const newVersion = crypto.randomUUID();
 
-          const { error: sessErr } = await supabase.from("user_sessions").upsert(
-            {
-              user_id: userId,
-              device_id: deviceId,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          );
+          await supabase
+            .from("active_sessions")
+            .upsert(
+              {
+                user_id: userId,
+                session_version: newVersion,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id" }
+            );
 
-          if (sessErr) {
-            console.error("[user_sessions] erro ao registrar device:", sessErr);
-          }
+          // Salva no localStorage pra o AuthProvider pegar na hora
+          try {
+            window.localStorage.setItem(`dp_sv_${userId}`, newVersion);
+          } catch {}
         }
       } catch (e2) {
-        console.error("[user_sessions] exception ao registrar device:", e2);
+        console.error("[active_sessions] erro ao registrar device no login:", e2);
+        // não bloqueia o login
       }
 
       navigate("/");
@@ -160,7 +131,6 @@ const Login = () => {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* ✅ Campo único com teclado de LETRAS no celular */}
             <div>
               <label className="text-sm mb-1 block">Email ou WhatsApp</label>
               <input
@@ -179,7 +149,6 @@ const Login = () => {
               </p>
             </div>
 
-            {/* SENHA + OLHINHO */}
             <div>
               <label className="text-sm mb-1 block">Senha</label>
               <div className="relative">
@@ -190,7 +159,6 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className={inputBase + " pr-10"}
                 />
-
                 <button
                   type="button"
                   onClick={() => setShowPassword((prev) => !prev)}
