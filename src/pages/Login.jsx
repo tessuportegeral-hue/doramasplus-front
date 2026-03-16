@@ -5,7 +5,10 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
+
+// ✅ TESTE — só ativa o single session pra este email
+const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,6 +18,11 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ✅ NOVO — estados do modal de dispositivo ativo
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [pendingCredentials, setPendingCredentials] = useState(null); // { email, password }
+  const [evictingDevice, setEvictingDevice] = useState(false);
 
   const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
@@ -28,6 +36,81 @@ const Login = () => {
     if (d.length < 10) return "";
 
     return `${d}@doramasplus.com`;
+  };
+
+  // ✅ NOVO — verifica se tem outro device logado nessa conta
+  const checkActiveSession = async (userId) => {
+    try {
+      const myVersion = (() => {
+        try { return window.localStorage.getItem(`dp_sv_${userId}`) || null; } catch { return null; }
+      })();
+
+      const { data, error } = await supabase
+        .from("active_sessions")
+        .select("session_version")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error || !data) return false; // sem registro no banco → primeiro login → libera
+      if (myVersion && data.session_version === myVersion) return false; // é este mesmo device
+      return true; // UUID diferente → outro device ativo
+    } catch {
+      return false; // fail-open: erro de rede não bloqueia o login
+    }
+  };
+
+  // ✅ NOVO — usuário confirmou: derruba o outro device e entra
+  const evictAndLogin = async () => {
+    if (!pendingCredentials) return;
+    setEvictingDevice(true);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: pendingCredentials.email,
+        password: pendingCredentials.password,
+      });
+
+      if (error) {
+        toast({
+          title: "Erro ao entrar",
+          description: "Senha incorreta ou sessão expirada. Tente novamente.",
+          variant: "destructive",
+        });
+        setShowDeviceModal(false);
+        setPendingCredentials(null);
+        return;
+      }
+
+      const userId = data?.user?.id;
+      if (userId) {
+        // Sobrescreve UUID no banco → Realtime notifica o outro device → deslogado na hora
+        const newVersion = crypto.randomUUID();
+        await supabase
+          .from("active_sessions")
+          .upsert(
+            {
+              user_id: userId,
+              session_version: newVersion,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" }
+          );
+        try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
+      }
+
+      setShowDeviceModal(false);
+      setPendingCredentials(null);
+      navigate("/");
+    } catch (err) {
+      console.error("evictAndLogin error:", err);
+      toast({
+        title: "Erro inesperado",
+        description: "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setEvictingDevice(false);
+    }
   };
 
   const handleLogin = async (e) => {
@@ -71,14 +154,25 @@ const Login = () => {
         return;
       }
 
-      // ✅ Registra/sobrescreve a sessão deste dispositivo em active_sessions
-      // (o AuthProvider também faz isso via onAuthStateChange, mas aqui garante
-      //  que este device "toma posse" na hora exata do login)
+      const userId = data?.user?.id;
+
+      // ✅ NOVO — só verifica outro device se for o email de teste
+      if (userId && email === SINGLE_SESSION_TEST_EMAIL) {
+        const hasOtherDevice = await checkActiveSession(userId);
+
+        if (hasOtherDevice) {
+          // Desloga temporariamente pra não ficar com sessão "solta"
+          await supabase.auth.signOut();
+          setPendingCredentials({ email, password });
+          setShowDeviceModal(true);
+          return; // para aqui — o modal decide o próximo passo
+        }
+      }
+
+      // Sem conflito de device → registra e navega (igual ao original)
       try {
-        const userId = data?.user?.id;
         if (userId) {
           const newVersion = crypto.randomUUID();
-
           await supabase
             .from("active_sessions")
             .upsert(
@@ -89,15 +183,10 @@ const Login = () => {
               },
               { onConflict: "user_id" }
             );
-
-          // Salva no localStorage pra o AuthProvider pegar na hora
-          try {
-            window.localStorage.setItem(`dp_sv_${userId}`, newVersion);
-          } catch {}
+          try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
         }
       } catch (e2) {
         console.error("[active_sessions] erro ao registrar device no login:", e2);
-        // não bloqueia o login
       }
 
       navigate("/");
@@ -204,6 +293,54 @@ const Login = () => {
           </p>
         </div>
       </div>
+
+      {/* ✅ NOVO — Modal: conta ativa em outro dispositivo */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <MonitorSmartphone className="w-7 h-7 text-purple-400 shrink-0" />
+              <h2 className="text-lg font-bold text-slate-50 leading-tight">
+                Conta ativa em outro dispositivo
+              </h2>
+            </div>
+
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Sua conta já está sendo usada em outro dispositivo. Se continuar,
+              o outro dispositivo será desconectado automaticamente.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={evictAndLogin}
+                disabled={evictingDevice}
+              >
+                {evictingDevice ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  "Entrar aqui e desconectar o outro"
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11 border-slate-600 text-slate-300 hover:bg-slate-800"
+                onClick={() => {
+                  setShowDeviceModal(false);
+                  setPendingCredentials(null);
+                }}
+                disabled={evictingDevice}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
