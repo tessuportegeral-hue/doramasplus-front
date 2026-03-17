@@ -8,8 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
-// ✅ TESTE — só ativa o single session pra este email por enquanto
-// Quando quiser ativar pra todos, mude para: null
+// ✅ TESTE — só ativa single session pra este email
+// Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
 
 const Login = () => {
@@ -22,13 +22,15 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Modal: conta ativa em outro device (ao tentar logar)
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [pendingCredentials, setPendingCredentials] = useState(null);
   const [evictingDevice, setEvictingDevice] = useState(false);
 
-  // ✅ NOVO — se chegou aqui porque foi kickado, mostra modal explicando
+  // Modal: você foi kickado por outro device
   const [showKickedModal, setShowKickedModal] = useState(false);
 
+  // ✅ Se chegou na tela de login porque foi kickado, mostra o modal
   useEffect(() => {
     if (kickedOut) {
       setShowKickedModal(true);
@@ -51,8 +53,7 @@ const Login = () => {
   };
 
   const shouldCheckSingleSession = (email) => {
-    // Se SINGLE_SESSION_TEST_EMAIL for null → ativa pra todos
-    if (!SINGLE_SESSION_TEST_EMAIL) return true;
+    if (!SINGLE_SESSION_TEST_EMAIL) return true; // null = todos
     return email === SINGLE_SESSION_TEST_EMAIL;
   };
 
@@ -68,24 +69,21 @@ const Login = () => {
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (error || !data) return false;
-      if (myVersion && data.session_version === myVersion) return false;
+      if (error || !data) return false; // sem registro → primeiro login → libera
+      if (myVersion && data.session_version === myVersion) return false; // mesmo device
       return true; // outro device ativo
     } catch {
-      return false;
+      return false; // fail-open
     }
   };
 
+  // Grava UUID novo no banco e no localStorage — sobrescreve o outro device
   const registerSession = async (userId) => {
     const newVersion = crypto.randomUUID();
     await supabase
       .from("active_sessions")
       .upsert(
-        {
-          user_id: userId,
-          session_version: newVersion,
-          updated_at: new Date().toISOString(),
-        },
+        { user_id: userId, session_version: newVersion, updated_at: new Date().toISOString() },
         { onConflict: "user_id" }
       );
     try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
@@ -93,6 +91,7 @@ const Login = () => {
   };
 
   // ✅ Usuário confirmou: derruba o outro device e entra
+  // O Realtime vai notificar o outro device e derrubar em < 1s
   const evictAndLogin = async () => {
     if (!pendingCredentials) return;
     setEvictingDevice(true);
@@ -116,7 +115,7 @@ const Login = () => {
 
       const userId = data?.user?.id;
       if (userId) {
-        // ✅ Sobrescreve UUID no banco → o outro device detecta na próxima poll (até 5s) e é deslogado
+        // Sobrescreve UUID no banco → Realtime derruba o outro device instantaneamente
         await registerSession(userId);
       }
 
@@ -125,11 +124,7 @@ const Login = () => {
       navigate("/");
     } catch (err) {
       console.error("evictAndLogin error:", err);
-      toast({
-        title: "Erro inesperado",
-        description: "Tente novamente.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro inesperado", description: "Tente novamente.", variant: "destructive" });
     } finally {
       setEvictingDevice(false);
     }
@@ -139,11 +134,7 @@ const Login = () => {
     e.preventDefault();
 
     if (!identifier || !password) {
-      toast({
-        title: "Atenção",
-        description: "Preencha WhatsApp (ou email) e senha.",
-        variant: "destructive",
-      });
+      toast({ title: "Atenção", description: "Preencha WhatsApp (ou email) e senha.", variant: "destructive" });
       return;
     }
 
@@ -161,29 +152,21 @@ const Login = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        console.error("Erro login:", error);
-        toast({
-          title: "Erro ao entrar",
-          description: "WhatsApp/email ou senha incorretos.",
-          variant: "destructive",
-        });
+        toast({ title: "Erro ao entrar", description: "WhatsApp/email ou senha incorretos.", variant: "destructive" });
         return;
       }
 
       const userId = data?.user?.id;
 
-      // ✅ Verifica conflito de device (respeitando o email de teste)
+      // ✅ Verifica conflito de device
       if (userId && shouldCheckSingleSession(email)) {
         const hasOtherDevice = await checkActiveSession(userId);
 
         if (hasOtherDevice) {
-          // Desloga temporariamente pra não deixar sessão solta
+          // Desloga temporariamente — o modal decide o próximo passo
           await supabase.auth.signOut();
           setPendingCredentials({ email, password });
           setShowDeviceModal(true);
@@ -192,18 +175,11 @@ const Login = () => {
       }
 
       // Sem conflito → registra e navega
-      if (userId) {
-        await registerSession(userId);
-      }
-
+      if (userId) await registerSession(userId);
       navigate("/");
     } catch (err) {
       console.error("Erro inesperado:", err);
-      toast({
-        title: "Erro inesperado",
-        description: "Tente novamente mais tarde.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -222,9 +198,7 @@ const Login = () => {
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
         <div className="max-w-md w-full bg-slate-900/95 p-6 rounded-2xl border border-slate-800 shadow-lg">
           <h1 className="text-3xl font-bold mb-1 text-purple-400">Bem-vindo</h1>
-          <p className="text-slate-300 text-sm mb-6">
-            Entre na sua conta para continuar.
-          </p>
+          <p className="text-slate-300 text-sm mb-6">Entre na sua conta para continuar.</p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -260,48 +234,28 @@ const Login = () => {
                   onClick={() => setShowPassword((prev) => !prev)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 opacity-90 hover:opacity-100"
                 >
-                  {showPassword ? (
-                    <Eye className="w-5 h-5 text-slate-100" />
-                  ) : (
-                    <EyeOff className="w-5 h-5 text-slate-100" />
-                  )}
+                  {showPassword ? <Eye className="w-5 h-5 text-slate-100" /> : <EyeOff className="w-5 h-5 text-slate-100" />}
                 </button>
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full h-11 text-base"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                "Entrar"
-              )}
+            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
             </Button>
           </form>
 
-          <Link
-            to="/reset-password"
-            className="block mt-4 text-sm text-purple-400 hover:underline text-center"
-          >
+          <Link to="/reset-password" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
             Esqueci minha senha
           </Link>
 
           <p className="text-slate-400 text-sm mt-6 text-center">
             Não tem conta?{" "}
-            <Link to="/signup" className="text-purple-400 hover:underline">
-              Criar conta
-            </Link>
+            <Link to="/signup" className="text-purple-400 hover:underline">Criar conta</Link>
           </p>
         </div>
       </div>
 
-      {/* ✅ Modal: conta ativa em outro dispositivo (ao tentar logar) */}
+      {/* Modal: conta ativa em outro device */}
       {showDeviceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
@@ -311,35 +265,22 @@ const Login = () => {
                 Conta ativa em outro dispositivo
               </h2>
             </div>
-
             <p className="text-slate-300 text-sm mb-6 leading-relaxed">
               Sua conta já está sendo usada em outro dispositivo. Se continuar,
-              o outro dispositivo será desconectado automaticamente em até 5 segundos.
+              o outro dispositivo será desconectado automaticamente.
             </p>
-
             <div className="flex flex-col gap-3">
               <Button
                 className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
                 onClick={evictAndLogin}
                 disabled={evictingDevice}
               >
-                {evictingDevice ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  "Entrar aqui e desconectar o outro"
-                )}
+                {evictingDevice ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar aqui e desconectar o outro"}
               </Button>
-
               <Button
                 variant="outline"
                 className="w-full h-11 border-slate-600 text-slate-300 hover:bg-slate-800"
-                onClick={() => {
-                  setShowDeviceModal(false);
-                  setPendingCredentials(null);
-                }}
+                onClick={() => { setShowDeviceModal(false); setPendingCredentials(null); }}
                 disabled={evictingDevice}
               >
                 Cancelar
@@ -349,7 +290,7 @@ const Login = () => {
         </div>
       )}
 
-      {/* ✅ NOVO — Modal: você foi desconectado por outro dispositivo */}
+      {/* ✅ Modal: você foi desconectado por outro device */}
       {showKickedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="bg-slate-900 border border-red-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
@@ -359,12 +300,10 @@ const Login = () => {
                 Você foi desconectado
               </h2>
             </div>
-
             <p className="text-slate-300 text-sm mb-6 leading-relaxed">
               Sua sessão foi encerrada porque outro dispositivo entrou na mesma conta.
-              Faça login novamente para continuar.
+              Faça login novamente para continuar assistindo.
             </p>
-
             <Button
               className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
               onClick={() => setShowKickedModal(false)}
