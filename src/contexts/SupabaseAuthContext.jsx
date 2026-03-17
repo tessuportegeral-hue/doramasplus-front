@@ -12,20 +12,12 @@ import { supabase } from "@/lib/supabaseClient";
 const AuthContext = createContext(null);
 
 // =========================
-// ✅ CONFIG
+// CONFIG
 // =========================
-
 const ENABLE_SINGLE_SESSION = true;
-
 const SESSION_VERSION_KEY = (userId) => `dp_sv_${userId}`;
-
-// Polling normal a cada 5s (era 15s — mais rápido pra detectar kick)
-const SESSION_POLL_MS = 5_000;
-
-// Grace após login
-const GRACE_AFTER_LOGIN_MS = 3_000;
-
-// ✅ Removido INVALID_STREAK_LIMIT — agora derruba na PRIMEIRA detecção
+const SESSION_POLL_MS = 5_000;       // fallback polling a cada 5s
+const GRACE_AFTER_LOGIN_MS = 3_000;  // grace após login
 
 const PREMIUM_POLL_MS = 2500;
 const PREMIUM_POLL_MAX_MS = 60_000;
@@ -39,10 +31,11 @@ export const AuthProvider = ({ children }) => {
   const [checkingPremium, setCheckingPremium] = useState(true);
   const [checkingSession, setCheckingSession] = useState(false);
 
-  // ✅ NOVO — estado para mostrar modal/tela de "você foi desconectado"
+  // kickedOut: true quando este device foi derrubado por outro login
   const [kickedOut, setKickedOut] = useState(false);
 
   const pollRef = useRef(null);
+  const realtimeChannelRef = useRef(null);
   const premiumPollRef = useRef(null);
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
@@ -50,24 +43,17 @@ export const AuthProvider = ({ children }) => {
   const localVersionRef = useRef(null);
   const timersRef = useRef([]);
   const inFlightRef = useRef(false);
-  const isKickedRef = useRef(false); // evita múltiplos forceSignOut simultâneos
+  const isKickedRef = useRef(false);
 
   // ========== HELPERS localStorage ==========
   const readStoredVersion = useCallback((userId) => {
-    try {
-      return window.localStorage.getItem(SESSION_VERSION_KEY(userId)) || null;
-    } catch {
-      return null;
-    }
+    try { return window.localStorage.getItem(SESSION_VERSION_KEY(userId)) || null; } catch { return null; }
   }, []);
 
   const writeStoredVersion = useCallback((userId, version) => {
     try {
-      if (version) {
-        window.localStorage.setItem(SESSION_VERSION_KEY(userId), version);
-      } else {
-        window.localStorage.removeItem(SESSION_VERSION_KEY(userId));
-      }
+      if (version) window.localStorage.setItem(SESSION_VERSION_KEY(userId), version);
+      else window.localStorage.removeItem(SESSION_VERSION_KEY(userId));
     } catch {}
   }, []);
 
@@ -79,23 +65,13 @@ export const AuthProvider = ({ children }) => {
 
   // ========== PREMIUM ==========
   const stopPremiumPolling = useCallback(() => {
-    if (premiumPollRef.current) {
-      clearInterval(premiumPollRef.current);
-      premiumPollRef.current = null;
-    }
+    if (premiumPollRef.current) { clearInterval(premiumPollRef.current); premiumPollRef.current = null; }
     premiumPollStartedAtRef.current = 0;
   }, []);
 
   const checkPremiumStatus = useCallback(async (userId) => {
-    if (!userId) {
-      setIsPremium(false);
-      isPremiumRef.current = false;
-      setCheckingPremium(false);
-      return;
-    }
-
+    if (!userId) { setIsPremium(false); isPremiumRef.current = false; setCheckingPremium(false); return; }
     setCheckingPremium(true);
-
     try {
       const { data: subscriptions, error } = await supabase
         .from("subscriptions")
@@ -104,43 +80,27 @@ export const AuthProvider = ({ children }) => {
         .order("created_at", { ascending: false })
         .limit(5);
 
-      if (error) {
-        console.error("Error checking premium status:", error);
-        return;
-      }
+      if (error) { console.error("Error checking premium:", error); return; }
 
       const subs = Array.isArray(subscriptions) ? subscriptions : [];
-
-      if (subs.length === 0) {
-        const keep = !!isPremiumRef.current;
-        setIsPremium(keep);
-        return;
-      }
+      if (subs.length === 0) { setIsPremium(!!isPremiumRef.current); return; }
 
       const now = new Date();
       const ACTIVE_STATUSES = new Set(["active", "trialing", "paid"]);
-
       const hasActiveSub = subs.some((sub) => {
         const status = String(sub?.status ?? "").trim().toLowerCase();
         if (!ACTIVE_STATUSES.has(status)) return false;
-
-        const endDate = (() => {
-          const v = sub?.end_at || sub?.current_period_end;
-          if (!v) return null;
-          const d = new Date(v);
-          return Number.isNaN(d.getTime()) ? null : d;
-        })();
-
-        if (endDate) return endDate > now;
-        return true;
+        const v = sub?.end_at || sub?.current_period_end;
+        if (!v) return true;
+        const d = new Date(v);
+        return !Number.isNaN(d.getTime()) && d > now;
       });
 
       setIsPremium(hasActiveSub);
       isPremiumRef.current = hasActiveSub;
-
       if (hasActiveSub) stopPremiumPolling();
     } catch (err) {
-      console.error("Error checking premium status (fatal):", err);
+      console.error("Error checking premium (fatal):", err);
     } finally {
       setCheckingPremium(false);
     }
@@ -148,18 +108,16 @@ export const AuthProvider = ({ children }) => {
 
   const startPremiumPolling = useCallback(async (userId) => {
     if (!userId) return;
-    if (isPremiumRef.current === true) { stopPremiumPolling(); return; }
+    if (isPremiumRef.current) { stopPremiumPolling(); return; }
     if (premiumPollRef.current) return;
 
     premiumPollStartedAtRef.current = Date.now();
     await checkPremiumStatus(userId);
-
-    if (isPremiumRef.current === true) { stopPremiumPolling(); return; }
+    if (isPremiumRef.current) { stopPremiumPolling(); return; }
 
     premiumPollRef.current = setInterval(async () => {
       const elapsed = Date.now() - (premiumPollStartedAtRef.current || 0);
-      if (elapsed > PREMIUM_POLL_MAX_MS) { stopPremiumPolling(); return; }
-      if (isPremiumRef.current === true) { stopPremiumPolling(); return; }
+      if (elapsed > PREMIUM_POLL_MAX_MS || isPremiumRef.current) { stopPremiumPolling(); return; }
       await checkPremiumStatus(userId);
     }, PREMIUM_POLL_MS);
   }, [checkPremiumStatus, stopPremiumPolling]);
@@ -167,40 +125,34 @@ export const AuthProvider = ({ children }) => {
   // ========== SINGLE SESSION ==========
 
   const stopSessionPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setCheckingSession(false);
+  }, []);
+
+  const stopRealtimeSession = useCallback(() => {
+    if (realtimeChannelRef.current) {
+      try { supabase.removeChannel(realtimeChannelRef.current); } catch {}
+      realtimeChannelRef.current = null;
+    }
   }, []);
 
   const startSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
-    if (!uid) return true;
-    if (inFlightRef.current) return true;
+    if (!uid || inFlightRef.current) return true;
 
     inFlightRef.current = true;
     setCheckingSession(true);
-
     try {
       const newVersion = crypto.randomUUID();
-
       const { error } = await supabase
         .from("active_sessions")
         .upsert(
-          {
-            user_id: uid,
-            session_version: newVersion,
-            updated_at: new Date().toISOString(),
-          },
+          { user_id: uid, session_version: newVersion, updated_at: new Date().toISOString() },
           { onConflict: "user_id" }
         );
 
-      if (error) {
-        console.error("[single-session] startSession error:", error);
-        return true;
-      }
+      if (error) { console.error("[single-session] startSession error:", error); return true; }
 
       localVersionRef.current = newVersion;
       writeStoredVersion(uid, newVersion);
@@ -214,9 +166,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [writeStoredVersion]);
 
-  /**
-   * ✅ CORRIGIDO — derruba na PRIMEIRA detecção, sem esperar streak
-   */
   const validateSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
@@ -224,12 +173,8 @@ export const AuthProvider = ({ children }) => {
 
     if (!localVersionRef.current) {
       const stored = readStoredVersion(uid);
-      if (stored) {
-        localVersionRef.current = stored;
-      } else {
-        await startSession();
-        return true;
-      }
+      if (stored) localVersionRef.current = stored;
+      else { await startSession(); return true; }
     }
 
     try {
@@ -239,24 +184,16 @@ export const AuthProvider = ({ children }) => {
         .eq("user_id", uid)
         .maybeSingle();
 
-      if (error) {
-        console.error("[single-session] validateSession error:", error);
-        return true; // fail-open
-      }
-
-      if (!data) {
-        await startSession();
-        return true;
-      }
+      if (error) { console.error("[single-session] validateSession error:", error); return true; }
+      if (!data) { await startSession(); return true; }
 
       const bankVersion = String(data.session_version || "");
       const myVersion = String(localVersionRef.current || "");
 
       if (bankVersion !== myVersion) {
-        console.warn("[single-session] versão diferente → outro dispositivo logou → deslogando agora");
-        return false; // ✅ derruba imediatamente
+        console.warn("[single-session] versão diferente → kickando");
+        return false;
       }
-
       return true;
     } catch (e) {
       console.error("[single-session] validateSession exception:", e);
@@ -264,46 +201,75 @@ export const AuthProvider = ({ children }) => {
     }
   }, [readStoredVersion, startSession]);
 
-  /**
-   * ✅ CORRIGIDO — seta kickedOut=true antes de deslogar,
-   * assim o app pode mostrar tela/modal explicando o motivo
-   */
   const forceSignOut = useCallback(async () => {
-    if (isKickedRef.current) return; // evita duplo disparo
+    if (isKickedRef.current) return;
     isKickedRef.current = true;
 
-    try {
-      stopSessionPolling();
-      const uid = activeUserIdRef.current;
-      localVersionRef.current = null;
-      activeUserIdRef.current = null;
-      if (uid) writeStoredVersion(uid, null);
+    stopSessionPolling();
+    stopRealtimeSession();
 
-      // ✅ Avisa a UI ANTES de deslogar
-      setKickedOut(true);
+    const uid = activeUserIdRef.current;
+    localVersionRef.current = null;
+    activeUserIdRef.current = null;
+    if (uid) writeStoredVersion(uid, null);
 
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.error("[single-session] forceSignOut error:", e);
-    }
-  }, [stopSessionPolling, writeStoredVersion]);
+    setKickedOut(true);
+    try { await supabase.auth.signOut(); } catch (e) { console.error("[single-session] forceSignOut error:", e); }
+  }, [stopSessionPolling, stopRealtimeSession, writeStoredVersion]);
+
+  // ✅ REALTIME — escuta UPDATE na linha deste user_id
+  // Quando session_version mudar no banco → derruba instantaneamente
+  const startRealtimeSession = useCallback((uid) => {
+    if (!ENABLE_SINGLE_SESSION || !uid) return;
+    stopRealtimeSession();
+
+    const channel = supabase
+      .channel(`session_watch_${uid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "active_sessions",
+          filter: `user_id=eq.${uid}`,
+        },
+        (payload) => {
+          const newVersion = payload?.new?.session_version;
+          const myV = localVersionRef.current;
+          if (newVersion && myV && newVersion !== myV) {
+            console.warn("[realtime] session_version mudou → kickando instantaneamente");
+            forceSignOut();
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") console.log("[realtime] canal de sessão ativo");
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("[realtime] canal com problema — fallback polling cobre");
+        }
+      });
+
+    realtimeChannelRef.current = channel;
+  }, [stopRealtimeSession, forceSignOut]);
 
   const startSessionPolling = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION) return;
-    if (!activeUserIdRef.current) return;
+    if (!ENABLE_SINGLE_SESSION || !activeUserIdRef.current) return;
 
     stopSessionPolling();
+    stopRealtimeSession();
+
+    // Grava UUID deste device no banco
     await startSession();
 
+    // Realtime — kick em < 1s
+    startRealtimeSession(activeUserIdRef.current);
+
+    // Polling fallback — kick em até 5s se Realtime falhar
     pollRef.current = setInterval(async () => {
       const ok = await validateSession();
-
-      if (!ok) {
-        // ✅ Derruba na primeira falha — sem streak
-        await forceSignOut();
-      }
+      if (!ok) await forceSignOut();
     }, SESSION_POLL_MS);
-  }, [startSession, validateSession, forceSignOut, stopSessionPolling]);
+  }, [startSession, validateSession, forceSignOut, stopSessionPolling, stopRealtimeSession, startRealtimeSession]);
 
   // ========== INIT + AUTH LISTENER ==========
   useEffect(() => {
@@ -324,7 +290,6 @@ export const AuthProvider = ({ children }) => {
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
           isKickedRef.current = false;
-
           const stored = readStoredVersion(currentUser.id);
           localVersionRef.current = stored || null;
 
@@ -334,15 +299,11 @@ export const AuthProvider = ({ children }) => {
           const t = setTimeout(() => startSessionPolling(), GRACE_AFTER_LOGIN_MS);
           timersRef.current.push(t);
         } else {
-          setIsPremium(false);
-          isPremiumRef.current = false;
-          setCheckingPremium(false);
-          setCheckingSession(false);
-          activeUserIdRef.current = null;
-          localVersionRef.current = null;
+          setIsPremium(false); isPremiumRef.current = false;
+          setCheckingPremium(false); setCheckingSession(false);
+          activeUserIdRef.current = null; localVersionRef.current = null;
           isKickedRef.current = false;
-          stopSessionPolling();
-          stopPremiumPolling();
+          stopSessionPolling(); stopRealtimeSession(); stopPremiumPolling();
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -362,7 +323,6 @@ export const AuthProvider = ({ children }) => {
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
         isKickedRef.current = false;
-        // ✅ Novo login → limpa kickedOut
         setKickedOut(false);
 
         const stored = readStoredVersion(currentUser.id);
@@ -378,12 +338,9 @@ export const AuthProvider = ({ children }) => {
         localVersionRef.current = null;
         if (uid) writeStoredVersion(uid, null);
 
-        stopSessionPolling();
-        stopPremiumPolling();
-        setIsPremium(false);
-        isPremiumRef.current = false;
-        setCheckingPremium(false);
-        setCheckingSession(false);
+        stopSessionPolling(); stopRealtimeSession(); stopPremiumPolling();
+        setIsPremium(false); isPremiumRef.current = false;
+        setCheckingPremium(false); setCheckingSession(false);
       }
 
       setLoading(false);
@@ -394,36 +351,30 @@ export const AuthProvider = ({ children }) => {
       try { subscription.unsubscribe(); } catch {}
       clearTimers();
       stopSessionPolling();
+      stopRealtimeSession();
       stopPremiumPolling();
     };
   }, [
-    checkPremiumStatus,
-    startPremiumPolling,
-    startSessionPolling,
-    stopSessionPolling,
-    stopPremiumPolling,
-    clearTimers,
-    readStoredVersion,
-    writeStoredVersion,
+    checkPremiumStatus, startPremiumPolling, startSessionPolling,
+    stopSessionPolling, stopRealtimeSession, stopPremiumPolling,
+    clearTimers, readStoredVersion, writeStoredVersion,
   ]);
 
-  // ========== REVALIDAR AO VOLTAR PARA A ABA ==========
+  // ========== REVALIDAR AO VOLTAR PRA ABA ==========
   useEffect(() => {
-    const onFocus = async () => {
+    const onVisible = async () => {
       if (!activeUserIdRef.current) return;
       await checkPremiumStatus(activeUserIdRef.current);
       if (!isPremiumRef.current) startPremiumPolling(activeUserIdRef.current);
 
-      // ✅ Ao voltar pra aba, valida sessão imediatamente (não espera o próximo poll)
       if (ENABLE_SINGLE_SESSION) {
         const ok = await validateSession();
         if (!ok) await forceSignOut();
       }
     };
 
-    const onVisibility = async () => {
-      if (document.visibilityState === "visible") await onFocus();
-    };
+    const onFocus = () => onVisible();
+    const onVisibility = () => { if (document.visibilityState === "visible") onVisible(); };
 
     try {
       window.addEventListener("focus", onFocus);
@@ -445,25 +396,17 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, checkPremiumStatus, startPremiumPolling]);
 
-  // ✅ Limpa kickedOut quando usuário faz login novo
   const clearKickedOut = useCallback(() => {
     setKickedOut(false);
     isKickedRef.current = false;
   }, []);
 
   const value = {
-    user,
-    session,
-    loading,
+    user, session, loading,
     isAuthenticated: !!user,
-    isPremium,
-    checkingPremium,
-    refreshPremiumStatus,
-    checkingSession,
-    singleSessionEnabled: ENABLE_SINGLE_SESSION,
-    // ✅ NOVO — exposto pra tela de login/app poder reagir
-    kickedOut,
-    clearKickedOut,
+    isPremium, checkingPremium, refreshPremiumStatus,
+    checkingSession, singleSessionEnabled: ENABLE_SINGLE_SESSION,
+    kickedOut, clearKickedOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
