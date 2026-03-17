@@ -5,6 +5,33 @@ import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Play } from 'lucide-react';
 
+// ✅ Converte as flags booleanas do dorama em lista de gêneros legíveis
+function buildGenres(dorama) {
+  if (!dorama) return 'Gêneros Variados';
+
+  const genres = [];
+
+  // Campo genres do banco (texto livre) — se existir, usa primeiro
+  if (dorama.genres && dorama.genres.trim()) {
+    dorama.genres.split(',').forEach(g => {
+      const trimmed = g.trim();
+      if (trimmed) genres.push(trimmed);
+    });
+  }
+
+  // Categorias booleanas (ignorando is_featured e is_recommended que são internas)
+  if (dorama.is_new) genres.push('Novo Lançamento');
+  if (dorama.language === 'dublado') genres.push('Dublado');
+  if (dorama.is_baby_pregnancy) genres.push('Bebês e Gravidezes');
+  if (dorama.is_taboo_relationship) genres.push('Relacionamento Tabu');
+  if (dorama.is_hidden_identity) genres.push('Identidade Escondida');
+
+  if (genres.length === 0) return 'Gêneros Variados';
+
+  // Remove duplicatas
+  return [...new Set(genres)].join(', ');
+}
+
 export default function DoramaDetail() {
   const { id: slugFromUrl } = useParams();
   const navigate = useNavigate();
@@ -76,6 +103,8 @@ export default function DoramaDetail() {
     );
   }
 
+  const displayGenres = buildGenres(dorama);
+
   return (
     <>
       <Helmet>
@@ -121,10 +150,10 @@ export default function DoramaDetail() {
                 <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
                   {dorama.title}
                 </h1>
-                <div className="flex items-center gap-3 text-slate-400 text-base">
+                <div className="flex items-center gap-3 text-slate-400 text-base flex-wrap">
                   <span>{dorama.release_year || 'Ano N/A'}</span>
                   <span className="w-1.5 h-1.5 bg-slate-600 rounded-full" />
-                  <span>{dorama.genres || 'Gêneros Variados'}</span>
+                  <span>{displayGenres}</span>
                 </div>
               </div>
 
@@ -144,7 +173,7 @@ export default function DoramaDetail() {
                   </div>
                   <div>
                     <dt className="text-slate-500">Gênero</dt>
-                    <dd className="text-slate-200">{dorama.genres || '-'}</dd>
+                    <dd className="text-slate-200">{displayGenres}</dd>
                   </div>
                   <div>
                     <dt className="text-slate-500">Lançamento</dt>
