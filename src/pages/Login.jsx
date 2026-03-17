@@ -57,6 +57,30 @@ const Login = () => {
     return email === SINGLE_SESSION_TEST_EMAIL;
   };
 
+  // ✅ FIX: grava o UUID deste device IMEDIATAMENTE no banco
+  // Isso garante que o device novo tem prioridade antes do contexto inicializar
+  const registerSessionImmediate = async (userId) => {
+    const newVersion = crypto.randomUUID();
+
+    // Grava no banco (upsert = sobrescreve o device antigo)
+    const { error } = await supabase
+      .from("active_sessions")
+      .upsert(
+        { user_id: userId, session_version: newVersion, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      console.error("[login] registerSession error:", error);
+      return null;
+    }
+
+    // Grava no localStorage para o contexto encontrar depois
+    try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
+
+    return newVersion;
+  };
+
   const checkActiveSession = async (userId) => {
     try {
       const myVersion = (() => {
@@ -77,21 +101,8 @@ const Login = () => {
     }
   };
 
-  // Grava UUID novo no banco e no localStorage — sobrescreve o outro device
-  const registerSession = async (userId) => {
-    const newVersion = crypto.randomUUID();
-    await supabase
-      .from("active_sessions")
-      .upsert(
-        { user_id: userId, session_version: newVersion, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" }
-      );
-    try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
-    return newVersion;
-  };
-
   // ✅ Usuário confirmou: derruba o outro device e entra
-  // O Realtime vai notificar o outro device e derrubar em < 1s
+  // Grava o UUID novo ANTES do contexto inicializar — o device antigo cai via Realtime em < 1s
   const evictAndLogin = async () => {
     if (!pendingCredentials) return;
     setEvictingDevice(true);
@@ -115,8 +126,9 @@ const Login = () => {
 
       const userId = data?.user?.id;
       if (userId) {
-        // Sobrescreve UUID no banco → Realtime derruba o outro device instantaneamente
-        await registerSession(userId);
+        // ✅ Grava UUID novo imediatamente — sobrescreve o antigo no banco
+        // O Realtime notifica o device antigo em < 1s e ele é kickado
+        await registerSessionImmediate(userId);
       }
 
       setShowDeviceModal(false);
@@ -174,8 +186,12 @@ const Login = () => {
         }
       }
 
-      // Sem conflito → registra e navega
-      if (userId) await registerSession(userId);
+      // Sem conflito → grava UUID e navega
+      // ✅ IMPORTANTE: grava ANTES do contexto inicializar o polling
+      if (userId && shouldCheckSingleSession(email)) {
+        await registerSessionImmediate(userId);
+      }
+
       navigate("/");
     } catch (err) {
       console.error("Erro inesperado:", err);
