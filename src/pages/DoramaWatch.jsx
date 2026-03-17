@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Crown, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 import Hls from "hls.js";
+import useSessionGuard from "@/hooks/useSessionGuard";
+
+// ✅ TESTE — só ativa session guard pra este email
+// Para ativar pra TODOS: mude para null
+const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();
@@ -13,6 +18,12 @@ export default function DoramaWatch() {
   const location = useLocation();
 
   const { user, isAuthenticated, isPremium, checkingPremium, loading } = useAuth();
+
+  // ✅ Trava de sessão única — só ativa para o email de teste
+  // Quando SINGLE_SESSION_TEST_EMAIL = null, protege todos os usuários
+  const shouldGuard = !SINGLE_SESSION_TEST_EMAIL ||
+    user?.email === SINGLE_SESSION_TEST_EMAIL;
+  useSessionGuard(shouldGuard);
 
   const [dorama, setDorama] = useState(null);
   const [loadingDorama, setLoadingDorama] = useState(true);
@@ -117,15 +128,12 @@ export default function DoramaWatch() {
     const url = (videoUrl || "").toLowerCase();
     if (!url) return "none";
 
-    // prioridade: se for mp4/m3u8, é video
     if (url.includes(".m3u8")) return "hls";
     if (url.includes(".mp4")) return "mp4";
 
-    // iframe só se for claramente iframe/embed
     if (url.includes("iframe.mediadelivery.net")) return "iframe";
     if (url.includes("/embed/")) return "iframe";
 
-    // fallback
     if (url.startsWith("http")) return "video";
 
     return "none";
@@ -191,7 +199,6 @@ export default function DoramaWatch() {
   };
 
   // ✅ REGRA: continuar assistindo SOMENTE no modo normal + <video> (Storage).
-  // Modo iPhone (stream) não salva e não mostra continuar (pedido seu).
   const allowContinue = useMemo(() => {
     if (!isPremium) return false;
     if (!user?.id) return false;
@@ -244,7 +251,6 @@ export default function DoramaWatch() {
       const iv = setInterval(tick, 1000);
       return () => clearInterval(iv);
     } catch {
-      // fallback simples
       setTrialRemaining(TRIAL_SECONDS);
       setTrialExpired(false);
     }
@@ -516,7 +522,7 @@ export default function DoramaWatch() {
               </div>
             )}
 
-            {/* ✅ AVISO MODO IPHONE (liberado pra teste grátis também) */}
+            {/* ✅ AVISO MODO IPHONE */}
             {hasStream && !isIphoneMode && (
               <div className="px-3 sm:px-0 mb-3">
                 <div className="w-full rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm text-slate-200">
@@ -530,7 +536,7 @@ export default function DoramaWatch() {
                   </button>
                   .{" "}
                   <span className="text-slate-300/90">
-                    Obs: no Modo iPhone não existe a opção de “Continuar assistindo de onde parou”.
+                    Obs: no Modo iPhone não existe a opção de "Continuar assistindo de onde parou".
                   </span>
                 </div>
               </div>
@@ -549,13 +555,13 @@ export default function DoramaWatch() {
                   </button>
                   .{" "}
                   <span className="text-slate-300/90">
-                    No Modo iPhone, o “Continuar assistindo” fica desativado.
+                    No Modo iPhone, o "Continuar assistindo" fica desativado.
                   </span>
                 </div>
               </div>
             )}
 
-            {/* ✅ CONTINUAR DE ONDE PAROU (usa tempo SALVO) */}
+            {/* ✅ CONTINUAR DE ONDE PAROU */}
             {canResume && (
               <div className="px-3 sm:px-0 mb-3">
                 <button
