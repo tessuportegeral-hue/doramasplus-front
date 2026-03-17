@@ -15,22 +15,18 @@ const AuthContext = createContext(null);
 // ✅ CONFIG
 // =========================
 
-// ✅ ATIVADO — single session (1 dispositivo por vez)
 const ENABLE_SINGLE_SESSION = true;
 
-// ✅ Chave do localStorage (compartilhada entre abas do mesmo device)
 const SESSION_VERSION_KEY = (userId) => `dp_sv_${userId}`;
 
-// ✅ Polling a cada 15s (leve)
-const SESSION_POLL_MS = 15_000;
+// Polling normal a cada 5s (era 15s — mais rápido pra detectar kick)
+const SESSION_POLL_MS = 5_000;
 
-// ✅ Grace após login (ms) — evita derrubar na hora
+// Grace após login
 const GRACE_AFTER_LOGIN_MS = 3_000;
 
-// ✅ Quantas falhas seguidas antes de deslogar
-const INVALID_STREAK_LIMIT = 3;
+// ✅ Removido INVALID_STREAK_LIMIT — agora derruba na PRIMEIRA detecção
 
-// ✅ premium
 const PREMIUM_POLL_MS = 2500;
 const PREMIUM_POLL_MAX_MS = 60_000;
 
@@ -43,16 +39,18 @@ export const AuthProvider = ({ children }) => {
   const [checkingPremium, setCheckingPremium] = useState(true);
   const [checkingSession, setCheckingSession] = useState(false);
 
-  // refs internos
+  // ✅ NOVO — estado para mostrar modal/tela de "você foi desconectado"
+  const [kickedOut, setKickedOut] = useState(false);
+
   const pollRef = useRef(null);
   const premiumPollRef = useRef(null);
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
   const activeUserIdRef = useRef(null);
-  const localVersionRef = useRef(null); // versão que este dispositivo tem
-  const invalidStreakRef = useRef(0);
+  const localVersionRef = useRef(null);
   const timersRef = useRef([]);
   const inFlightRef = useRef(false);
+  const isKickedRef = useRef(false); // evita múltiplos forceSignOut simultâneos
 
   // ========== HELPERS localStorage ==========
   const readStoredVersion = useCallback((userId) => {
@@ -166,7 +164,7 @@ export const AuthProvider = ({ children }) => {
     }, PREMIUM_POLL_MS);
   }, [checkPremiumStatus, stopPremiumPolling]);
 
-  // ========== SINGLE SESSION (direto no banco) ==========
+  // ========== SINGLE SESSION ==========
 
   const stopSessionPolling = useCallback(() => {
     if (pollRef.current) {
@@ -176,10 +174,6 @@ export const AuthProvider = ({ children }) => {
     setCheckingSession(false);
   }, []);
 
-  /**
-   * Registra/atualiza a sessão deste dispositivo no banco.
-   * Gera um novo UUID e salva em active_sessions + localStorage.
-   */
   const startSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
@@ -205,12 +199,11 @@ export const AuthProvider = ({ children }) => {
 
       if (error) {
         console.error("[single-session] startSession error:", error);
-        return true; // fail-open
+        return true;
       }
 
       localVersionRef.current = newVersion;
       writeStoredVersion(uid, newVersion);
-      invalidStreakRef.current = 0;
       return true;
     } catch (e) {
       console.error("[single-session] startSession exception:", e);
@@ -222,21 +215,18 @@ export const AuthProvider = ({ children }) => {
   }, [writeStoredVersion]);
 
   /**
-   * Valida se a versão no banco ainda bate com a local.
-   * Se não bater → outro dispositivo logou → derruba.
+   * ✅ CORRIGIDO — derruba na PRIMEIRA detecção, sem esperar streak
    */
   const validateSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
     if (!uid) return true;
 
-    // Se não temos versão local, tenta carregar do localStorage
     if (!localVersionRef.current) {
       const stored = readStoredVersion(uid);
       if (stored) {
         localVersionRef.current = stored;
       } else {
-        // Sem versão local: registra agora
         await startSession();
         return true;
       }
@@ -251,11 +241,10 @@ export const AuthProvider = ({ children }) => {
 
       if (error) {
         console.error("[single-session] validateSession error:", error);
-        return true; // fail-open (não derruba por erro de rede)
+        return true; // fail-open
       }
 
       if (!data) {
-        // Nenhuma sessão no banco → registra este dispositivo
         await startSession();
         return true;
       }
@@ -264,26 +253,35 @@ export const AuthProvider = ({ children }) => {
       const myVersion = String(localVersionRef.current || "");
 
       if (bankVersion !== myVersion) {
-        console.warn("[single-session] versão diferente → outro dispositivo logou");
-        return false; // derruba
+        console.warn("[single-session] versão diferente → outro dispositivo logou → deslogando agora");
+        return false; // ✅ derruba imediatamente
       }
 
-      invalidStreakRef.current = 0;
       return true;
     } catch (e) {
       console.error("[single-session] validateSession exception:", e);
-      return true; // fail-open
+      return true;
     }
   }, [readStoredVersion, startSession]);
 
+  /**
+   * ✅ CORRIGIDO — seta kickedOut=true antes de deslogar,
+   * assim o app pode mostrar tela/modal explicando o motivo
+   */
   const forceSignOut = useCallback(async () => {
+    if (isKickedRef.current) return; // evita duplo disparo
+    isKickedRef.current = true;
+
     try {
       stopSessionPolling();
       const uid = activeUserIdRef.current;
       localVersionRef.current = null;
       activeUserIdRef.current = null;
-      invalidStreakRef.current = 0;
       if (uid) writeStoredVersion(uid, null);
+
+      // ✅ Avisa a UI ANTES de deslogar
+      setKickedOut(true);
+
       await supabase.auth.signOut();
     } catch (e) {
       console.error("[single-session] forceSignOut error:", e);
@@ -295,22 +293,15 @@ export const AuthProvider = ({ children }) => {
     if (!activeUserIdRef.current) return;
 
     stopSessionPolling();
-
-    // Registra este dispositivo
     await startSession();
 
     pollRef.current = setInterval(async () => {
       const ok = await validateSession();
 
       if (!ok) {
-        invalidStreakRef.current = (invalidStreakRef.current || 0) + 1;
-        if (invalidStreakRef.current >= INVALID_STREAK_LIMIT) {
-          await forceSignOut();
-        }
-        return;
+        // ✅ Derruba na primeira falha — sem streak
+        await forceSignOut();
       }
-
-      invalidStreakRef.current = 0;
     }, SESSION_POLL_MS);
   }, [startSession, validateSession, forceSignOut, stopSessionPolling]);
 
@@ -332,9 +323,8 @@ export const AuthProvider = ({ children }) => {
 
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
-          invalidStreakRef.current = 0;
+          isKickedRef.current = false;
 
-          // Carrega versão do localStorage (para o caso de reload)
           const stored = readStoredVersion(currentUser.id);
           localVersionRef.current = stored || null;
 
@@ -350,7 +340,7 @@ export const AuthProvider = ({ children }) => {
           setCheckingSession(false);
           activeUserIdRef.current = null;
           localVersionRef.current = null;
-          invalidStreakRef.current = 0;
+          isKickedRef.current = false;
           stopSessionPolling();
           stopPremiumPolling();
         }
@@ -371,7 +361,9 @@ export const AuthProvider = ({ children }) => {
 
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
-        invalidStreakRef.current = 0;
+        isKickedRef.current = false;
+        // ✅ Novo login → limpa kickedOut
+        setKickedOut(false);
 
         const stored = readStoredVersion(currentUser.id);
         localVersionRef.current = stored || null;
@@ -384,7 +376,6 @@ export const AuthProvider = ({ children }) => {
         const uid = activeUserIdRef.current;
         activeUserIdRef.current = null;
         localVersionRef.current = null;
-        invalidStreakRef.current = 0;
         if (uid) writeStoredVersion(uid, null);
 
         stopSessionPolling();
@@ -423,8 +414,11 @@ export const AuthProvider = ({ children }) => {
       await checkPremiumStatus(activeUserIdRef.current);
       if (!isPremiumRef.current) startPremiumPolling(activeUserIdRef.current);
 
-      // Ao retornar à aba, zera streak mas não reassume (não briga com o device atual)
-      invalidStreakRef.current = 0;
+      // ✅ Ao voltar pra aba, valida sessão imediatamente (não espera o próximo poll)
+      if (ENABLE_SINGLE_SESSION) {
+        const ok = await validateSession();
+        if (!ok) await forceSignOut();
+      }
     };
 
     const onVisibility = async () => {
@@ -442,7 +436,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener("visibilitychange", onVisibility);
       } catch {}
     };
-  }, [checkPremiumStatus, startPremiumPolling]);
+  }, [checkPremiumStatus, startPremiumPolling, validateSession, forceSignOut]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
@@ -450,6 +444,12 @@ export const AuthProvider = ({ children }) => {
       if (!isPremiumRef.current) startPremiumPolling(user.id);
     }
   }, [user, checkPremiumStatus, startPremiumPolling]);
+
+  // ✅ Limpa kickedOut quando usuário faz login novo
+  const clearKickedOut = useCallback(() => {
+    setKickedOut(false);
+    isKickedRef.current = false;
+  }, []);
 
   const value = {
     user,
@@ -461,6 +461,9 @@ export const AuthProvider = ({ children }) => {
     refreshPremiumStatus,
     checkingSession,
     singleSessionEnabled: ENABLE_SINGLE_SESSION,
+    // ✅ NOVO — exposto pra tela de login/app poder reagir
+    kickedOut,
+    clearKickedOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
