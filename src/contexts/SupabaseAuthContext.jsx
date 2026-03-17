@@ -136,6 +136,8 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // ✅ FIX CRÍTICO: startSession NÃO sobrescreve se já tem UUID válido no banco
+  // Isso evita o bug onde o device B derrubava a si mesmo após o grace period
   const startSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
@@ -144,18 +146,43 @@ export const AuthProvider = ({ children }) => {
     inFlightRef.current = true;
     setCheckingSession(true);
     try {
-      const newVersion = crypto.randomUUID();
+      // Verifica o que está no banco agora
+      const { data: existing } = await supabase
+        .from("active_sessions")
+        .select("session_version")
+        .eq("user_id", uid)
+        .maybeSingle();
+
+      const myVersion = localVersionRef.current || readStoredVersion(uid);
+
+      // ✅ Se o banco já tem a nossa versão, não sobrescreve (evita kickar si mesmo)
+      if (existing?.session_version && myVersion && existing.session_version === myVersion) {
+        return true;
+      }
+
+      // ✅ Se o banco tem OUTRA versão e nós temos versão local,
+      // significa que fomos kickados — não sobrescrevemos.
+      // O validateSession vai detectar e derrubar.
+      if (existing?.session_version && myVersion && existing.session_version !== myVersion) {
+        return true;
+      }
+
+      // ✅ Só grava se não temos versão local (nunca deveria chegar aqui
+      // em condições normais pois Login.jsx grava antes)
+      if (!myVersion) {
+        return true;
+      }
+
+      // Grava nossa versão (caso banco esteja vazio)
       const { error } = await supabase
         .from("active_sessions")
         .upsert(
-          { user_id: uid, session_version: newVersion, updated_at: new Date().toISOString() },
+          { user_id: uid, session_version: myVersion, updated_at: new Date().toISOString() },
           { onConflict: "user_id" }
         );
 
       if (error) { console.error("[single-session] startSession error:", error); return true; }
 
-      localVersionRef.current = newVersion;
-      writeStoredVersion(uid, newVersion);
       return true;
     } catch (e) {
       console.error("[single-session] startSession exception:", e);
@@ -164,7 +191,7 @@ export const AuthProvider = ({ children }) => {
       inFlightRef.current = false;
       setCheckingSession(false);
     }
-  }, [writeStoredVersion]);
+  }, [readStoredVersion]);
 
   const validateSession = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION) return true;
@@ -173,8 +200,12 @@ export const AuthProvider = ({ children }) => {
 
     if (!localVersionRef.current) {
       const stored = readStoredVersion(uid);
-      if (stored) localVersionRef.current = stored;
-      else { await startSession(); return true; }
+      if (stored) {
+        localVersionRef.current = stored;
+      } else {
+        // Sem versão local = ainda não gravou (logo após login), skip
+        return true;
+      }
     }
 
     try {
@@ -185,7 +216,16 @@ export const AuthProvider = ({ children }) => {
         .maybeSingle();
 
       if (error) { console.error("[single-session] validateSession error:", error); return true; }
-      if (!data) { await startSession(); return true; }
+      if (!data) {
+        // Sem registro no banco: grava a nossa versão
+        await supabase
+          .from("active_sessions")
+          .upsert(
+            { user_id: uid, session_version: localVersionRef.current, updated_at: new Date().toISOString() },
+            { onConflict: "user_id" }
+          );
+        return true;
+      }
 
       const bankVersion = String(data.session_version || "");
       const myVersion = String(localVersionRef.current || "");
@@ -199,7 +239,7 @@ export const AuthProvider = ({ children }) => {
       console.error("[single-session] validateSession exception:", e);
       return true;
     }
-  }, [readStoredVersion, startSession]);
+  }, [readStoredVersion]);
 
   const forceSignOut = useCallback(async () => {
     if (isKickedRef.current) return;
@@ -218,7 +258,6 @@ export const AuthProvider = ({ children }) => {
   }, [stopSessionPolling, stopRealtimeSession, writeStoredVersion]);
 
   // ✅ REALTIME — escuta UPDATE na linha deste user_id
-  // Quando session_version mudar no banco → derruba instantaneamente
   const startRealtimeSession = useCallback((uid) => {
     if (!ENABLE_SINGLE_SESSION || !uid) return;
     stopRealtimeSession();
@@ -252,24 +291,29 @@ export const AuthProvider = ({ children }) => {
     realtimeChannelRef.current = channel;
   }, [stopRealtimeSession, forceSignOut]);
 
+  // ✅ FIX: startSessionPolling NÃO chama startSession
+  // Só inicia o monitoramento. O UUID já foi gravado pelo Login.jsx.
   const startSessionPolling = useCallback(async () => {
     if (!ENABLE_SINGLE_SESSION || !activeUserIdRef.current) return;
 
     stopSessionPolling();
     stopRealtimeSession();
 
-    // Grava UUID deste device no banco
-    await startSession();
-
     // Realtime — kick em < 1s
     startRealtimeSession(activeUserIdRef.current);
+
+    // Primeira validação com pequeno delay pra dar tempo do Login.jsx gravar
+    setTimeout(async () => {
+      const ok = await validateSession();
+      if (!ok) await forceSignOut();
+    }, 1500);
 
     // Polling fallback — kick em até 5s se Realtime falhar
     pollRef.current = setInterval(async () => {
       const ok = await validateSession();
       if (!ok) await forceSignOut();
     }, SESSION_POLL_MS);
-  }, [startSession, validateSession, forceSignOut, stopSessionPolling, stopRealtimeSession, startRealtimeSession]);
+  }, [validateSession, forceSignOut, stopSessionPolling, stopRealtimeSession, startRealtimeSession]);
 
   // ========== INIT + AUTH LISTENER ==========
   useEffect(() => {
