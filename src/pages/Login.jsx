@@ -1,28 +1,40 @@
 // src/pages/Login.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
+import { useAuth } from "@/contexts/SupabaseAuthContext";
 
-// ✅ TESTE — só ativa o single session pra este email
+// ✅ TESTE — só ativa o single session pra este email por enquanto
+// Quando quiser ativar pra todos, mude para: null
 const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
 
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { kickedOut, clearKickedOut } = useAuth();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ✅ NOVO — estados do modal de dispositivo ativo
   const [showDeviceModal, setShowDeviceModal] = useState(false);
-  const [pendingCredentials, setPendingCredentials] = useState(null); // { email, password }
+  const [pendingCredentials, setPendingCredentials] = useState(null);
   const [evictingDevice, setEvictingDevice] = useState(false);
+
+  // ✅ NOVO — se chegou aqui porque foi kickado, mostra modal explicando
+  const [showKickedModal, setShowKickedModal] = useState(false);
+
+  useEffect(() => {
+    if (kickedOut) {
+      setShowKickedModal(true);
+      clearKickedOut();
+    }
+  }, [kickedOut, clearKickedOut]);
 
   const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
@@ -38,7 +50,12 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
-  // ✅ NOVO — verifica se tem outro device logado nessa conta
+  const shouldCheckSingleSession = (email) => {
+    // Se SINGLE_SESSION_TEST_EMAIL for null → ativa pra todos
+    if (!SINGLE_SESSION_TEST_EMAIL) return true;
+    return email === SINGLE_SESSION_TEST_EMAIL;
+  };
+
   const checkActiveSession = async (userId) => {
     try {
       const myVersion = (() => {
@@ -51,15 +68,31 @@ const Login = () => {
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (error || !data) return false; // sem registro no banco → primeiro login → libera
-      if (myVersion && data.session_version === myVersion) return false; // é este mesmo device
-      return true; // UUID diferente → outro device ativo
+      if (error || !data) return false;
+      if (myVersion && data.session_version === myVersion) return false;
+      return true; // outro device ativo
     } catch {
-      return false; // fail-open: erro de rede não bloqueia o login
+      return false;
     }
   };
 
-  // ✅ NOVO — usuário confirmou: derruba o outro device e entra
+  const registerSession = async (userId) => {
+    const newVersion = crypto.randomUUID();
+    await supabase
+      .from("active_sessions")
+      .upsert(
+        {
+          user_id: userId,
+          session_version: newVersion,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+    try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
+    return newVersion;
+  };
+
+  // ✅ Usuário confirmou: derruba o outro device e entra
   const evictAndLogin = async () => {
     if (!pendingCredentials) return;
     setEvictingDevice(true);
@@ -83,19 +116,8 @@ const Login = () => {
 
       const userId = data?.user?.id;
       if (userId) {
-        // Sobrescreve UUID no banco → Realtime notifica o outro device → deslogado na hora
-        const newVersion = crypto.randomUUID();
-        await supabase
-          .from("active_sessions")
-          .upsert(
-            {
-              user_id: userId,
-              session_version: newVersion,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          );
-        try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
+        // ✅ Sobrescreve UUID no banco → o outro device detecta na próxima poll (até 5s) e é deslogado
+        await registerSession(userId);
       }
 
       setShowDeviceModal(false);
@@ -156,37 +178,22 @@ const Login = () => {
 
       const userId = data?.user?.id;
 
-      // ✅ NOVO — só verifica outro device se for o email de teste
-      if (userId && email === SINGLE_SESSION_TEST_EMAIL) {
+      // ✅ Verifica conflito de device (respeitando o email de teste)
+      if (userId && shouldCheckSingleSession(email)) {
         const hasOtherDevice = await checkActiveSession(userId);
 
         if (hasOtherDevice) {
-          // Desloga temporariamente pra não ficar com sessão "solta"
+          // Desloga temporariamente pra não deixar sessão solta
           await supabase.auth.signOut();
           setPendingCredentials({ email, password });
           setShowDeviceModal(true);
-          return; // para aqui — o modal decide o próximo passo
+          return;
         }
       }
 
-      // Sem conflito de device → registra e navega (igual ao original)
-      try {
-        if (userId) {
-          const newVersion = crypto.randomUUID();
-          await supabase
-            .from("active_sessions")
-            .upsert(
-              {
-                user_id: userId,
-                session_version: newVersion,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id" }
-            );
-          try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
-        }
-      } catch (e2) {
-        console.error("[active_sessions] erro ao registrar device no login:", e2);
+      // Sem conflito → registra e navega
+      if (userId) {
+        await registerSession(userId);
       }
 
       navigate("/");
@@ -209,7 +216,7 @@ const Login = () => {
   return (
     <>
       <Helmet>
-        <title>Entrar — DoramaStream</title>
+        <title>Entrar — DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
@@ -294,7 +301,7 @@ const Login = () => {
         </div>
       </div>
 
-      {/* ✅ NOVO — Modal: conta ativa em outro dispositivo */}
+      {/* ✅ Modal: conta ativa em outro dispositivo (ao tentar logar) */}
       {showDeviceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
@@ -307,7 +314,7 @@ const Login = () => {
 
             <p className="text-slate-300 text-sm mb-6 leading-relaxed">
               Sua conta já está sendo usada em outro dispositivo. Se continuar,
-              o outro dispositivo será desconectado automaticamente.
+              o outro dispositivo será desconectado automaticamente em até 5 segundos.
             </p>
 
             <div className="flex flex-col gap-3">
@@ -338,6 +345,32 @@ const Login = () => {
                 Cancelar
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NOVO — Modal: você foi desconectado por outro dispositivo */}
+      {showKickedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-slate-900 border border-red-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <MonitorSmartphone className="w-7 h-7 text-red-400 shrink-0" />
+              <h2 className="text-lg font-bold text-slate-50 leading-tight">
+                Você foi desconectado
+              </h2>
+            </div>
+
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Sua sessão foi encerrada porque outro dispositivo entrou na mesma conta.
+              Faça login novamente para continuar.
+            </p>
+
+            <Button
+              className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={() => setShowKickedModal(false)}
+            >
+              Entendido
+            </Button>
           </div>
         </div>
       )}
