@@ -340,26 +340,14 @@ const SubscriptionPlans = () => {
               </ul>
 
               <Button
-                onClick={() => handleSubscribe('monthly')}
-                disabled={isLoading}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-white py-6 text-lg font-medium"
-              >
-                {loadingPlan === 'monthly' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  'Assinar no Cartão – R$ 15,90'
-                )}
-              </Button>
-
-              <Button
                 onClick={() => handlePix('monthly')}
                 disabled={isLoading}
-                className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg font-medium"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg font-medium"
               >
                 {loadingPlan === 'pix_monthly' ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  'Pagar no Pix – R$ 15,90'
+                  'Pagar no Pix ou Cartão – R$ 15,90'
                 )}
               </Button>
             </motion.div>
@@ -407,26 +395,14 @@ const SubscriptionPlans = () => {
               </ul>
 
               <Button
-                onClick={() => handleSubscribe('quarterly')}
-                disabled={isLoading}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white py-6 text-lg font-medium"
-              >
-                {loadingPlan === 'quarterly' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  'Assinar no Cartão – R$ 43,90'
-                )}
-              </Button>
-
-              <Button
                 onClick={() => handlePix('quarterly')}
                 disabled={isLoading}
-                className="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg font-medium"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-6 text-lg font-medium"
               >
                 {loadingPlan === 'pix_quarterly' ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  'Pagar no Pix – R$ 43,90'
+                  'Pagar no Pix ou Cartão – R$ 43,90'
                 )}
               </Button>
             </motion.div>
