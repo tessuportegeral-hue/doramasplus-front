@@ -203,19 +203,7 @@ export const AuthProvider = ({ children }) => {
       if (stored) {
         localVersionRef.current = stored;
       } else {
-        // Sem versão local — verifica se o banco tem alguma versão
-        // Se tiver, é uma sessão antiga sem registro → kick
-        try {
-          const { data: bankData } = await supabase
-            .from("active_sessions")
-            .select("session_version")
-            .eq("user_id", uid)
-            .maybeSingle();
-          if (bankData?.session_version) {
-            console.warn("[single-session] sem versão local mas banco tem versão → kickando sessão antiga");
-            return false;
-          }
-        } catch {}
+        // Sem versão local = ainda não gravou (logo após login), skip
         return true;
       }
     }
@@ -287,7 +275,7 @@ export const AuthProvider = ({ children }) => {
         (payload) => {
           const newVersion = payload?.new?.session_version;
           const myV = localVersionRef.current;
-          if (newVersion && (!myV || newVersion !== myV)) {
+          if (newVersion && myV && newVersion !== myV) {
             console.warn("[realtime] session_version mudou → kickando instantaneamente");
             forceSignOut();
           }

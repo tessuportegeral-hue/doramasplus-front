@@ -114,7 +114,7 @@ const useSessionGuard = () => {
           if (!isMountedRef.current) return;
           const newVersion = payload?.new?.session_version;
           const myV = getMyVersion();
-          if (newVersion && (!myV || newVersion !== myV)) {
+          if (newVersion && myV && newVersion !== myV) {
             console.warn("[useSessionGuard] Realtime detectou sessão inválida → kickando");
             handleKick();
           }

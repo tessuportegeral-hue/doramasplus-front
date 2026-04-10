@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { Check, Loader2, Star, MessageCircle } from 'lucide-react';
@@ -10,18 +9,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 
 const SubscriptionPlans = () => {
-  const location = useLocation();
   const { toast } = useToast();
   const [loadingPlan, setLoadingPlan] = useState(null);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const plano = (params.get('plano') || '').trim().toLowerCase();
-    if (plano === 'monthly' || plano === 'quarterly') {
-      setSelectedPlan(plano);
-    }
-  }, [location.search]);
 
   // ✅ (NOVO) META PIXEL - InitiateCheckout (mínimo e seguro)
   const fireInitiateCheckout = ({ planType, planName, value }) => {
@@ -319,11 +308,7 @@ const SubscriptionPlans = () => {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2 }}
-              className={`bg-slate-900 border rounded-2xl p-8 flex flex-col transition-colors ${
-                selectedPlan === 'monthly'
-                  ? 'border-purple-500 ring-2 ring-purple-500'
-                  : 'border-slate-800 hover:border-purple-500/50'
-              }`}
+              className="bg-slate-900 border border-slate-800 rounded-2xl p-8 flex flex-col hover:border-purple-500/50 transition-colors"
             >
               <h3 className="text-2xl font-bold text-white mb-2">
                 DoramasPlus Padrão
@@ -372,11 +357,7 @@ const SubscriptionPlans = () => {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.3 }}
-              className={`relative bg-gradient-to-b from-purple-900/20 to-slate-900 border rounded-2xl p-8 flex flex-col ${
-                selectedPlan === 'quarterly'
-                  ? 'border-purple-500 ring-2 ring-purple-500'
-                  : 'border-purple-500/30'
-              }`}
+              className="relative bg-gradient-to-b from-purple-900/20 to-slate-900 border border-purple-500/30 rounded-2xl p-8 flex flex-col"
             >
               <div className="absolute top-4 right-4 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                 <Star className="w-3 h-3" fill="currentColor" />

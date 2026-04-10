@@ -32,7 +32,6 @@ const Signup = () => {
   }, [isAuthenticated, navigate, location.search]);
 
   // ✅ (ADICIONADO) captura o parâmetro src (ex.: ?src=ads) e salva no localStorage
-  // Também captura ?plano= e salva no localStorage para redirecionar após cadastro
   useEffect(() => {
     try {
       if (typeof window === 'undefined') return;
@@ -41,10 +40,6 @@ const Signup = () => {
       if (src) {
         localStorage.setItem('dp_traffic_src', src);
         localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
-      }
-      const plano = (params.get('plano') || '').trim().toLowerCase();
-      if (plano === 'monthly' || plano === 'quarterly') {
-        localStorage.setItem('plano_selecionado', plano);
       }
     } catch {}
   }, [location.search]);
@@ -132,15 +127,8 @@ const Signup = () => {
           description: 'Bem-vindo ao DoramasPlus!',
         });
 
-        // Se veio de um plano selecionado, redireciona para /plans com o plano
-        const planoSelecionado = (() => { try { return localStorage.getItem('plano_selecionado'); } catch { return null; } })();
-        if (planoSelecionado) {
-          try { localStorage.removeItem('plano_selecionado'); } catch {}
-          navigate(`/plans?plano=${planoSelecionado}`);
-        } else {
-          // ✅ (AJUSTE MÍNIMO) se já logou, mantém ?src=ads ao ir pro dashboard
-          navigate(`/dashboard${location.search ? location.search : ''}`);
-        }
+        // ✅ (AJUSTE MÍNIMO) se já logou, mantém ?src=ads ao ir pro dashboard
+        navigate(`/dashboard${location.search ? location.search : ''}`);
       } else {
         toast({
           title: 'Conta criada!',
