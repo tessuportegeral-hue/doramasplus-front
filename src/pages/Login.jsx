@@ -38,6 +38,17 @@ const Login = () => {
     }
   }, [kickedOut, clearKickedOut]);
 
+  // Redireciona para /plans se há plano pendente no localStorage, senão para "/"
+  const navigateAfterLogin = () => {
+    const plano = (() => { try { return localStorage.getItem('plano_selecionado'); } catch { return null; } })();
+    if (plano) {
+      try { localStorage.removeItem('plano_selecionado'); } catch {}
+      navigate(`/plans?plano=${plano}`);
+    } else {
+      navigate('/');
+    }
+  };
+
   const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
   const normalizeIdentifierToEmail = (raw) => {
@@ -81,6 +92,27 @@ const Login = () => {
     return newVersion;
   };
 
+  // Chama a Edge Function para:
+  //   1. Invalidar todos os JWTs anteriores via admin.signOut(..., 'others')
+  //   2. Gravar novo session_version em active_sessions
+  // Retorna { ok, session_version } ou null em caso de falha.
+  // Fallback: se falhar, registerSessionImmediate cobre (sem invalidar JWT no servidor).
+  const evictOtherSessions = async (accessToken) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("evict-session", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (error) {
+        console.error("[evict-session] function error:", error);
+        return null;
+      }
+      return data; // { ok: true, session_version: 'uuid' }
+    } catch (err) {
+      console.error("[evict-session] invoke error:", err);
+      return null;
+    }
+  };
+
   const checkActiveSession = async (userId) => {
     try {
       const myVersion = (() => {
@@ -102,7 +134,9 @@ const Login = () => {
   };
 
   // ✅ Usuário confirmou: derruba o outro device e entra
-  // Grava o UUID novo ANTES do contexto inicializar — o device antigo cai via Realtime em < 1s
+  // 1. Faz login para obter JWT válido
+  // 2. Chama Edge Function que invalida outros JWTs no servidor + atualiza active_sessions
+  // 3. Fallback para registerSessionImmediate se a Edge Function falhar
   const evictAndLogin = async () => {
     if (!pendingCredentials) return;
     setEvictingDevice(true);
@@ -125,15 +159,24 @@ const Login = () => {
       }
 
       const userId = data?.user?.id;
-      if (userId) {
-        // ✅ Grava UUID novo imediatamente — sobrescreve o antigo no banco
-        // O Realtime notifica o device antigo em < 1s e ele é kickado
-        await registerSessionImmediate(userId);
+      const accessToken = data?.session?.access_token;
+
+      if (userId && shouldCheckSingleSession(pendingCredentials.email)) {
+        // Tenta via Edge Function: invalida JWT do device antigo no servidor
+        const evicted = accessToken ? await evictOtherSessions(accessToken) : null;
+
+        if (evicted?.session_version) {
+          // Salva o session_version retornado pela Edge Function
+          try { window.localStorage.setItem(`dp_sv_${userId}`, evicted.session_version); } catch {}
+        } else {
+          // Fallback: atualiza active_sessions diretamente (Realtime/polling cobrem o kick)
+          await registerSessionImmediate(userId);
+        }
       }
 
       setShowDeviceModal(false);
       setPendingCredentials(null);
-      navigate("/");
+      navigateAfterLogin();
     } catch (err) {
       console.error("evictAndLogin error:", err);
       toast({ title: "Erro inesperado", description: "Tente novamente.", variant: "destructive" });
@@ -192,7 +235,7 @@ const Login = () => {
         await registerSessionImmediate(userId);
       }
 
-      navigate("/");
+      navigateAfterLogin();
     } catch (err) {
       console.error("Erro inesperado:", err);
       toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
