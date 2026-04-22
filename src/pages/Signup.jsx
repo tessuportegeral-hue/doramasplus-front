@@ -127,8 +127,9 @@ const Signup = () => {
           description: 'Bem-vindo ao DoramasPlus!',
         });
 
-        // ✅ (AJUSTE MÍNIMO) se já logou, mantém ?src=ads ao ir pro dashboard
-        navigate(`/dashboard${location.search ? location.search : ''}`);
+        const plano = new URLSearchParams(location.search).get('plano');
+        const destino = ['mensal', 'trimestral'].includes(plano) ? '/plans' : '/dashboard';
+        navigate(`${destino}${location.search ? location.search : ''}`);
       } else {
         toast({
           title: 'Conta criada!',
