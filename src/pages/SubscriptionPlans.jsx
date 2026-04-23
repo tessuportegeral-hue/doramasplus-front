@@ -13,11 +13,8 @@ const SubscriptionPlans = () => {
   const [loadingPlan, setLoadingPlan] = useState(null);
 
   // ✅ (NOVO) META PIXEL - InitiateCheckout (mínimo e seguro)
-  const fireInitiateCheckout = ({ planType, planName, value }) => {
+  const fireInitiateCheckout = ({ planType, planName, value, eventId }) => {
     try {
-      const eventId = `ic_${planType}_${Date.now()}_${Math.random()
-        .toString(16)
-        .slice(2)}`;
 
       try {
         localStorage.setItem('dp_last_initiatecheckout_event_id', eventId);
@@ -230,7 +227,8 @@ const SubscriptionPlans = () => {
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
       const value = planType === 'quarterly' ? 43.9 : 15.9;
 
-      const event_id = fireInitiateCheckout({ planType, planName, value });
+      const event_id = `ic_${planType}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      fireInitiateCheckout({ planType, planName, value, eventId: event_id });
 
       // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)
       const { data, error } = await supabase.functions.invoke(
