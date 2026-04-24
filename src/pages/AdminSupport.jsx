@@ -16,6 +16,7 @@ export default function AdminSupport() {
 
   // ✅ melhorias
   const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all"); // "all" | "unread" | "humano" | "bot"
   const [previews, setPreviews] = useState({}); // { [conversationId]: { body, direction, created_at } }
   const [unread, setUnread] = useState({}); // { [conversationId]: number }
   const [hasNewMsgs, setHasNewMsgs] = useState(false);
@@ -165,6 +166,13 @@ export default function AdminSupport() {
     const name = getContactName(conv);
     const phone = conv?.phone_number || "";
     return name ? phone : "";
+  }
+
+  function getConvReadStatus(c) {
+    if ((unread[c.id] || 0) > 0) return "unread";
+    const prev = previews[c.id];
+    if (prev?.direction === "outbound") return "replied";
+    return "read";
   }
 
   // ✅ detecta tipo pelo arquivo (pra enviar mídia)
@@ -727,11 +735,17 @@ export default function AdminSupport() {
     error: { marginTop: 10, fontSize: 12, color: "#ff6b6b" },
 
     listWrap: { overflowY: "auto", flex: 1 },
-    listItem: (active) => ({
+    listItem: (active, hasUnread) => ({
       padding: 12,
+      paddingLeft: hasUnread && !active ? 10 : 12,
       borderBottom: "1px solid #1f1f1f",
+      borderLeft: hasUnread && !active ? "3px solid #ef4444" : "3px solid transparent",
       cursor: "pointer",
-      background: active ? "rgba(255,255,255,0.06)" : "transparent",
+      background: active
+        ? "rgba(255,255,255,0.06)"
+        : hasUnread
+        ? "rgba(239,68,68,0.05)"
+        : "transparent",
       display: "flex",
       flexDirection: "column",
       gap: 8,
@@ -739,13 +753,45 @@ export default function AdminSupport() {
     listTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
     name: { fontWeight: 800, letterSpacing: 0.2 },
     badge: (kind) => ({
-      fontSize: 12,
-      padding: "2px 8px",
+      fontSize: 11,
+      padding: "2px 7px",
       borderRadius: 999,
       border: "1px solid rgba(255,255,255,0.14)",
       background: kind === "humano" ? "rgba(255,107,107,0.10)" : "rgba(70, 255, 170, 0.08)",
       opacity: 0.95,
       whiteSpace: "nowrap",
+    }),
+    unreadBadge: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 999,
+      background: "#ef4444",
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: 800,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0 5px",
+      flexShrink: 0,
+    },
+    readStatusChip: (status) => {
+      if (status === "unread")
+        return { fontSize: 11, padding: "2px 7px", borderRadius: 999, border: "1px solid rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.12)", color: "#fca5a5", whiteSpace: "nowrap" };
+      if (status === "replied")
+        return { fontSize: 11, padding: "2px 7px", borderRadius: 999, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.10)", color: "#86efac", whiteSpace: "nowrap" };
+      return { fontSize: 11, padding: "2px 7px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)", whiteSpace: "nowrap" };
+    },
+    filterTabsRow: { display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" },
+    filterTab: (active) => ({
+      padding: "5px 12px",
+      borderRadius: 999,
+      border: active ? "1px solid rgba(255,255,255,0.28)" : "1px solid #2a2a2a",
+      background: active ? "rgba(255,255,255,0.10)" : "transparent",
+      color: active ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.6)",
+      cursor: "pointer",
+      fontSize: 12,
+      fontWeight: active ? 700 : 400,
     }),
     meta: { fontSize: 12, opacity: 0.75 },
 
@@ -944,6 +990,33 @@ export default function AdminSupport() {
 
   const canSendMedia = !!selected && !sending && (!!mediaFile || !!mediaUrl.trim());
 
+  const totalUnread = useMemo(
+    () => conversations.filter((c) => (unread[c.id] || 0) > 0).length,
+    [conversations, unread]
+  );
+
+  const filteredConversations = useMemo(() => {
+    return conversations
+      .filter((c) => {
+        const q = search.trim();
+        const matchSearch =
+          !q ||
+          String(c.phone_number || "").includes(q) ||
+          String(getContactName(c) || "").toLowerCase().includes(q.toLowerCase());
+        if (!matchSearch) return false;
+        if (activeFilter === "unread") return (unread[c.id] || 0) > 0;
+        if (activeFilter === "humano") return (c.status || "").toLowerCase() === "humano";
+        if (activeFilter === "bot") return (c.status || "").toLowerCase() === "bot";
+        return true;
+      })
+      .sort((a, b) => {
+        const aU = (unread[a.id] || 0) > 0 ? 1 : 0;
+        const bU = (unread[b.id] || 0) > 0 ? 1 : 0;
+        return bU - aU; // não lidos sobem ao topo; mantém ordem do DB nos demais
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, search, activeFilter, unread]);
+
   function renderMessageBody(m) {
     const media = extractMediaFromBody(m?.body);
     if (!media) return <div>{m?.body}</div>;
@@ -1036,6 +1109,23 @@ export default function AdminSupport() {
           </button>
         </div>
 
+        <div style={S.filterTabsRow}>
+          {[
+            { key: "all", label: "Todos" },
+            { key: "unread", label: totalUnread > 0 ? `Não lidos (${totalUnread})` : "Não lidos" },
+            { key: "humano", label: "Humano" },
+            { key: "bot", label: "Bot" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveFilter(key)}
+              style={S.filterTab(activeFilter === key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -1051,79 +1141,65 @@ export default function AdminSupport() {
           <div style={{ padding: 12, opacity: 0.8 }}>Carregando conversas…</div>
         ) : conversations.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.8 }}>Nenhuma conversa ainda.</div>
+        ) : filteredConversations.length === 0 ? (
+          <div style={{ padding: 12, opacity: 0.8 }}>Nenhuma conversa neste filtro.</div>
         ) : (
-          conversations
-            .filter((c) => {
-              const q = search.trim();
-              if (!q) return true;
-              const phone = String(c.phone_number || "");
-              const nm = String(getContactName(c) || "");
-              return phone.includes(q) || nm.toLowerCase().includes(q.toLowerCase());
-            })
-            .map((c) => {
-              const active = selected?.id === c.id;
-              const st = (c.status || "bot").toLowerCase();
-              const prev = previews[c.id];
-              const unreadCount = unread[c.id] || 0;
-              const title = getDisplayTitle(c);
-              const subtitle = getDisplaySubtitle(c);
+          filteredConversations.map((c) => {
+            const active = selected?.id === c.id;
+            const st = (c.status || "bot").toLowerCase();
+            const prev = previews[c.id];
+            const unreadCount = unread[c.id] || 0;
+            const title = getDisplayTitle(c);
+            const subtitle = getDisplaySubtitle(c);
+            const readStatus = getConvReadStatus(c);
+            const readStatusLabel =
+              readStatus === "unread" ? "não lido" : readStatus === "replied" ? "respondido" : "lido";
 
-              return (
-                <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active)}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <div style={S.avatar}>{avatarTextFromPhone(c.phone_number)}</div>
+            return (
+              <div key={c.id} onClick={() => openChat(c)} style={S.listItem(active, unreadCount > 0)}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={S.avatar}>{avatarTextFromPhone(c.phone_number)}</div>
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={S.listTopRow}>
-                        <div style={S.name}>{title}</div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          {unreadCount > 0 ? (
-                            <div
-                              style={{
-                                fontSize: 12,
-                                padding: "2px 8px",
-                                borderRadius: 999,
-                                background: "rgba(70,255,170,0.15)",
-                                border: "1px solid rgba(70,255,170,0.25)",
-                              }}
-                            >
-                              {unreadCount}
-                            </div>
-                          ) : null}
-                          <div style={S.badge(st)}>{st}</div>
-                        </div>
-                      </div>
-
-                      <div style={S.meta}>
-                        {subtitle ? <span style={{ opacity: 0.9 }}>{subtitle}</span> : null}
-                        <span style={{ marginLeft: subtitle ? 10 : 0 }}>
-                          step: {c.current_step || "—"}
-                        </span>
-                        {prev?.created_at ? (
-                          <span style={{ marginLeft: 10, opacity: 0.8 }}>• {fmtTime(prev.created_at)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={S.listTopRow}>
+                      <div style={{ ...S.name, fontWeight: unreadCount > 0 ? 900 : 700 }}>{title}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        {unreadCount > 0 ? (
+                          <div style={S.unreadBadge}>{unreadCount}</div>
                         ) : null}
+                        <div style={S.badge(st)}>{st}</div>
                       </div>
+                    </div>
 
-                      {prev?.body ? (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            opacity: 0.72,
-                            marginTop: 2,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {prev.direction === "inbound" ? "👤 " : "🤖 "}
-                          {prev.body}
-                        </div>
+                    <div style={{ ...S.meta, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 3 }}>
+                      <div style={S.readStatusChip(readStatus)}>{readStatusLabel}</div>
+                      {subtitle ? <span style={{ opacity: 0.85 }}>{subtitle}</span> : null}
+                      {prev?.created_at ? (
+                        <span style={{ opacity: 0.7 }}>• {fmtTime(prev.created_at)}</span>
                       ) : null}
                     </div>
+
+                    {prev?.body ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: unreadCount > 0 ? 0.9 : 0.65,
+                          fontWeight: unreadCount > 0 ? 600 : 400,
+                          marginTop: 3,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {prev.direction === "inbound" ? "👤 " : "🤖 "}
+                        {prev.body}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              );
-            })
+              </div>
+            );
+          })
         )}
       </div>
     </div>
