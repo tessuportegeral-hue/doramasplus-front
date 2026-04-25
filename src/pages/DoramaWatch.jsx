@@ -72,6 +72,19 @@ export default function DoramaWatch() {
     return iOS || iPadOS13;
   }, []);
 
+  // captura ?src= e salva no localStorage (mesmo padrão de ComoFunciona.jsx)
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const params = new URLSearchParams(location.search);
+      const src = (params.get("src") || "").trim().toLowerCase();
+      if (src) {
+        localStorage.setItem("dp_traffic_src", src);
+        localStorage.setItem("dp_traffic_src_ts", String(Date.now()));
+      }
+    } catch {}
+  }, [location.search]);
+
   useEffect(() => {
     const fetchDorama = async () => {
       setLoadingDorama(true);
