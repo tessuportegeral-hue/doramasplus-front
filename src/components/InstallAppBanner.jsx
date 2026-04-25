@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-const DISMISSED_KEY = "dp_pwa_banner_dismissed";
-
 function isIOS() {
   if (typeof navigator === "undefined") return false;
   return (
@@ -25,11 +23,8 @@ export default function InstallAppBanner() {
   const [iosModalOpen, setIosModalOpen] = useState(false);
 
   useEffect(() => {
-    // Não mostra se já está instalado ou se o usuário dispensou
+    // Não mostra se já está instalado (standalone)
     if (isInStandaloneMode()) return;
-    try {
-      if (localStorage.getItem(DISMISSED_KEY)) return;
-    } catch {}
 
     if (isIOS()) {
       setShowIOS(true);
@@ -49,7 +44,6 @@ export default function InstallAppBanner() {
   }, []);
 
   function dismiss() {
-    try { localStorage.setItem(DISMISSED_KEY, "1"); } catch {}
     setShowAndroid(false);
     setShowIOS(false);
     setIosModalOpen(false);
@@ -240,7 +234,7 @@ export default function InstallAppBanner() {
                 cursor: "pointer",
               }}
             >
-              Não mostrar novamente
+              Fechar
             </button>
           </div>
         </div>
