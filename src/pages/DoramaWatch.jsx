@@ -455,9 +455,11 @@ export default function DoramaWatch() {
 
   // ✅ teste grátis acabou -> signup
   if (!loading && !isAuthenticated && trialExpired) {
+    const _srcParam = new URLSearchParams(location.search).get("src") || "";
+    const _srcSuffix = _srcParam ? `&src=${encodeURIComponent(_srcParam)}` : "";
     return (
       <Navigate
-        to={`/signup?next=${encodeURIComponent(location.pathname + location.search)}`}
+        to={`/signup?next=${encodeURIComponent(location.pathname + location.search)}${_srcSuffix}`}
         replace
       />
     );
