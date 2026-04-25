@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import DeleteAccountModal from '@/components/DeleteAccountModal';
 import { motion } from 'framer-motion';
 import {
   Play,
@@ -36,6 +37,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const { user, isAuthenticated } = useAuth();
 
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
@@ -425,6 +427,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     <LogOut className="w-4 h-4 mr-2" /> Sair
                   </Button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="text-xs text-red-500/60 hover:text-red-400 transition ml-1"
+                >
+                  Excluir conta
+                </button>
               </>
             ) : (
               <>
@@ -579,6 +589,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     )}
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setMobileMenuOpen(false); setDeleteModalOpen(true); }}
+                  className="text-xs text-red-500/60 hover:text-red-400 transition text-left pt-1"
+                >
+                  Excluir minha conta
+                </button>
               </>
             ) : (
               <div className="flex flex-col gap-2">
@@ -594,6 +612,11 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
         </div>
       )}
     </nav>
+
+    <DeleteAccountModal
+      isOpen={deleteModalOpen}
+      onClose={() => setDeleteModalOpen(false)}
+    />
   );
 };
 
