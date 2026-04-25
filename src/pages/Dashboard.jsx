@@ -1102,6 +1102,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           />
         )}
       </main>
+
+      <footer className="text-center py-6 border-t border-slate-900 mt-8">
+        <a href="/privacidade" className="text-slate-600 hover:text-slate-400 text-xs transition">
+          Política de Privacidade
+        </a>
+      </footer>
     </>
   );
 };

@@ -187,7 +187,12 @@ const Landing = () => {
               </div>
               <span className="text-xl font-bold text-white">DoramaStream</span>
             </div>
-            <p className="text-slate-500 text-sm">© {new Date().getFullYear()} DoramaStream. Todos os direitos reservados.</p>
+            <p className="text-slate-500 text-sm">© {new Date().getFullYear()} DoramasPlus. Todos os direitos reservados.</p>
+            <div className="mt-3">
+              <a href="/privacidade" className="text-slate-600 hover:text-slate-400 text-xs transition">
+                Política de Privacidade
+              </a>
+            </div>
           </div>
         </footer>
       </div>

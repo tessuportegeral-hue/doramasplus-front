@@ -55,6 +55,7 @@ import AdminSupport from '@/pages/AdminSupport';
 
 // Landing
 import Landing from '@/pages/Landing';
+import Privacidade from '@/pages/Privacidade';
 
 // ============================================================
 // DeviceGuard (mantido exatamente como está)
@@ -275,6 +276,9 @@ function App() {
 
                 {/* Landing */}
                 <Route path="/landing" element={<Landing />} />
+
+                {/* Política de Privacidade (pública) */}
+                <Route path="/privacidade" element={<Privacidade />} />
 
                 {/* Auth */}
                 <Route path="/login" element={<Login />} />
