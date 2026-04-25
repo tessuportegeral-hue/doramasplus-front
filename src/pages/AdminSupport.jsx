@@ -235,6 +235,19 @@ export default function AdminSupport() {
       }
     }
 
+    // Formato sem emoji: "IMAGE RECEBIDO\nhttps://..."
+    if (/^(IMAGE|AUDIO|VIDEO|DOCUMENT|STICKER)\s+RECEBIDO/i.test(text)) {
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      const url = lines.find((l) => /^https?:\/\//i.test(l)) || "";
+      if (url) {
+        const typeMatch = lines[0].match(/^([A-Z]+)\s+RECEBIDO/i);
+        const type = (typeMatch?.[1] || "document").toLowerCase();
+        const captionLine = lines.find((l) => l.startsWith("📝"));
+        const caption = captionLine ? captionLine.replace(/^📝\s*/i, "").trim() : "";
+        return { type, url, caption, filename: null };
+      }
+    }
+
     // Formato outbound que vamos salvar também:
     // [media:image]
     // https://...
