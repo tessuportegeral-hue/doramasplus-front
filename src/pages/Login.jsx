@@ -90,6 +90,8 @@ const Login = () => {
         const deviceId = localStorage.getItem("dp_device_id") || crypto.randomUUID();
         localStorage.setItem("dp_device_id", deviceId);
 
+        await new Promise(r => setTimeout(r, Math.random() * 500));
+
         const { data: sessions } = await supabase
           .from("active_sessions")
           .select("session_version")

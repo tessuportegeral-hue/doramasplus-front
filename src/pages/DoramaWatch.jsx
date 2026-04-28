@@ -35,20 +35,28 @@ export default function DoramaWatch() {
   // ── Novo sistema de telas simultâneas ──
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [limitInfo, setLimitInfo] = useState(null);
+  const [playerVisible, setPlayerVisible] = useState(true);
   const hasClaimedRef = useRef(false);
 
   const guardActive = PLAYBACK_ENABLED &&
     (!PLAYBACK_TEST_EMAIL || user?.email?.toLowerCase() === PLAYBACK_TEST_EMAIL);
 
-  const onKick = useCallback(() => {
+  const onKick = useCallback(async () => {
     try { videoRef.current?.pause?.(); } catch {}
-    try { if (iframeRef.current) iframeRef.current.src = ""; } catch {}
+    try {
+      if (iframeRef.current) {
+        iframeRef.current.src = "about:blank";
+        iframeRef.current.remove();
+      }
+    } catch {}
+    setPlayerVisible(false);
     toast({
       title: "Sessão encerrada",
       description: "Outro dispositivo assumiu a reprodução.",
       variant: "destructive",
     });
-    navigate(-1);
+    await new Promise(r => setTimeout(r, 100));
+    navigate("/login");
   }, [navigate, toast]);
 
   const onLimitReached = useCallback((info) => {
@@ -657,10 +665,8 @@ export default function DoramaWatch() {
                     Assinar agora
                   </Button>
                 </div>
-              ) : !videoUrl ? (
-                <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500">
-                  <p>Vídeo indisponível no momento.</p>
-                </div>
+              ) : !videoUrl || !playerVisible ? (
+                <div className="w-full h-full bg-black" />
               ) : playerType === "iframe" ? (
                 <iframe
                   ref={iframeRef}
