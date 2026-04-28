@@ -56,7 +56,7 @@ export default function DoramaWatch() {
   }, []);
 
   const { claim, claiming, claimed } = usePlaybackGuard({
-    shouldGuard: true,
+    shouldGuard: isAuthenticated && !!user,
     userEmail: user?.email,
     onKick,
     onLimitReached,
@@ -64,10 +64,10 @@ export default function DoramaWatch() {
 
   // Auto-claim quando player está pronto
   useEffect(() => {
-    if (!isAuthenticated || !isPremium || hasClaimedRef.current) return;
+    if (!isAuthenticated || !user || hasClaimedRef.current) return;
     hasClaimedRef.current = true;
     claim();
-  }, [isAuthenticated, isPremium, claim]);
+  }, [isAuthenticated, user, claim]);
 
   const [dorama, setDorama] = useState(null);
   const [loadingDorama, setLoadingDorama] = useState(true);

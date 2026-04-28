@@ -8,13 +8,14 @@ const ENABLED = import.meta.env.VITE_ENABLE_PLAYBACK_LIMIT === "true";
 const TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").trim().toLowerCase();
 
 async function callFn(fn, body) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("no_session");
+  const { data } = await supabase.auth.refreshSession();
+  const token = data?.session?.access_token;
+  if (!token) throw new Error("no_session");
   const res = await fetch(`${FN_BASE}/${fn}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${token}`,
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     },
     body: JSON.stringify(body),
