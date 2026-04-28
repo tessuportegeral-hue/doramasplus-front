@@ -1,7 +1,7 @@
 // src/pages/Login.jsx
 import React, { useState, useEffect } from "react";
 import { Helmet } from "react-helmet";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { kickedOut, clearKickedOut } = useAuth();
 
@@ -28,8 +29,10 @@ const Login = () => {
     if (kickedOut) {
       setShowKickedModal(true);
       clearKickedOut();
+    } else if (searchParams.get("reason") === "other_device") {
+      setShowKickedModal(true);
     }
-  }, [kickedOut, clearKickedOut]);
+  }, [kickedOut, clearKickedOut, searchParams]);
 
   const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
 
@@ -99,18 +102,15 @@ const Login = () => {
 
         if (sessions) {
           const storedVersion = localStorage.getItem(`dp_sv_${data.user.id}`);
-          if (!storedVersion) {
-            // localStorage limpo (desconectou manualmente) → registra como primeiro login
-            await registerSession(data.user.id);
-          } else if (storedVersion !== sessions.session_version) {
-            // Outro device ativo → mostra modal (mantém sessão ativa)
+          if (storedVersion !== sessions.session_version) {
+            // Versão diferente OU localStorage vazio → outro device ativo → modal
             setPendingUserId(data.user.id);
             setShowConflictModal(true);
             return;
           }
-          // storedVersion bate → mesmo device, segue
+          // storedVersion bate exatamente → mesmo device → segue
         } else {
-          // Nenhuma sessão registrada → primeiro login
+          // Nenhuma sessão no banco → primeiro login
           await registerSession(data.user.id);
         }
       }

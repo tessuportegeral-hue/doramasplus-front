@@ -8,7 +8,6 @@
 // ============================================================
 
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -16,7 +15,6 @@ const GUARD_POLL_MS = 8_000; // verifica a cada 8s enquanto está no player
 
 const useSessionGuard = () => {
   const { user, isAuthenticated, kickedOut, clearKickedOut } = useAuth();
-  const navigate = useNavigate();
   const pollRef = useRef(null);
   const realtimeRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -28,13 +26,13 @@ const useSessionGuard = () => {
     };
   }, []);
 
-  // Se kickedOut via contexto, redireciona
+  // Se kickedOut via contexto, força reload completo para matar buffers de áudio
   useEffect(() => {
     if (kickedOut) {
       clearKickedOut();
-      navigate("/login", { replace: true });
+      window.location.href = "/login?reason=other_device";
     }
-  }, [kickedOut, clearKickedOut, navigate]);
+  }, [kickedOut, clearKickedOut]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
@@ -63,11 +61,9 @@ const useSessionGuard = () => {
       }
       // Limpa versão local
       try { window.localStorage.removeItem(`dp_sv_${uid}`); } catch {}
-      // Desloga e manda pro login com mensagem
+      // Desloga e força reload completo para matar buffers de áudio
       supabase.auth.signOut().finally(() => {
-        if (isMountedRef.current) {
-          navigate("/login?reason=other_device", { replace: true });
-        }
+        window.location.href = "/login?reason=other_device";
       });
     };
 
@@ -135,7 +131,7 @@ const useSessionGuard = () => {
         realtimeRef.current = null;
       }
     };
-  }, [isAuthenticated, user?.id, navigate]);
+  }, [isAuthenticated, user?.id]);
 };
 
 export default useSessionGuard;
