@@ -8,10 +8,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
-// ✅ TESTE — só ativa single session pra este email
-// Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
-
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -21,16 +17,10 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Modal: conta ativa em outro device (ao tentar logar)
-  const [showDeviceModal, setShowDeviceModal] = useState(false);
-  const [pendingCredentials, setPendingCredentials] = useState(null);
-  const [evictingDevice, setEvictingDevice] = useState(false);
-
-  // Modal: você foi kickado por outro device
   const [showKickedModal, setShowKickedModal] = useState(false);
 
-  // ✅ Se chegou na tela de login porque foi kickado, mostra o modal
   useEffect(() => {
     if (kickedOut) {
       setShowKickedModal(true);
@@ -52,98 +42,9 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
-  const shouldCheckSingleSession = (email) => {
-    if (!SINGLE_SESSION_TEST_EMAIL) return true; // null = todos
-    return email === SINGLE_SESSION_TEST_EMAIL;
-  };
-
-  // ✅ FIX: grava o UUID deste device IMEDIATAMENTE no banco
-  // Isso garante que o device novo tem prioridade antes do contexto inicializar
-  const registerSessionImmediate = async (userId) => {
-    const newVersion = crypto.randomUUID();
-
-    // Grava no banco (upsert = sobrescreve o device antigo)
-    const { error } = await supabase
-      .from("active_sessions")
-      .upsert(
-        { user_id: userId, session_version: newVersion, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" }
-      );
-
-    if (error) {
-      console.error("[login] registerSession error:", error);
-      return null;
-    }
-
-    // Grava no localStorage para o contexto encontrar depois
-    try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
-
-    return newVersion;
-  };
-
-  const checkActiveSession = async (userId) => {
-    try {
-      const myVersion = (() => {
-        try { return window.localStorage.getItem(`dp_sv_${userId}`) || null; } catch { return null; }
-      })();
-
-      const { data, error } = await supabase
-        .from("active_sessions")
-        .select("session_version")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (error || !data) return false; // sem registro → primeiro login → libera
-      if (myVersion && data.session_version === myVersion) return false; // mesmo device
-      return true; // outro device ativo
-    } catch {
-      return false; // fail-open
-    }
-  };
-
-  // ✅ Usuário confirmou: derruba o outro device e entra
-  // Grava o UUID novo ANTES do contexto inicializar — o device antigo cai via Realtime em < 1s
-  const evictAndLogin = async () => {
-    if (!pendingCredentials) return;
-    setEvictingDevice(true);
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: pendingCredentials.email,
-        password: pendingCredentials.password,
-      });
-
-      if (error) {
-        toast({
-          title: "Erro ao entrar",
-          description: "Senha incorreta ou sessão expirada. Tente novamente.",
-          variant: "destructive",
-        });
-        setShowDeviceModal(false);
-        setPendingCredentials(null);
-        return;
-      }
-
-      const userId = data?.user?.id;
-      if (userId) {
-        // ✅ Grava UUID novo imediatamente — sobrescreve o antigo no banco
-        // O Realtime notifica o device antigo em < 1s e ele é kickado
-        await registerSessionImmediate(userId);
-      }
-
-      setShowDeviceModal(false);
-      setPendingCredentials(null);
-      navigate("/");
-    } catch (err) {
-      console.error("evictAndLogin error:", err);
-      toast({ title: "Erro inesperado", description: "Tente novamente.", variant: "destructive" });
-    } finally {
-      setEvictingDevice(false);
-    }
-  };
-
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
 
     if (!identifier || !password) {
       toast({ title: "Atenção", description: "Preencha WhatsApp (ou email) e senha.", variant: "destructive" });
@@ -164,32 +65,41 @@ const Login = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
+      if (authError) {
         toast({ title: "Erro ao entrar", description: "WhatsApp/email ou senha incorretos.", variant: "destructive" });
         return;
       }
 
-      const userId = data?.user?.id;
+      const TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").toLowerCase();
+      const userEmail = data.user?.email?.toLowerCase() || "";
+      const isTestUser = !TEST_EMAIL || userEmail === TEST_EMAIL;
 
-      // ✅ Verifica conflito de device
-      if (userId && shouldCheckSingleSession(email)) {
-        const hasOtherDevice = await checkActiveSession(userId);
+      if (isTestUser) {
+        const deviceId = localStorage.getItem("dp_device_id") || crypto.randomUUID();
+        localStorage.setItem("dp_device_id", deviceId);
 
-        if (hasOtherDevice) {
-          // Desloga temporariamente — o modal decide o próximo passo
-          await supabase.auth.signOut();
-          setPendingCredentials({ email, password });
-          setShowDeviceModal(true);
-          return;
+        const { data: sessions } = await supabase
+          .from("active_sessions")
+          .select("session_version")
+          .eq("user_id", data.user.id)
+          .single();
+
+        if (sessions) {
+          const storedVersion = localStorage.getItem(`dp_sv_${data.user.id}`);
+          if (storedVersion !== sessions.session_version) {
+            await supabase.auth.signOut();
+            setError("Esta conta já está sendo usada em outro dispositivo. Desconecte o outro dispositivo primeiro.");
+            return;
+          }
+        } else {
+          const newVersion = crypto.randomUUID();
+          localStorage.setItem(`dp_sv_${data.user.id}`, newVersion);
+          await supabase
+            .from("active_sessions")
+            .upsert({ user_id: data.user.id, session_version: newVersion });
         }
-      }
-
-      // Sem conflito → grava UUID e navega
-      // ✅ IMPORTANTE: grava ANTES do contexto inicializar o polling
-      if (userId && shouldCheckSingleSession(email)) {
-        await registerSessionImmediate(userId);
       }
 
       navigate("/");
@@ -255,6 +165,12 @@ const Login = () => {
               </div>
             </div>
 
+            {error && (
+              <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-md px-3 py-2">
+                {error}
+              </p>
+            )}
+
             <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
               {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
             </Button>
@@ -271,42 +187,7 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Modal: conta ativa em outro device */}
-      {showDeviceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <MonitorSmartphone className="w-7 h-7 text-purple-400 shrink-0" />
-              <h2 className="text-lg font-bold text-slate-50 leading-tight">
-                Conta ativa em outro dispositivo
-              </h2>
-            </div>
-            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-              Sua conta já está sendo usada em outro dispositivo. Se continuar,
-              o outro dispositivo será desconectado automaticamente.
-            </p>
-            <div className="flex flex-col gap-3">
-              <Button
-                className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
-                onClick={evictAndLogin}
-                disabled={evictingDevice}
-              >
-                {evictingDevice ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar aqui e desconectar o outro"}
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full h-11 border-slate-600 text-slate-300 hover:bg-slate-800"
-                onClick={() => { setShowDeviceModal(false); setPendingCredentials(null); }}
-                disabled={evictingDevice}
-              >
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ Modal: você foi desconectado por outro device */}
+      {/* Modal: você foi desconectado por outro device */}
       {showKickedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="bg-slate-900 border border-red-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
