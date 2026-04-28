@@ -260,7 +260,7 @@ const Login = () => {
             </Button>
           </form>
 
-          <Link to="/reset-password" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
+          <Link to="/esqueci-senha" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
             Esqueci minha senha
           </Link>
 
