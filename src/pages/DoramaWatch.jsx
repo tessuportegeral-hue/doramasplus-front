@@ -1,16 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Helmet } from "react-helmet";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Crown, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
+import { useToast } from "@/components/ui/use-toast";
 import Hls from "hls.js";
 import useSessionGuard from "@/hooks/useSessionGuard";
+import { usePlaybackGuard } from "@/hooks/usePlaybackGuard";
+import PlaybackLimitModal from "@/components/PlaybackLimitModal";
 
-// ✅ TESTE — só ativa session guard pra este email
+// ✅ TESTE — só ativa session guard pra este email (sistema antigo — não remover ainda)
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
+
+// Feature flag: controle de telas simultâneas
+const PLAYBACK_ENABLED = import.meta.env.VITE_ENABLE_PLAYBACK_LIMIT === "true";
+const PLAYBACK_TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").trim().toLowerCase();
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();
@@ -18,12 +25,49 @@ export default function DoramaWatch() {
   const location = useLocation();
 
   const { user, isAuthenticated, isPremium, checkingPremium, loading } = useAuth();
+  const { toast } = useToast();
 
-  // ✅ Trava de sessão única — só ativa para o email de teste
-  // Quando SINGLE_SESSION_TEST_EMAIL = null, protege todos os usuários
+  // ✅ Sistema antigo de sessão única (mantido — remover em PR separado)
   const shouldGuard = !SINGLE_SESSION_TEST_EMAIL ||
     user?.email === SINGLE_SESSION_TEST_EMAIL;
   useSessionGuard(shouldGuard);
+
+  // ── Novo sistema de telas simultâneas ──
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [limitInfo, setLimitInfo] = useState(null);
+  const hasClaimedRef = useRef(false);
+
+  const guardActive = PLAYBACK_ENABLED &&
+    (!PLAYBACK_TEST_EMAIL || user?.email?.toLowerCase() === PLAYBACK_TEST_EMAIL);
+
+  const onKick = useCallback(() => {
+    try { videoRef.current?.pause?.(); } catch {}
+    toast({
+      title: "Sessão encerrada",
+      description: "Outro dispositivo assumiu a reprodução.",
+      variant: "destructive",
+    });
+    navigate(-1);
+  }, [navigate, toast]);
+
+  const onLimitReached = useCallback((info) => {
+    setLimitInfo(info);
+    setShowLimitModal(true);
+  }, []);
+
+  const { claim, claiming, claimed } = usePlaybackGuard({
+    shouldGuard: true,
+    userEmail: user?.email,
+    onKick,
+    onLimitReached,
+  });
+
+  // Auto-claim quando player está pronto
+  useEffect(() => {
+    if (!isAuthenticated || !isPremium || hasClaimedRef.current) return;
+    hasClaimedRef.current = true;
+    claim();
+  }, [isAuthenticated, isPremium, claim]);
 
   const [dorama, setDorama] = useState(null);
   const [loadingDorama, setLoadingDorama] = useState(true);
@@ -644,6 +688,28 @@ export default function DoramaWatch() {
           )}
         </main>
       </div>
+
+      {showLimitModal && (
+        <PlaybackLimitModal
+          info={limitInfo}
+          onTakeOver={async () => {
+            setShowLimitModal(false);
+            const result = await claim(true);
+            if (result.allowed) {
+              try { await videoRef.current?.play?.(); } catch {}
+            }
+          }}
+          onUpgrade={() => navigate("/plans")}
+          onCancel={() => setShowLimitModal(false)}
+        />
+      )}
+
+      {/* Overlay de claim em andamento (só quando flag ativa) */}
+      {guardActive && claiming && !claimed && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+          <Loader2 className="w-10 h-10 animate-spin text-purple-400" />
+        </div>
+      )}
     </>
   );
 }
