@@ -4,12 +4,13 @@
 // Não muda lógica / rotas / auth / nada do funcionamento.
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
@@ -224,6 +225,22 @@ function DeviceGuard({ children }) {
   */
 }
 
+function TrafficSourceTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    try {
+      const src = new URLSearchParams(location.search).get('src');
+      if (src) {
+        const val = src.trim().toLowerCase();
+        localStorage.setItem('dp_traffic_src', val);
+        localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
+        sessionStorage.setItem('dp_traffic_src', val);
+      }
+    } catch {}
+  }, [location.search]);
+  return null;
+}
+
 // ============================================================
 // App (mantido exatamente como está)
 // ============================================================
@@ -245,6 +262,7 @@ function App() {
 
       <AuthProvider>
         <Router>
+          <TrafficSourceTracker />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>

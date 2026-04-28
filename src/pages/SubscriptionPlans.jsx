@@ -197,10 +197,11 @@ const SubscriptionPlans = () => {
         return;
       }
 
-      // ✅ (AJUSTE MÍNIMO) origem do tráfego:
-      // 1) prioriza /plans?src=...
-      // 2) senão usa localStorage dp_traffic_src (mas só se for recente)
-      // 3) fallback "direct"
+      // origem do tráfego:
+      // 1) ?src= da URL
+      // 2) localStorage dp_traffic_src (válido por 7 dias)
+      // 3) sessionStorage dp_traffic_src
+      // 4) fallback "direct"
       let source = 'direct';
       try {
         const params = new URLSearchParams(window.location.search);
@@ -214,11 +215,16 @@ const SubscriptionPlans = () => {
             .toLowerCase();
 
           const ts = Number(localStorage.getItem('dp_traffic_src_ts') || '0');
-
-          // considera válido por 7 dias
           const isFresh = ts && Date.now() - ts < 7 * 24 * 60 * 60 * 1000;
 
-          if (fromLocal && isFresh) source = fromLocal;
+          if (fromLocal && isFresh) {
+            source = fromLocal;
+          } else {
+            const fromSession = (sessionStorage.getItem('dp_traffic_src') || '')
+              .trim()
+              .toLowerCase();
+            if (fromSession) source = fromSession;
+          }
         }
       } catch {}
 
