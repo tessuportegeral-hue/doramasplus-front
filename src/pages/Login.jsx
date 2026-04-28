@@ -127,7 +127,22 @@ const Login = () => {
     if (!pendingUserId) return;
     setForcingLogin(true);
     try {
-      await registerSession(pendingUserId);
+      // 1. Revoga todos os JWTs no servidor — invalida o device antigo
+      await supabase.auth.signOut({ scope: "global" });
+
+      // 2. Re-loga com token novo e limpo
+      const email = normalizeIdentifierToEmail(identifier);
+      const { data: freshData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError || !freshData?.user) {
+        toast({ title: "Erro ao entrar", description: "Tente fazer login novamente.", variant: "destructive" });
+        setShowConflictModal(false);
+        setPendingUserId(null);
+        return;
+      }
+
+      // 3 & 4. Registra nova session_version no banco e localStorage
+      await registerSession(freshData.user.id);
+
       setShowConflictModal(false);
       setPendingUserId(null);
       navigate("/");
