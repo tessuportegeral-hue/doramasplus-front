@@ -41,23 +41,15 @@ export default function DoramaWatch() {
   const guardActive = PLAYBACK_ENABLED &&
     (!PLAYBACK_TEST_EMAIL || user?.email?.toLowerCase() === PLAYBACK_TEST_EMAIL);
 
-  const onKick = useCallback(async () => {
-    try { videoRef.current?.pause?.(); } catch {}
-    try {
-      if (iframeRef.current) {
-        iframeRef.current.src = "about:blank";
-        iframeRef.current.remove();
-      }
-    } catch {}
+  const onKick = useCallback(() => {
     setPlayerVisible(false);
     toast({
       title: "Sessão encerrada",
       description: "Outro dispositivo assumiu a reprodução.",
       variant: "destructive",
     });
-    await new Promise(r => setTimeout(r, 100));
-    navigate("/login");
-  }, [navigate, toast]);
+    window.location.href = "/login";
+  }, [toast]);
 
   const onLimitReached = useCallback((info) => {
     setLimitInfo(info);

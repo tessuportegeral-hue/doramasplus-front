@@ -48,9 +48,10 @@ const Login = () => {
   const registerSession = async (userId) => {
     const newVersion = crypto.randomUUID();
     localStorage.setItem(`dp_sv_${userId}`, newVersion);
-    await supabase
-      .from("active_sessions")
-      .upsert({ user_id: userId, session_version: newVersion });
+    await supabase.rpc("check_and_claim_session", {
+      p_user_id: userId,
+      p_new_version: newVersion,
+    });
   };
 
   const handleLogin = async (e) => {
@@ -89,8 +90,6 @@ const Login = () => {
       if (isTestUser) {
         const deviceId = localStorage.getItem("dp_device_id") || crypto.randomUUID();
         localStorage.setItem("dp_device_id", deviceId);
-
-        await new Promise(r => setTimeout(r, Math.random() * 500));
 
         const { data: sessions } = await supabase
           .from("active_sessions")
