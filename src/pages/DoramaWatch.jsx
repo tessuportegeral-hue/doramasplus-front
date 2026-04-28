@@ -56,18 +56,20 @@ export default function DoramaWatch() {
   }, []);
 
   const { claim, claiming, claimed } = usePlaybackGuard({
-    shouldGuard: true,
+    // shouldGuard só fica true quando o player realmente carregou — evita
+    // claim automático durante navegação ou enquanto a página ainda carrega
+    shouldGuard: isAuthenticated && isPremium && !loading && !loadingDorama,
     userEmail: user?.email,
     onKick,
     onLimitReached,
   });
 
-  // Auto-claim quando player está pronto
+  // Auto-claim quando player está pronto (dorama carregado + usuário premium)
   useEffect(() => {
-    if (!isAuthenticated || !isPremium || hasClaimedRef.current) return;
+    if (!isAuthenticated || !isPremium || loading || loadingDorama || hasClaimedRef.current) return;
     hasClaimedRef.current = true;
     claim();
-  }, [isAuthenticated, isPremium, claim]);
+  }, [isAuthenticated, isPremium, loading, loadingDorama, claim]);
 
   const [dorama, setDorama] = useState(null);
   const [loadingDorama, setLoadingDorama] = useState(true);

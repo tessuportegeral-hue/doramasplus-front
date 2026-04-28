@@ -8,8 +8,18 @@ const ENABLED = import.meta.env.VITE_ENABLE_PLAYBACK_LIMIT === "true";
 const TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").trim().toLowerCase();
 
 async function callFn(fn, body) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("no_session");
+  let { data: { session } } = await supabase.auth.getSession();
+
+  // access_token ausente ou expirado → força refresh antes de chamar a Edge Function
+  if (!session?.access_token) {
+    const { data } = await supabase.auth.refreshSession();
+    session = data?.session ?? null;
+  }
+
+  if (!session?.access_token) throw new Error("no_session");
+
+  console.log(`[playback] callFn ${fn} — token: ${session.access_token.slice(0, 20)}...`);
+
   const res = await fetch(`${FN_BASE}/${fn}`, {
     method: "POST",
     headers: {
