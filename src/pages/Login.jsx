@@ -86,33 +86,27 @@ const Login = () => {
         return;
       }
 
-      const TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").toLowerCase();
-      const userEmail = data.user?.email?.toLowerCase() || "";
-      const isTestUser = !TEST_EMAIL || userEmail === TEST_EMAIL;
+      const deviceId = localStorage.getItem("dp_device_id") || crypto.randomUUID();
+      localStorage.setItem("dp_device_id", deviceId);
 
-      if (isTestUser) {
-        const deviceId = localStorage.getItem("dp_device_id") || crypto.randomUUID();
-        localStorage.setItem("dp_device_id", deviceId);
+      const { data: sessions } = await supabase
+        .from("active_sessions")
+        .select("session_version")
+        .eq("user_id", data.user.id)
+        .single();
 
-        const { data: sessions } = await supabase
-          .from("active_sessions")
-          .select("session_version")
-          .eq("user_id", data.user.id)
-          .single();
-
-        if (sessions) {
-          const storedVersion = localStorage.getItem(`dp_sv_${data.user.id}`);
-          if (storedVersion !== sessions.session_version) {
-            // Versão diferente OU localStorage vazio → outro device ativo → modal
-            setPendingUserId(data.user.id);
-            setShowConflictModal(true);
-            return;
-          }
-          // storedVersion bate exatamente → mesmo device → segue
-        } else {
-          // Nenhuma sessão no banco → primeiro login
-          await registerSession(data.user.id);
+      if (sessions) {
+        const storedVersion = localStorage.getItem(`dp_sv_${data.user.id}`);
+        if (storedVersion !== sessions.session_version) {
+          // Versão diferente OU localStorage vazio → outro device ativo → modal
+          setPendingUserId(data.user.id);
+          setShowConflictModal(true);
+          return;
         }
+        // storedVersion bate exatamente → mesmo device → segue
+      } else {
+        // Nenhuma sessão no banco → primeiro login
+        await registerSession(data.user.id);
       }
 
       navigate("/");

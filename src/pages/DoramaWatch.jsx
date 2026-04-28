@@ -11,13 +11,8 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 import { usePlaybackGuard } from "@/hooks/usePlaybackGuard";
 import PlaybackLimitModal from "@/components/PlaybackLimitModal";
 
-// ✅ TESTE — só ativa session guard pra este email (sistema antigo — não remover ainda)
-// Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
-
 // Feature flag: controle de telas simultâneas
 const PLAYBACK_ENABLED = import.meta.env.VITE_ENABLE_PLAYBACK_LIMIT === "true";
-const PLAYBACK_TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").trim().toLowerCase();
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();
@@ -27,10 +22,7 @@ export default function DoramaWatch() {
   const { user, isAuthenticated, isPremium, checkingPremium, loading } = useAuth();
   const { toast } = useToast();
 
-  // ✅ Sistema antigo de sessão única (mantido — remover em PR separado)
-  const shouldGuard = !SINGLE_SESSION_TEST_EMAIL ||
-    user?.email === SINGLE_SESSION_TEST_EMAIL;
-  useSessionGuard(shouldGuard);
+  useSessionGuard();
 
   // ── Novo sistema de telas simultâneas ──
   const [showLimitModal, setShowLimitModal] = useState(false);
@@ -38,8 +30,7 @@ export default function DoramaWatch() {
   const [playerVisible, setPlayerVisible] = useState(true);
   const hasClaimedRef = useRef(false);
 
-  const guardActive = PLAYBACK_ENABLED &&
-    (!PLAYBACK_TEST_EMAIL || user?.email?.toLowerCase() === PLAYBACK_TEST_EMAIL);
+  const guardActive = PLAYBACK_ENABLED;
 
   const onKick = useCallback(() => {
     setPlayerVisible(false);
@@ -58,7 +49,6 @@ export default function DoramaWatch() {
 
   const { claim, claiming, claimed } = usePlaybackGuard({
     shouldGuard: isAuthenticated && !!user,
-    userEmail: user?.email,
     onKick,
     onLimitReached,
   });

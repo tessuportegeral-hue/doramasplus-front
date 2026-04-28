@@ -5,7 +5,6 @@ import { getDeviceId, getDeviceName } from "@/lib/deviceId";
 const FN_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 const ENABLED = import.meta.env.VITE_ENABLE_PLAYBACK_LIMIT === "true";
-const TEST_EMAIL = (import.meta.env.VITE_PLAYBACK_TEST_EMAIL || "").trim().toLowerCase();
 
 async function callFn(fn, body) {
   const { data } = await supabase.auth.refreshSession();
@@ -26,19 +25,17 @@ async function callFn(fn, body) {
 /**
  * @param {object} opts
  * @param {boolean} opts.shouldGuard
- * @param {string} opts.userEmail
  * @param {() => void} opts.onKick
  * @param {(info: object) => void} opts.onLimitReached
  */
-export function usePlaybackGuard({ shouldGuard, userEmail, onKick, onLimitReached }) {
+export function usePlaybackGuard({ shouldGuard, onKick, onLimitReached }) {
   const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const heartbeatRef = useRef(null);
   const channelRef = useRef(null);
   const deviceId = getDeviceId();
 
-  const isTestUser = !TEST_EMAIL || (userEmail && userEmail.toLowerCase() === TEST_EMAIL);
-  const guardActive = ENABLED && shouldGuard && isTestUser;
+  const guardActive = ENABLED && shouldGuard;
 
   const claim = useCallback(async (force = false) => {
     if (!guardActive) {
