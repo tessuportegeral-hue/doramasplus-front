@@ -42,6 +42,7 @@ export default function DoramaWatch() {
 
   const onKick = useCallback(() => {
     try { videoRef.current?.pause?.(); } catch {}
+    try { if (iframeRef.current) iframeRef.current.src = ""; } catch {}
     toast({
       title: "Sessão encerrada",
       description: "Outro dispositivo assumiu a reprodução.",
@@ -74,6 +75,7 @@ export default function DoramaWatch() {
   const [error, setError] = useState(false);
 
   const videoRef = useRef(null);
+  const iframeRef = useRef(null);
   const hlsRef = useRef(null);
 
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
@@ -661,6 +663,7 @@ export default function DoramaWatch() {
                 </div>
               ) : playerType === "iframe" ? (
                 <iframe
+                  ref={iframeRef}
                   src={iframeSrc || videoUrl}
                   title={dorama.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
