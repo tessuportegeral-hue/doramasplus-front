@@ -18,6 +18,8 @@ async function callFn(fn, body) {
 
   if (!session?.access_token) throw new Error("no_session");
 
+  console.log(`[playback] callFn ${fn} — token: ${session.access_token.slice(0, 20)}...`);
+
   const res = await fetch(`${FN_BASE}/${fn}`, {
     method: "POST",
     headers: {
