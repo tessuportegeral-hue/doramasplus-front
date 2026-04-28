@@ -17,7 +17,10 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState(null);
+  const [forcingLogin, setForcingLogin] = useState(false);
 
   const [showKickedModal, setShowKickedModal] = useState(false);
 
@@ -42,9 +45,16 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
+  const registerSession = async (userId) => {
+    const newVersion = crypto.randomUUID();
+    localStorage.setItem(`dp_sv_${userId}`, newVersion);
+    await supabase
+      .from("active_sessions")
+      .upsert({ user_id: userId, session_version: newVersion });
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError("");
 
     if (!identifier || !password) {
       toast({ title: "Atenção", description: "Preencha WhatsApp (ou email) e senha.", variant: "destructive" });
@@ -88,17 +98,19 @@ const Login = () => {
 
         if (sessions) {
           const storedVersion = localStorage.getItem(`dp_sv_${data.user.id}`);
-          if (storedVersion !== sessions.session_version) {
-            await supabase.auth.signOut();
-            setError("Esta conta já está sendo usada em outro dispositivo. Desconecte o outro dispositivo primeiro.");
+          if (!storedVersion) {
+            // localStorage limpo (desconectou manualmente) → registra como primeiro login
+            await registerSession(data.user.id);
+          } else if (storedVersion !== sessions.session_version) {
+            // Outro device ativo → mostra modal (mantém sessão ativa)
+            setPendingUserId(data.user.id);
+            setShowConflictModal(true);
             return;
           }
+          // storedVersion bate → mesmo device, segue
         } else {
-          const newVersion = crypto.randomUUID();
-          localStorage.setItem(`dp_sv_${data.user.id}`, newVersion);
-          await supabase
-            .from("active_sessions")
-            .upsert({ user_id: data.user.id, session_version: newVersion });
+          // Nenhuma sessão registrada → primeiro login
+          await registerSession(data.user.id);
         }
       }
 
@@ -109,6 +121,28 @@ const Login = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleForceLogin = async () => {
+    if (!pendingUserId) return;
+    setForcingLogin(true);
+    try {
+      await registerSession(pendingUserId);
+      setShowConflictModal(false);
+      setPendingUserId(null);
+      navigate("/");
+    } catch (err) {
+      console.error("handleForceLogin error:", err);
+      toast({ title: "Erro inesperado", description: "Tente novamente.", variant: "destructive" });
+    } finally {
+      setForcingLogin(false);
+    }
+  };
+
+  const handleCancelConflict = async () => {
+    await supabase.auth.signOut();
+    setShowConflictModal(false);
+    setPendingUserId(null);
   };
 
   const inputBase =
@@ -165,12 +199,6 @@ const Login = () => {
               </div>
             </div>
 
-            {error && (
-              <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-md px-3 py-2">
-                {error}
-              </p>
-            )}
-
             <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
               {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
             </Button>
@@ -186,6 +214,40 @@ const Login = () => {
           </p>
         </div>
       </div>
+
+      {/* Modal: conta em uso em outro dispositivo */}
+      {showConflictModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <MonitorSmartphone className="w-7 h-7 text-purple-400 shrink-0" />
+              <h2 className="text-lg font-bold text-slate-50 leading-tight">
+                Conta em uso em outro dispositivo
+              </h2>
+            </div>
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Sua conta está ativa em outro dispositivo. Deseja desconectar o outro e entrar aqui?
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button
+                className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white"
+                onClick={handleForceLogin}
+                disabled={forcingLogin}
+              >
+                {forcingLogin ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar aqui"}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full h-11 border-slate-600 text-slate-300 hover:bg-slate-800"
+                onClick={handleCancelConflict}
+                disabled={forcingLogin}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: você foi desconectado por outro device */}
       {showKickedModal && (
