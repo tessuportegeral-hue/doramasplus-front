@@ -1,17 +1,19 @@
-// src/hooks/useSessionGuard.js
-// ============================================================
-// Hook para validar sessão em qualquer componente (ex: player)
-// Uso: coloque `useSessionGuard()` dentro do componente DoramaWatch
-//
-// Se a sessão for inválida (outro device entrou), força logout
-// e redireciona pro login imediatamente.
-// ============================================================
-
 import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
-const GUARD_POLL_MS = 8_000; // verifica a cada 8s enquanto está no player
+const GUARD_POLL_MS = 8_000;
+
+const stopAllMedia = () => {
+  document.querySelectorAll("iframe").forEach((el) => {
+    try { el.contentWindow?.postMessage(JSON.stringify({ event: "pause" }), "*"); } catch {}
+    try { el.src = "about:blank"; } catch {}
+    try { el.remove(); } catch {}
+  });
+  document.querySelectorAll("video, audio").forEach((el) => {
+    try { el.pause(); el.src = ""; } catch {}
+  });
+};
 
 const useSessionGuard = () => {
   const { user, isAuthenticated, kickedOut, clearKickedOut } = useAuth();
@@ -26,10 +28,10 @@ const useSessionGuard = () => {
     };
   }, []);
 
-  // Se kickedOut via contexto, força reload completo para matar buffers de áudio
   useEffect(() => {
     if (kickedOut) {
       clearKickedOut();
+      stopAllMedia();
       window.location.href = "/login?reason=other_device";
     }
   }, [kickedOut, clearKickedOut]);
@@ -59,9 +61,8 @@ const useSessionGuard = () => {
         try { supabase.removeChannel(realtimeRef.current); } catch {}
         realtimeRef.current = null;
       }
-      // Limpa versão local
       try { window.localStorage.removeItem(`dp_sv_${uid}`); } catch {}
-      // Desloga e força reload completo para matar buffers de áudio
+      stopAllMedia();
       supabase.auth.signOut().finally(() => {
         window.location.href = "/login?reason=other_device";
       });

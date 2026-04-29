@@ -67,6 +67,7 @@ export default function DoramaWatch() {
   const videoRef = useRef(null);
   const iframeRef = useRef(null);
   const hlsRef = useRef(null);
+  const playerJsRef = useRef(null);
 
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
   const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
@@ -88,25 +89,6 @@ export default function DoramaWatch() {
 
   const [trialRemaining, setTrialRemaining] = useState(TRIAL_SECONDS);
   const [trialExpired, setTrialExpired] = useState(false);
-
-  const nextUrl = useMemo(() => {
-    return location.pathname + location.search;
-  }, [location.pathname, location.search]);
-
-  // ✅ Modo iPhone via querystring (?mode=iphone)
-  const isIphoneMode = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return (params.get("mode") || "").toLowerCase() === "iphone";
-  }, [location.search]);
-
-  // ✅ Detecta iPhone/iPad (ainda útil pra copy, mas agora modo iPhone é liberado pra Android também)
-  const isIOS = useMemo(() => {
-    if (typeof navigator === "undefined") return false;
-    const ua = navigator.userAgent || "";
-    const iOS = /iPhone|iPad|iPod/i.test(ua);
-    const iPadOS13 = /Macintosh/i.test(ua) && "ontouchend" in document;
-    return iOS || iPadOS13;
-  }, []);
 
   // captura ?src= e salva no localStorage (mesmo padrão de ComoFunciona.jsx)
   useEffect(() => {
@@ -158,19 +140,11 @@ export default function DoramaWatch() {
     fetchDorama();
   }, [slugFromUrl]);
 
-  // ✅ Escolhe URL (normal vs iphone)
   const videoUrl = useMemo(() => {
     if (!dorama) return "";
-
     const embed = (dorama.bunny_embed_url || "").trim();
-
-    const normal = (dorama.bunny_url || dorama.bunny_stream_url || embed || "").trim();
-    const iphone = (dorama.bunny_stream_url || dorama.bunny_url || embed || "").trim();
-
-    return isIphoneMode ? iphone : normal;
-  }, [dorama, isIphoneMode]);
-
-  const hasStream = !!(dorama?.bunny_stream_url && String(dorama.bunny_stream_url).trim());
+    return (dorama.bunny_stream_url || dorama.bunny_url || embed).trim();
+  }, [dorama]);
 
   // ✅ tipo do player
   const playerType = useMemo(() => {
@@ -239,22 +213,12 @@ export default function DoramaWatch() {
     }
   }, [videoUrl, playerType]);
 
-  const goIphoneMode = () => {
-    navigate(`/dorama/${dorama?.slug || slugFromUrl}/watch?mode=iphone`, { replace: true });
-  };
-
-  const goDefaultMode = () => {
-    navigate(`/dorama/${dorama?.slug || slugFromUrl}/watch`, { replace: true });
-  };
-
-  // ✅ REGRA: continuar assistindo SOMENTE no modo normal + <video> (Storage).
   const allowContinue = useMemo(() => {
     if (!isPremium) return false;
     if (!user?.id) return false;
     if (!dorama?.id) return false;
-    if (isIphoneMode) return false;
-    return playerType === "mp4" || playerType === "hls" || playerType === "video";
-  }, [isPremium, user?.id, dorama?.id, isIphoneMode, playerType]);
+    return playerType === "mp4" || playerType === "hls" || playerType === "video" || playerType === "iframe";
+  }, [isPremium, user?.id, dorama?.id, playerType]);
 
   // ✅ TESTE GRÁTIS: relógio GLOBAL usando localStorage (só para NÃO logado)
   useEffect(() => {
@@ -465,13 +429,81 @@ export default function DoramaWatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds]);
 
+  // ✅ TRACKING DO IFRAME (Bunny Stream via Player.js)
+  useEffect(() => {
+    if (!allowContinue || playerType !== "iframe") return;
+    const el = iframeRef.current;
+    if (!el) return;
+
+    let cancelled = false;
+
+    const setup = () => {
+      if (cancelled || !window.playerjs) return;
+      const player = new window.playerjs.Player(el);
+      playerJsRef.current = player;
+
+      player.on("ready", () => {
+        if (cancelled || hasAppliedResumeRef.current) return;
+        const s = lastSavedRef.current;
+        if (s >= 10) {
+          player.setCurrentTime(s);
+          hasAppliedResumeRef.current = true;
+        }
+      });
+
+      let lastSaveAt = 0;
+      player.on("timeupdate", (data) => {
+        if (cancelled) return;
+        const s = data?.seconds ?? 0;
+        const dur = data?.duration ?? 0;
+        latestTimeRef.current = s;
+        latestDurationRef.current = dur;
+        setLiveSeconds(Math.floor(s));
+        const now = Date.now();
+        if (now - lastSaveAt < 5_000) return;
+        lastSaveAt = now;
+        saveProgress(s, dur);
+      });
+    };
+
+    if (window.playerjs) {
+      setup();
+    } else {
+      const script = document.createElement("script");
+      script.src = "//assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
+      script.onload = () => { if (!cancelled) setup(); };
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      playerJsRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowContinue, playerType, videoUrl]);
+
+  // ✅ AUTO-RESUME iframe após savedSeconds carregado do banco
+  useEffect(() => {
+    if (!allowContinue || playerType !== "iframe") return;
+    if (!playerJsRef.current || hasAppliedResumeRef.current) return;
+    if (savedSeconds < 10) return;
+    hasAppliedResumeRef.current = true;
+    playerJsRef.current.setCurrentTime(savedSeconds);
+  }, [allowContinue, playerType, savedSeconds]);
+
   const canResume = allowContinue && savedSeconds >= 10;
 
   const handleResume = async () => {
     if (!canResume) return;
+    if (playerType === "iframe") {
+      if (playerJsRef.current) {
+        playerJsRef.current.setCurrentTime(savedSeconds);
+        hasAppliedResumeRef.current = true;
+      }
+      return;
+    }
     const el = videoRef.current;
     if (!el) return;
-
     try {
       el.currentTime = savedSeconds;
       hasAppliedResumeRef.current = true;
@@ -569,45 +601,6 @@ export default function DoramaWatch() {
                       style={{ width: `${Math.round(trialProgress * 100)}%` }}
                     />
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* ✅ AVISO MODO IPHONE */}
-            {hasStream && !isIphoneMode && (
-              <div className="px-3 sm:px-0 mb-3">
-                <div className="w-full rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm text-slate-200">
-                  Se o vídeo não abrir no seu celular (iPhone ou Android),{" "}
-                  <button
-                    type="button"
-                    onClick={goIphoneMode}
-                    className="font-semibold text-purple-300 underline underline-offset-4 hover:text-purple-200"
-                  >
-                    clique aqui para ativar o Modo iPhone
-                  </button>
-                  .{" "}
-                  <span className="text-slate-300/90">
-                    Obs: no Modo iPhone não existe a opção de "Continuar assistindo de onde parou".
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {isIphoneMode && (
-              <div className="px-3 sm:px-0 mb-3">
-                <div className="w-full rounded-lg border border-purple-500/20 bg-purple-900/15 px-4 py-3 text-sm text-slate-200">
-                  Modo iPhone ativado.{" "}
-                  <button
-                    type="button"
-                    onClick={goDefaultMode}
-                    className="font-semibold text-purple-300 underline underline-offset-4 hover:text-purple-200"
-                  >
-                    voltar ao modo normal
-                  </button>
-                  .{" "}
-                  <span className="text-slate-300/90">
-                    No Modo iPhone, o "Continuar assistindo" fica desativado.
-                  </span>
                 </div>
               </div>
             )}
