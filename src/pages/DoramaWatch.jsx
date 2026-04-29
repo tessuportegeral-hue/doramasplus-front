@@ -541,13 +541,12 @@ export default function DoramaWatch() {
             {hasStream && !isIphoneMode && (
               <div className="px-3 sm:px-0 mb-3">
                 <div className="w-full rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm text-slate-200">
-                  Se o vídeo não abrir no seu celular (iPhone ou Android),{" "}
                   <button
                     type="button"
                     onClick={goIphoneMode}
                     className="font-semibold text-purple-300 underline underline-offset-4 hover:text-purple-200"
                   >
-                    clique aqui para ativar o Modo iPhone
+                    Se o vídeo não abrir, clique aqui
                   </button>
                   .{" "}
                   <span className="text-slate-300/90">
