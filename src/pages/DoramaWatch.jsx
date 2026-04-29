@@ -406,6 +406,7 @@ export default function DoramaWatch() {
     let dbDone = false;
     let pollId = null;
     let timeId = null;
+    let seekId = null;
     lastSavedRef.current = 0;
     latestTimeRef.current = 0;
     latestDurationRef.current = 0;
@@ -447,6 +448,22 @@ export default function DoramaWatch() {
         lastSavedRef.current = savedTime;
         setSavedSeconds(savedTime);
         console.log("[DP] iframe: DB fetch OK — savedTime:", savedTime);
+
+        // Seek com retry — independente do ready disparar
+        if (savedTime >= 10) {
+          let attempts = 0;
+          seekId = setInterval(() => {
+            attempts++;
+            if (cancelled || attempts > 20) { clearInterval(seekId); return; }
+            if (playerJsRef.current) {
+              try {
+                playerJsRef.current.setCurrentTime(savedTime);
+                console.log("[DP] seek tentativa", attempts, "para", savedTime);
+              } catch (e) {}
+            }
+            if (attempts >= 3) clearInterval(seekId);
+          }, 500);
+        }
       } catch (err) { console.error("[DP] iframe: DB fetch ERROR", err); }
       if (!cancelled) {
         dbDone = true;
@@ -509,6 +526,7 @@ export default function DoramaWatch() {
     return () => {
       cancelled = true;
       el.removeEventListener("load", onIframeLoad);
+      if (seekId) clearInterval(seekId);
       if (pollId) clearInterval(pollId);
       if (timeId) clearInterval(timeId);
       playerJsRef.current = null;
