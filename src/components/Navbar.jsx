@@ -424,9 +424,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     )}
                   </div>
 
-                  <Button variant="ghost" size="sm" onClick={() => navigate('/configuracoes')}>
-                    <Settings className="w-4 h-4 mr-1" /> Config.
-                  </Button>
                   <Button variant="ghost" size="sm" onClick={handleLogout}>
                     <LogOut className="w-4 h-4 mr-2" /> Sair
                   </Button>
@@ -593,13 +590,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     )}
                   </div>
                 </div>
-
-                <button
-                  onClick={() => { setMobileMenuOpen(false); navigate('/configuracoes'); }}
-                  className="flex items-center gap-2 text-slate-200 text-sm"
-                >
-                  <Settings className="w-4 h-4 text-purple-400" /> Configurações
-                </button>
 
                 <button
                   type="button"

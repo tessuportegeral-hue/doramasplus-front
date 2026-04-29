@@ -58,12 +58,6 @@ import AdminSupport from '@/pages/AdminSupport';
 import Landing from '@/pages/Landing';
 import Privacidade from '@/pages/Privacidade';
 
-// Configurações + senha
-import Configuracoes from '@/pages/Configuracoes';
-import EsqueciSenha from '@/pages/EsqueciSenha';
-import RedefinirSenha from '@/pages/RedefinirSenha';
-import RedefinirSenhaCodigo from '@/pages/RedefinirSenhaCodigo';
-
 // ============================================================
 // DeviceGuard (mantido exatamente como está)
 // ============================================================
@@ -308,19 +302,6 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-                <Route path="/redefinir-senha" element={<RedefinirSenha />} />
-                <Route path="/redefinir-senha-codigo" element={<RedefinirSenhaCodigo />} />
-
-                {/* Configurações */}
-                <Route
-                  path="/configuracoes"
-                  element={
-                    <ProtectedRoute>
-                      <Configuracoes />
-                    </ProtectedRoute>
-                  }
-                />
 
                 {/* 🔓 DETALHE DO DORAMA PÚBLICO */}
                 <Route path="/dorama/:id" element={<DoramaDetail />} />
