@@ -550,7 +550,7 @@ export default function DoramaWatch() {
                   </button>
                   .{" "}
                   <span className="text-slate-300/90">
-                    Obs: no Modo iPhone não existe a opção de "Continuar assistindo de onde parou".
+                    Ao abrir por este link, a opção "Continuar de onde parou" não estará disponível.
                   </span>
                 </div>
               </div>
