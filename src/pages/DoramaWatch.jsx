@@ -10,7 +10,7 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 
 // ✅ TESTE — só ativa session guard pra este email
 // Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
+const SINGLE_SESSION_TEST_EMAIL = null;
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();

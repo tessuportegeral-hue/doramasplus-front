@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 // ✅ TESTE — só ativa single session pra este email
 // Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = "tesagencia@gmail.com";
+const SINGLE_SESSION_TEST_EMAIL = null;
 
 const Login = () => {
   const navigate = useNavigate();
