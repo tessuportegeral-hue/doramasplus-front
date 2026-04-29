@@ -469,13 +469,21 @@ export default function DoramaWatch() {
         startPoll();
       });
 
-      player.on("timeupdate", (data) => {
-        if (cancelled) return;
-        latestTimeRef.current = data?.seconds ?? 0;
-        latestDurationRef.current = data?.duration ?? 0;
-        setLiveSeconds(Math.floor(latestTimeRef.current));
-      });
     };
+
+    // Bunny Stream envia timeupdate via postMessage direto (Player.js v0.1.0 não captura)
+    const handleMessage = (e) => {
+      try {
+        const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (msg?.event !== "timeupdate") return;
+        const s = msg?.data?.seconds ?? msg?.seconds ?? 0;
+        const dur = msg?.data?.duration ?? msg?.duration ?? 0;
+        if (s > 0) latestTimeRef.current = s;
+        if (dur > 0) latestDurationRef.current = dur;
+        setLiveSeconds(Math.floor(s));
+      } catch {}
+    };
+    window.addEventListener("message", handleMessage);
 
     if (window.playerjs) {
       setup();
@@ -490,6 +498,7 @@ export default function DoramaWatch() {
       cancelled = true;
       if (pollId) clearInterval(pollId);
       playerJsRef.current = null;
+      window.removeEventListener("message", handleMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
