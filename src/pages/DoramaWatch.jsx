@@ -475,31 +475,10 @@ export default function DoramaWatch() {
       }
     })();
 
-    let scriptReady = !!window.playerjs;
-    let iframeReady = false;
-
-    const initPlayer = () => {
-      if (cancelled || !scriptReady || !iframeReady || playerJsRef.current) return;
-      // Apenas instancia Player.js — ready detectado via postMessage abaixo
-      playerJsRef.current = new window.playerjs.Player(el);
-    };
-
-    // Player.js só pode ser instanciado depois que o iframe terminar de carregar
-    const onIframeLoad = () => {
-      if (cancelled) return;
-      iframeReady = true;
-      initPlayer();
-    };
-    el.addEventListener("load", onIframeLoad);
-
+    // Carrega Player.js eagerly — estará pronto quando ready chegar
     if (!window.playerjs) {
       const script = document.createElement("script");
       script.src = "//assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
-      script.onload = () => {
-        if (cancelled) return;
-        scriptReady = true;
-        initPlayer();
-      };
       document.head.appendChild(script);
     }
 
@@ -509,7 +488,10 @@ export default function DoramaWatch() {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (msg?.event !== "ready") return;
         if (cancelled || playerReady) return;
-        console.log("[DP] iframe: Bunny ready via postMessage — savedTime:", savedTime, "playerJsRef:", !!playerJsRef.current, "dbDone:", dbDone);
+        console.log("[DP] iframe: Bunny ready via postMessage — savedTime:", savedTime, "dbDone:", dbDone);
+        if (window.playerjs && !playerJsRef.current) {
+          playerJsRef.current = new window.playerjs.Player(el);
+        }
         playerReady = true;
         trySeek();
         startPoll();
@@ -533,7 +515,6 @@ export default function DoramaWatch() {
     return () => {
       cancelled = true;
       window.removeEventListener("message", handleBunnyReady);
-      el.removeEventListener("load", onIframeLoad);
       if (seekId) clearInterval(seekId);
       if (pollId) clearInterval(pollId);
       if (timeId) clearInterval(timeId);
