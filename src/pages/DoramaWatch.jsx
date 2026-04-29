@@ -478,30 +478,8 @@ export default function DoramaWatch() {
 
     const initPlayer = () => {
       if (cancelled || !scriptReady || !iframeReady || playerJsRef.current) return;
-      console.log("[DP] iframe: initPlayer() — criando Player.js instance");
-      const player = new window.playerjs.Player(el);
-      playerJsRef.current = player;
-
-      player.on("ready", () => {
-        if (cancelled) return;
-        console.log("[DP] iframe: ready! dbDone:", dbDone, "savedTime:", savedTime, "— chamando trySeek+startPoll");
-        playerReady = true;
-        trySeek();
-        startPoll();
-
-        player.getDuration((dur) => {
-          if (!cancelled && dur > 0) latestDurationRef.current = dur;
-        });
-
-        timeId = setInterval(() => {
-          if (cancelled) { clearInterval(timeId); return; }
-          player.getCurrentTime((t) => {
-            if (cancelled || !(t > 0)) return;
-            latestTimeRef.current = t;
-            setLiveSeconds(Math.floor(t));
-          });
-        }, 1000);
-      });
+      // Apenas instancia Player.js — ready detectado via postMessage abaixo
+      playerJsRef.current = new window.playerjs.Player(el);
     };
 
     // Player.js só pode ser instanciado depois que o iframe terminar de carregar
@@ -523,16 +501,36 @@ export default function DoramaWatch() {
       document.head.appendChild(script);
     }
 
-    const handleBunnyMsg = (e) => {
-      if (e.origin.includes("mediadelivery") || e.origin.includes("bunny")) {
-        console.log("[DP] Bunny msg:", JSON.stringify(e.data));
-      }
+    // Bunny envia ready via postMessage — Player.js ready nunca dispara
+    const handleBunnyReady = (e) => {
+      try {
+        const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (msg?.event !== "ready") return;
+        if (cancelled || playerReady) return;
+        console.log("[DP] iframe: Bunny ready via postMessage — playerJsRef:", !!playerJsRef.current);
+        playerReady = true;
+        trySeek();
+        startPoll();
+        if (playerJsRef.current) {
+          playerJsRef.current.getDuration((dur) => {
+            if (!cancelled && dur > 0) latestDurationRef.current = dur;
+          });
+          timeId = setInterval(() => {
+            if (cancelled) { clearInterval(timeId); return; }
+            playerJsRef.current?.getCurrentTime((t) => {
+              if (cancelled || !(t > 0)) return;
+              latestTimeRef.current = t;
+              setLiveSeconds(Math.floor(t));
+            });
+          }, 1000);
+        }
+      } catch {}
     };
-    window.addEventListener("message", handleBunnyMsg);
+    window.addEventListener("message", handleBunnyReady);
 
     return () => {
       cancelled = true;
-      window.removeEventListener("message", handleBunnyMsg);
+      window.removeEventListener("message", handleBunnyReady);
       el.removeEventListener("load", onIframeLoad);
       if (seekId) clearInterval(seekId);
       if (pollId) clearInterval(pollId);
