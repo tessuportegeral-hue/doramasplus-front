@@ -485,6 +485,11 @@ export default function DoramaWatch() {
     };
     window.addEventListener("message", handleMessage);
 
+    const handleRawMessage = (e) => {
+      console.log("[DP] RAW message:", e.origin, typeof e.data, e.data);
+    };
+    window.addEventListener("message", handleRawMessage);
+
     if (window.playerjs) {
       setup();
     } else {
@@ -499,6 +504,7 @@ export default function DoramaWatch() {
       if (pollId) clearInterval(pollId);
       playerJsRef.current = null;
       window.removeEventListener("message", handleMessage);
+      window.removeEventListener("message", handleRawMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
