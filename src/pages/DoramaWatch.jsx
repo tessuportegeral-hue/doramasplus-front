@@ -405,6 +405,7 @@ export default function DoramaWatch() {
     let playerReady = false;
     let dbDone = false;
     let pollId = null;
+    let timeId = null;
     lastSavedRef.current = 0;
     latestTimeRef.current = 0;
     latestDurationRef.current = 0;
@@ -467,28 +468,24 @@ export default function DoramaWatch() {
         playerReady = true;
         trySeek();
         startPoll();
+
+        // Busca duração uma vez
+        player.getDuration((dur) => {
+          if (!cancelled && dur > 0) latestDurationRef.current = dur;
+        });
+
+        // Atualiza latestTimeRef via getCurrentTime callback a cada 1s
+        timeId = setInterval(() => {
+          if (cancelled) { clearInterval(timeId); return; }
+          player.getCurrentTime((t) => {
+            if (cancelled || !(t > 0)) return;
+            latestTimeRef.current = t;
+            setLiveSeconds(Math.floor(t));
+          });
+        }, 1000);
       });
 
     };
-
-    // Bunny Stream envia timeupdate via postMessage direto (Player.js v0.1.0 não captura)
-    const handleMessage = (e) => {
-      try {
-        const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (msg?.event !== "timeupdate") return;
-        const s = msg?.data?.seconds ?? msg?.seconds ?? 0;
-        const dur = msg?.data?.duration ?? msg?.duration ?? 0;
-        if (s > 0) latestTimeRef.current = s;
-        if (dur > 0) latestDurationRef.current = dur;
-        setLiveSeconds(Math.floor(s));
-      } catch {}
-    };
-    window.addEventListener("message", handleMessage);
-
-    const handleRawMessage = (e) => {
-      console.log("[DP] RAW message:", e.origin, typeof e.data, e.data);
-    };
-    window.addEventListener("message", handleRawMessage);
 
     if (window.playerjs) {
       setup();
@@ -502,9 +499,8 @@ export default function DoramaWatch() {
     return () => {
       cancelled = true;
       if (pollId) clearInterval(pollId);
+      if (timeId) clearInterval(timeId);
       playerJsRef.current = null;
-      window.removeEventListener("message", handleMessage);
-      window.removeEventListener("message", handleRawMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
