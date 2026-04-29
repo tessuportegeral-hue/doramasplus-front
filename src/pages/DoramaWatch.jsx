@@ -354,10 +354,10 @@ export default function DoramaWatch() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { saveProgressRef.current = saveProgress; });
 
-  // ✅ TRACKING DO <VIDEO> + AUTO-RESUME + FLUSH
+  // ✅ TRACKING DO <VIDEO> — sem savedSeconds nos deps (resume em efeito separado)
   useEffect(() => {
     const el = videoRef.current;
-    if (!allowContinue) return;
+    if (!allowContinue || playerType === "iframe") return;
     if (!el) return;
 
     let lastSaveAt = 0;
@@ -367,84 +367,77 @@ export default function DoramaWatch() {
       latestDurationRef.current = el.duration || 0;
     };
 
-    const applyResume = async () => {
-      if (hasAppliedResumeRef.current) return;
-      if (!savedSeconds || savedSeconds < 10) return;
-      if (el.readyState < 1) return;
-
-      try {
-        el.currentTime = savedSeconds;
-        hasAppliedResumeRef.current = true;
-        try {
-          await el.play();
-        } catch {}
-      } catch {}
-    };
-
     const flush = () => {
       capture();
       const t = latestTimeRef.current;
-      if (t > 0) saveProgress(t, latestDurationRef.current);
-    };
-
-    const onLoadedMetadata = () => {
-      applyResume();
+      if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
     };
 
     const onTime = () => {
       capture();
       setLiveSeconds(Math.floor(latestTimeRef.current));
-
       const now = Date.now();
       if (now - lastSaveAt < 5_000) return;
       lastSaveAt = now;
-
-      saveProgress(latestTimeRef.current, latestDurationRef.current);
+      saveProgressRef.current?.(latestTimeRef.current, latestDurationRef.current);
     };
 
     const onPause = () => flush();
     const onEnded = () => flush();
-
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
     const onBeforeUnload = () => flush();
 
-    el.addEventListener("loadedmetadata", onLoadedMetadata);
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onEnded);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onBeforeUnload);
 
-    setTimeout(() => applyResume(), 150);
-
     setTimeout(async () => {
-      try {
-        await el.play();
-      } catch {}
+      try { await el.play(); } catch {}
     }, 200);
 
     return () => {
       flush();
-      el.removeEventListener("loadedmetadata", onLoadedMetadata);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds]);
+  }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
+
+  // ✅ RESUME DO <VIDEO>: dispara quando savedSeconds carrega do banco
+  useEffect(() => {
+    if (!allowContinue || playerType === "iframe") return;
+    const el = videoRef.current;
+    if (!el || hasAppliedResumeRef.current || savedSeconds < 10) return;
+
+    const seek = () => {
+      if (hasAppliedResumeRef.current) return;
+      el.currentTime = savedSeconds;
+      hasAppliedResumeRef.current = true;
+      el.play?.().catch(() => {});
+    };
+
+    if (el.readyState >= 1) {
+      seek();
+    } else {
+      const onMeta = () => { el.removeEventListener("loadedmetadata", onMeta); seek(); };
+      el.addEventListener("loadedmetadata", onMeta);
+      return () => el.removeEventListener("loadedmetadata", onMeta);
+    }
+  }, [allowContinue, playerType, savedSeconds]);
 
   // ✅ TRACKING DO IFRAME (Bunny Stream via Player.js)
+  // timeupdate atualiza o ref de posição; setInterval salva no banco a cada 5s
   useEffect(() => {
     if (!allowContinue || playerType !== "iframe") return;
     const el = iframeRef.current;
     if (!el) return;
 
     let cancelled = false;
+    let pollId = null;
 
     const setup = () => {
       if (cancelled || !window.playerjs) return;
@@ -454,27 +447,24 @@ export default function DoramaWatch() {
       player.on("ready", () => {
         if (cancelled) return;
         playerReadyRef.current = true;
-        if (!hasAppliedResumeRef.current) {
-          const s = savedSecondsRef.current;
-          if (s >= 10) {
-            player.setCurrentTime(s);
-            hasAppliedResumeRef.current = true;
-          }
+        if (!hasAppliedResumeRef.current && savedSecondsRef.current >= 10) {
+          player.setCurrentTime(savedSecondsRef.current);
+          hasAppliedResumeRef.current = true;
         }
+        // Salva a cada 5s lendo do ref (não depende do timeupdate)
+        pollId = setInterval(() => {
+          if (cancelled) { clearInterval(pollId); return; }
+          const t = latestTimeRef.current;
+          if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
+        }, 5000);
       });
 
-      let lastSaveAt = 0;
+      // timeupdate mantém o ref atualizado para o polling usar
       player.on("timeupdate", (data) => {
         if (cancelled) return;
-        const s = data?.seconds ?? 0;
-        const dur = data?.duration ?? 0;
-        latestTimeRef.current = s;
-        latestDurationRef.current = dur;
-        setLiveSeconds(Math.floor(s));
-        const now = Date.now();
-        if (now - lastSaveAt < 5_000) return;
-        lastSaveAt = now;
-        saveProgressRef.current?.(s, dur);
+        latestTimeRef.current = data?.seconds ?? 0;
+        latestDurationRef.current = data?.duration ?? 0;
+        setLiveSeconds(Math.floor(latestTimeRef.current));
       });
     };
 
@@ -489,6 +479,7 @@ export default function DoramaWatch() {
 
     return () => {
       cancelled = true;
+      if (pollId) clearInterval(pollId);
       playerJsRef.current = null;
       playerReadyRef.current = false;
     };
