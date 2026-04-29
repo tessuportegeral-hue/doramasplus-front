@@ -456,9 +456,12 @@ export default function DoramaWatch() {
       }
     })();
 
-    const setup = () => {
-      if (cancelled || !window.playerjs) return;
-      console.log("[DP] iframe: setup() — criando Player.js instance");
+    let scriptReady = !!window.playerjs;
+    let iframeReady = false;
+
+    const initPlayer = () => {
+      if (cancelled || !scriptReady || !iframeReady || playerJsRef.current) return;
+      console.log("[DP] iframe: initPlayer() — criando Player.js instance");
       const player = new window.playerjs.Player(el);
       playerJsRef.current = player;
 
@@ -469,12 +472,10 @@ export default function DoramaWatch() {
         trySeek();
         startPoll();
 
-        // Busca duração uma vez
         player.getDuration((dur) => {
           if (!cancelled && dur > 0) latestDurationRef.current = dur;
         });
 
-        // Atualiza latestTimeRef via getCurrentTime callback a cada 1s
         timeId = setInterval(() => {
           if (cancelled) { clearInterval(timeId); return; }
           player.getCurrentTime((t) => {
@@ -484,20 +485,30 @@ export default function DoramaWatch() {
           });
         }, 1000);
       });
-
     };
 
-    if (window.playerjs) {
-      setup();
-    } else {
+    // Player.js só pode ser instanciado depois que o iframe terminar de carregar
+    const onIframeLoad = () => {
+      if (cancelled) return;
+      iframeReady = true;
+      initPlayer();
+    };
+    el.addEventListener("load", onIframeLoad);
+
+    if (!window.playerjs) {
       const script = document.createElement("script");
       script.src = "//assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
-      script.onload = () => { if (!cancelled) setup(); };
+      script.onload = () => {
+        if (cancelled) return;
+        scriptReady = true;
+        initPlayer();
+      };
       document.head.appendChild(script);
     }
 
     return () => {
       cancelled = true;
+      el.removeEventListener("load", onIframeLoad);
       if (pollId) clearInterval(pollId);
       if (timeId) clearInterval(timeId);
       playerJsRef.current = null;
