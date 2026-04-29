@@ -523,8 +523,16 @@ export default function DoramaWatch() {
       document.head.appendChild(script);
     }
 
+    const handleBunnyMsg = (e) => {
+      if (e.origin.includes("mediadelivery") || e.origin.includes("bunny")) {
+        console.log("[DP] Bunny msg:", JSON.stringify(e.data));
+      }
+    };
+    window.addEventListener("message", handleBunnyMsg);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("message", handleBunnyMsg);
       el.removeEventListener("load", onIframeLoad);
       if (seekId) clearInterval(seekId);
       if (pollId) clearInterval(pollId);
