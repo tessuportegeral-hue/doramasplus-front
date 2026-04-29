@@ -159,7 +159,7 @@ export default function DoramaWatch() {
     return "none";
   }, [videoUrl]);
 
-  // ✅ autoplay no iframe (apenas visual)
+  // ✅ autoplay no iframe — inclui &t=X quando savedSeconds >= 10 para resume via URL
   const iframeSrc = useMemo(() => {
     if (playerType !== "iframe") return "";
     const base = (videoUrl || "").trim();
@@ -169,13 +169,17 @@ export default function DoramaWatch() {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
       u.searchParams.set("api", "1");
+      if (savedSeconds >= 10) u.searchParams.set("t", String(Math.floor(savedSeconds)));
       u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
-      return `${base}${join}autoplay=true&api=1&_ts=${Date.now()}`;
+      let url = `${base}${join}autoplay=true&api=1`;
+      if (savedSeconds >= 10) url += `&t=${Math.floor(savedSeconds)}`;
+      url += `&_ts=${Date.now()}`;
+      return url;
     }
-  }, [videoUrl, playerType]);
+  }, [videoUrl, playerType, savedSeconds]);
 
   // ✅ HLS (somente quando playerType === "hls")
   useEffect(() => {
@@ -268,17 +272,15 @@ export default function DoramaWatch() {
   }, [loading, isAuthenticated]);
 
   const saveProgress = async (seconds, durationMaybe) => {
-    console.log("[DP] saveProgress called — s:", Math.floor(seconds || 0), "allowContinue:", allowContinue);
-    if (!allowContinue) { console.log("[DP] saveProgress BLOCKED — allowContinue false"); return; }
+    if (!allowContinue) return;
 
     const s = Math.floor(seconds || 0);
-    if (s <= 0) { console.log("[DP] saveProgress BLOCKED — s <= 0"); return; }
+    if (s <= 0) return;
 
     const prev = Math.floor(lastSavedRef.current || 0);
-    if (prev >= 30 && s < prev - 5) { console.log("[DP] saveProgress BLOCKED — anti-regressão prev:", prev, "s:", s); return; }
+    if (prev >= 30 && s < prev - 5) return;
 
     const dur = Math.floor(durationMaybe || 0);
-    console.log("[DP] saveProgress UPSERTING s:", s, "dur:", dur);
 
     const { error: upsertError } = await supabase.from(WATCH_TABLE).upsert(
       {
@@ -293,12 +295,7 @@ export default function DoramaWatch() {
       { onConflict: "user_id,dorama_id,episode" }
     );
 
-    if (upsertError) {
-      console.error("watch_history upsert error:", upsertError);
-      return;
-    }
-
-    console.log("[DP] saveProgress SUCCESS — saved:", s);
+    if (upsertError) { console.error("watch_history upsert error:", upsertError); return; }
     lastSavedRef.current = s;
   };
 
@@ -393,49 +390,34 @@ export default function DoramaWatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
 
-  // ✅ TRACKING + RESUME do IFRAME — DB fetch, seek e poll no mesmo efeito
+  // ✅ TRACKING do IFRAME — DB fetch (seta savedSeconds → iframeSrc adiciona &t=X) + getCurrentTime polling
   useEffect(() => {
     if (!allowContinue || playerType !== "iframe") return;
     const el = iframeRef.current;
     if (!el) return;
 
     let cancelled = false;
-    let savedTime = 0;
-    let resumeApplied = false;
     let playerReady = false;
     let dbDone = false;
     let pollId = null;
     let timeId = null;
-    let seekId = null;
     lastSavedRef.current = 0;
     latestTimeRef.current = 0;
     latestDurationRef.current = 0;
     setSavedSeconds(0);
 
-    // trySeek é chamado dos dois lados da race condition (ready + DB fetch)
-    const trySeek = () => {
-      console.log("[DP] trySeek — resumeApplied:", resumeApplied, "savedTime:", savedTime, "playerReady:", playerReady, "playerJsRef:", !!playerJsRef.current);
-      if (resumeApplied || savedTime < 10 || !playerReady || !playerJsRef.current) return;
-      console.log("[DP] trySeek EXECUTANDO setCurrentTime →", savedTime);
-      resumeApplied = true;
-      playerJsRef.current.setCurrentTime(savedTime);
-    };
-
-    // poll só inicia depois que AMBOS (ready + DB fetch) estão prontos
+    // Poll só inicia depois que AMBOS (ready + DB fetch) estão prontos
     const startPoll = () => {
-      if (pollId || !playerReady || !dbDone) { console.log("[DP] iframe: startPoll aguardando — pollId:", !!pollId, "playerReady:", playerReady, "dbDone:", dbDone); return; }
-      console.log("[DP] iframe: poll iniciado");
+      if (pollId || !playerReady || !dbDone) return;
       pollId = setInterval(() => {
         if (cancelled) { clearInterval(pollId); return; }
         const t = latestTimeRef.current;
-        console.log("[DP] iframe: poll tick — latestTime:", t);
         if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
       }, 5000);
     };
 
-    // Busca tempo salvo no banco
+    // Busca tempo salvo — setSavedSeconds dispara iframeSrc com &t=X para resume via URL
     (async () => {
-      console.log("[DP] iframe: DB fetch started");
       try {
         const { data } = await supabase
           .from(WATCH_TABLE)
@@ -444,56 +426,32 @@ export default function DoramaWatch() {
           .eq("dorama_id", dorama.id)
           .eq("episode", EPISODE_DEFAULT)
           .maybeSingle();
-        if (cancelled) { console.log("[DP] iframe: DB fetch returned but cancelled"); return; }
+        if (cancelled) return;
         const t = data?.current_time;
-        savedTime = typeof t === "number" ? Math.floor(t) : 0;
+        const savedTime = typeof t === "number" ? Math.floor(t) : 0;
         lastSavedRef.current = savedTime;
         setSavedSeconds(savedTime);
-        console.log("[DP] iframe: DB fetch OK — savedTime:", savedTime);
-
-        // Seek com retry — independente do ready disparar
-        if (savedTime >= 10) {
-          let attempts = 0;
-          seekId = setInterval(() => {
-            attempts++;
-            if (cancelled || attempts > 20) { clearInterval(seekId); return; }
-            if (playerJsRef.current) {
-              try {
-                playerJsRef.current.setCurrentTime(savedTime);
-                console.log("[DP] seek tentativa", attempts, "para", savedTime);
-              } catch (e) {}
-            }
-            if (attempts >= 3) clearInterval(seekId);
-          }, 500);
-        }
-      } catch (err) { console.error("[DP] iframe: DB fetch ERROR", err); }
-      if (!cancelled) {
-        dbDone = true;
-        console.log("[DP] iframe: dbDone=true, playerReady:", playerReady, "— chamando trySeek+startPoll");
-        trySeek();
-        startPoll();
-      }
+      } catch {}
+      if (!cancelled) { dbDone = true; startPoll(); }
     })();
 
-    // Carrega Player.js eagerly — estará pronto quando ready chegar
+    // Carrega Player.js eagerly — usado apenas para getCurrentTime polling
     if (!window.playerjs) {
       const script = document.createElement("script");
       script.src = "//assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
       document.head.appendChild(script);
     }
 
-    // Bunny envia ready via postMessage — Player.js ready nunca dispara
+    // Reinit Player.js em cada ready (cobre reload do iframe após &t= ser adicionado)
     const handleBunnyReady = (e) => {
       try {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (msg?.event !== "ready") return;
-        if (cancelled || playerReady) return;
-        console.log("[DP] iframe: Bunny ready via postMessage — savedTime:", savedTime, "dbDone:", dbDone);
-        if (window.playerjs && !playerJsRef.current) {
-          playerJsRef.current = new window.playerjs.Player(el);
-        }
+        if (cancelled) return;
+        if (timeId) { clearInterval(timeId); timeId = null; }
+        playerJsRef.current = null;
+        if (window.playerjs) playerJsRef.current = new window.playerjs.Player(el);
         playerReady = true;
-        trySeek();
         startPoll();
         if (playerJsRef.current) {
           playerJsRef.current.getDuration((dur) => {
@@ -515,7 +473,6 @@ export default function DoramaWatch() {
     return () => {
       cancelled = true;
       window.removeEventListener("message", handleBunnyReady);
-      if (seekId) clearInterval(seekId);
       if (pollId) clearInterval(pollId);
       if (timeId) clearInterval(timeId);
       playerJsRef.current = null;
@@ -528,7 +485,10 @@ export default function DoramaWatch() {
   const handleResume = async () => {
     if (!canResume) return;
     if (playerType === "iframe") {
-      if (playerJsRef.current) playerJsRef.current.setCurrentTime(savedSeconds);
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ context: "player.js", version: "0.0.11", method: "setCurrentTime", value: savedSeconds }),
+        "*"
+      );
       return;
     }
     const el = videoRef.current;
