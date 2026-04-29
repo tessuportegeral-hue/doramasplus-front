@@ -75,6 +75,7 @@ export default function DoramaWatch() {
 
   const [savedSeconds, setSavedSeconds] = useState(0);
   const [liveSeconds, setLiveSeconds] = useState(0);
+  const [iframeResumeTime, setIframeResumeTime] = useState(null); // null = aguardando fetch
 
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
@@ -159,9 +160,11 @@ export default function DoramaWatch() {
     return "none";
   }, [videoUrl]);
 
-  // ✅ autoplay no iframe — inclui &t=X quando savedSeconds >= 10 para resume via URL
+  // ✅ iframeSrc — monta a URL só depois que o pre-fetch do tempo salvo termina
+  // Retorna "" enquanto iframeResumeTime === null para evitar montar iframe antes da hora
   const iframeSrc = useMemo(() => {
     if (playerType !== "iframe") return "";
+    if (allowContinue && iframeResumeTime === null) return ""; // aguarda pre-fetch
     const base = (videoUrl || "").trim();
     if (!base) return "";
 
@@ -169,17 +172,17 @@ export default function DoramaWatch() {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
       u.searchParams.set("api", "1");
-      if (savedSeconds >= 10) u.searchParams.set("t", String(Math.floor(savedSeconds)));
+      if (iframeResumeTime >= 10) u.searchParams.set("t", String(Math.floor(iframeResumeTime)));
       u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
       let url = `${base}${join}autoplay=true&api=1`;
-      if (savedSeconds >= 10) url += `&t=${Math.floor(savedSeconds)}`;
+      if (iframeResumeTime >= 10) url += `&t=${Math.floor(iframeResumeTime)}`;
       url += `&_ts=${Date.now()}`;
       return url;
     }
-  }, [videoUrl, playerType, savedSeconds]);
+  }, [videoUrl, playerType, allowContinue, iframeResumeTime]);
 
   // ✅ HLS (somente quando playerType === "hls")
   useEffect(() => {
@@ -221,6 +224,38 @@ export default function DoramaWatch() {
     if (!dorama?.id) return false;
     return playerType === "mp4" || playerType === "hls" || playerType === "video" || playerType === "iframe";
   }, [isPremium, user?.id, dorama?.id, playerType]);
+
+  // ✅ PRE-FETCH do tempo salvo para iframe — roda ANTES de montar o iframe
+  useEffect(() => {
+    if (!allowContinue || playerType !== "iframe") {
+      setIframeResumeTime(null);
+      return;
+    }
+    setIframeResumeTime(null);
+    setSavedSeconds(0);
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("watch_history")
+          .select("current_time")
+          .eq("user_id", user.id)
+          .eq("dorama_id", dorama.id)
+          .eq("episode", 1)
+          .maybeSingle();
+        if (cancelled) return;
+        const t = data?.current_time;
+        const resumeTime = typeof t === "number" ? Math.floor(t) : 0;
+        setIframeResumeTime(resumeTime);
+        setSavedSeconds(resumeTime);
+        lastSavedRef.current = resumeTime;
+      } catch {
+        if (!cancelled) setIframeResumeTime(0);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowContinue, playerType, dorama?.id, user?.id]);
 
   // ✅ TESTE GRÁTIS: relógio GLOBAL usando localStorage (só para NÃO logado)
   useEffect(() => {
@@ -390,50 +425,28 @@ export default function DoramaWatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
 
-  // ✅ TRACKING do IFRAME — DB fetch (seta savedSeconds → iframeSrc adiciona &t=X) + getCurrentTime polling
+  // ✅ TRACKING do IFRAME — polling de getCurrentTime para salvar progresso
+  // O DB fetch e o iframeSrc com &t=X já foram tratados pelo pre-fetch acima
   useEffect(() => {
-    if (!allowContinue || playerType !== "iframe") return;
+    if (!allowContinue || playerType !== "iframe" || iframeResumeTime === null) return;
     const el = iframeRef.current;
     if (!el) return;
 
     let cancelled = false;
     let playerReady = false;
-    let dbDone = false;
     let pollId = null;
     let timeId = null;
-    lastSavedRef.current = 0;
     latestTimeRef.current = 0;
     latestDurationRef.current = 0;
-    setSavedSeconds(0);
 
-    // Poll só inicia depois que AMBOS (ready + DB fetch) estão prontos
     const startPoll = () => {
-      if (pollId || !playerReady || !dbDone) return;
+      if (pollId || !playerReady) return;
       pollId = setInterval(() => {
         if (cancelled) { clearInterval(pollId); return; }
         const t = latestTimeRef.current;
         if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
       }, 5000);
     };
-
-    // Busca tempo salvo — setSavedSeconds dispara iframeSrc com &t=X para resume via URL
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from(WATCH_TABLE)
-          .select("current_time")
-          .eq("user_id", user.id)
-          .eq("dorama_id", dorama.id)
-          .eq("episode", EPISODE_DEFAULT)
-          .maybeSingle();
-        if (cancelled) return;
-        const t = data?.current_time;
-        const savedTime = typeof t === "number" ? Math.floor(t) : 0;
-        lastSavedRef.current = savedTime;
-        setSavedSeconds(savedTime);
-      } catch {}
-      if (!cancelled) { dbDone = true; startPoll(); }
-    })();
 
     // Carrega Player.js eagerly — usado apenas para getCurrentTime polling
     if (!window.playerjs) {
@@ -442,7 +455,6 @@ export default function DoramaWatch() {
       document.head.appendChild(script);
     }
 
-    // Reinit Player.js em cada ready (cobre reload do iframe após &t= ser adicionado)
     const handleBunnyReady = (e) => {
       try {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
@@ -478,7 +490,7 @@ export default function DoramaWatch() {
       playerJsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
+  }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id, iframeResumeTime]);
 
   const canResume = allowContinue && savedSeconds >= 10;
 
@@ -630,10 +642,12 @@ export default function DoramaWatch() {
                 </div>
               ) : !videoUrl || !playerVisible ? (
                 <div className="w-full h-full bg-black" />
+              ) : playerType === "iframe" && !iframeSrc ? (
+                <div className="w-full h-full bg-black" />
               ) : playerType === "iframe" ? (
                 <iframe
                   ref={iframeRef}
-                  src={iframeSrc || videoUrl}
+                  src={iframeSrc}
                   title={dorama.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
