@@ -414,7 +414,9 @@ export default function DoramaWatch() {
 
     // trySeek é chamado dos dois lados da race condition (ready + DB fetch)
     const trySeek = () => {
+      console.log("[DP] trySeek — resumeApplied:", resumeApplied, "savedTime:", savedTime, "playerReady:", playerReady, "playerJsRef:", !!playerJsRef.current);
       if (resumeApplied || savedTime < 10 || !playerReady || !playerJsRef.current) return;
+      console.log("[DP] trySeek EXECUTANDO setCurrentTime →", savedTime);
       resumeApplied = true;
       playerJsRef.current.setCurrentTime(savedTime);
     };
@@ -507,7 +509,7 @@ export default function DoramaWatch() {
         const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (msg?.event !== "ready") return;
         if (cancelled || playerReady) return;
-        console.log("[DP] iframe: Bunny ready via postMessage — playerJsRef:", !!playerJsRef.current);
+        console.log("[DP] iframe: Bunny ready via postMessage — savedTime:", savedTime, "playerJsRef:", !!playerJsRef.current, "dbDone:", dbDone);
         playerReady = true;
         trySeek();
         startPoll();
