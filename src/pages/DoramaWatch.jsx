@@ -68,13 +68,16 @@ export default function DoramaWatch() {
   const iframeRef = useRef(null);
   const hlsRef = useRef(null);
   const playerJsRef = useRef(null);
-  const saveProgressRef = useRef(null);
+
+  // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
+  const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
+  const [liveSeconds, setLiveSeconds] = useState(0); // apenas informativo
+
+  // ✅ Anti-regressão (não deixar 40min virar 10s)
+  const hasAppliedResumeRef = useRef(false);
   const lastSavedRef = useRef(0);
   const latestTimeRef = useRef(0);
   const latestDurationRef = useRef(0);
-
-  const [savedSeconds, setSavedSeconds] = useState(0);
-  const [liveSeconds, setLiveSeconds] = useState(0);
 
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
@@ -159,7 +162,7 @@ export default function DoramaWatch() {
     return "none";
   }, [videoUrl]);
 
-  // ✅ autoplay no iframe — inclui &t=X quando savedSeconds >= 10 para resume via URL
+  // ✅ autoplay no iframe (apenas visual)
   const iframeSrc = useMemo(() => {
     if (playerType !== "iframe") return "";
     const base = (videoUrl || "").trim();
@@ -168,18 +171,13 @@ export default function DoramaWatch() {
     try {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
-      u.searchParams.set("api", "1");
-      if (savedSeconds >= 10) u.searchParams.set("t", String(Math.floor(savedSeconds)));
       u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
-      let url = `${base}${join}autoplay=true&api=1`;
-      if (savedSeconds >= 10) url += `&t=${Math.floor(savedSeconds)}`;
-      url += `&_ts=${Date.now()}`;
-      return url;
+      return `${base}${join}autoplay=true&_ts=${Date.now()}`;
     }
-  }, [videoUrl, playerType, savedSeconds]);
+  }, [videoUrl, playerType]);
 
   // ✅ HLS (somente quando playerType === "hls")
   useEffect(() => {
@@ -271,6 +269,47 @@ export default function DoramaWatch() {
     }
   }, [loading, isAuthenticated]);
 
+  // ✅ Carrega tempo salvo do banco
+  useEffect(() => {
+    if (!allowContinue) {
+      setSavedSeconds(0);
+      setLiveSeconds(0);
+      lastSavedRef.current = 0;
+      hasAppliedResumeRef.current = false;
+      return;
+    }
+
+    (async () => {
+      try {
+        const { data, error: e } = await supabase
+          .from(WATCH_TABLE)
+          .select("current_time")
+          .eq("user_id", user.id)
+          .eq("dorama_id", dorama.id)
+          .eq("episode", EPISODE_DEFAULT)
+          .maybeSingle();
+
+        if (e) console.error("watch_history select error:", e);
+
+        const t = data?.current_time;
+        const saved = typeof t === "number" ? Math.floor(t) : 0;
+
+        setSavedSeconds(saved);
+        setLiveSeconds(0);
+
+        lastSavedRef.current = saved;
+        hasAppliedResumeRef.current = false;
+      } catch (err) {
+        console.error("watch_history select fatal:", err);
+        setSavedSeconds(0);
+        setLiveSeconds(0);
+        lastSavedRef.current = 0;
+        hasAppliedResumeRef.current = false;
+      }
+    })();
+  }, [allowContinue, user?.id, dorama?.id]);
+
+  // ✅ salvar progresso com trava pra nunca voltar pra trás
   const saveProgress = async (seconds, durationMaybe) => {
     if (!allowContinue) return;
 
@@ -278,7 +317,9 @@ export default function DoramaWatch() {
     if (s <= 0) return;
 
     const prev = Math.floor(lastSavedRef.current || 0);
+
     if (prev >= 30 && s < prev - 5) return;
+    if (prev >= 30 && !hasAppliedResumeRef.current && s < 30) return;
 
     const dur = Math.floor(durationMaybe || 0);
 
@@ -295,92 +336,90 @@ export default function DoramaWatch() {
       { onConflict: "user_id,dorama_id,episode" }
     );
 
-    if (upsertError) { console.error("watch_history upsert error:", upsertError); return; }
+    if (upsertError) {
+      console.error("watch_history upsert error:", upsertError);
+      return;
+    }
+
     lastSavedRef.current = s;
+    if (s > savedSeconds) setSavedSeconds(s);
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { saveProgressRef.current = saveProgress; });
-
-  // ✅ TRACKING + RESUME do <VIDEO> — DB fetch, seek e interval no mesmo efeito
+  // ✅ TRACKING DO <VIDEO> + AUTO-RESUME + FLUSH
   useEffect(() => {
-    if (!allowContinue || playerType === "iframe") return;
     const el = videoRef.current;
+    if (!allowContinue) return;
     if (!el) return;
 
-    let cancelled = false;
-    let savedTime = 0;
-    let resumeApplied = false;
-    let interval = null;
-    lastSavedRef.current = 0;
-    setSavedSeconds(0);
+    let lastSaveAt = 0;
 
-    const trySeek = () => {
-      if (resumeApplied || savedTime < 10) return;
-      const doSeek = () => {
-        if (resumeApplied) return;
-        resumeApplied = true;
-        el.currentTime = savedTime;
-        el.play?.().catch(() => {});
-      };
-      if (el.readyState >= 1) {
-        doSeek();
-      } else {
-        el.addEventListener("loadedmetadata", doSeek, { once: true });
-      }
+    const capture = () => {
+      latestTimeRef.current = el.currentTime || 0;
+      latestDurationRef.current = el.duration || 0;
     };
 
-    // Busca tempo salvo — inicia interval depois do retorno para evitar overwrite
-    (async () => {
-      console.log("[DP] video: DB fetch started — allowContinue:", allowContinue, "playerType:", playerType);
-      try {
-        const { data } = await supabase
-          .from(WATCH_TABLE)
-          .select("current_time")
-          .eq("user_id", user.id)
-          .eq("dorama_id", dorama.id)
-          .eq("episode", EPISODE_DEFAULT)
-          .maybeSingle();
-        if (cancelled) { console.log("[DP] video: DB fetch returned but cancelled"); return; }
-        const t = data?.current_time;
-        savedTime = typeof t === "number" ? Math.floor(t) : 0;
-        lastSavedRef.current = savedTime;
-        setSavedSeconds(savedTime);
-        console.log("[DP] video: DB fetch OK — savedTime:", savedTime, "readyState:", el.readyState);
-        trySeek();
-      } catch (err) { console.error("[DP] video: DB fetch ERROR", err); }
-      if (cancelled) return;
-      console.log("[DP] video: interval iniciado");
-      interval = setInterval(() => {
-        if (cancelled || !el.currentTime) return;
-        console.log("[DP] video: interval tick — currentTime:", el.currentTime);
-        saveProgressRef.current?.(el.currentTime, el.duration);
-      }, 5000);
-    })();
+    const applyResume = async () => {
+      if (hasAppliedResumeRef.current) return;
+      if (!savedSeconds || savedSeconds < 10) return;
+      if (el.readyState < 1) return;
 
-    const onTime = () => setLiveSeconds(Math.floor(el.currentTime || 0));
+      try {
+        el.currentTime = savedSeconds;
+        hasAppliedResumeRef.current = true;
+        try {
+          await el.play();
+        } catch {}
+      } catch {}
+    };
 
     const flush = () => {
-      if (el.currentTime > 0) saveProgressRef.current?.(el.currentTime, el.duration);
+      capture();
+      const t = latestTimeRef.current;
+      if (t > 0) saveProgress(t, latestDurationRef.current);
+    };
+
+    const onLoadedMetadata = () => {
+      applyResume();
+    };
+
+    const onTime = () => {
+      capture();
+      setLiveSeconds(Math.floor(latestTimeRef.current));
+
+      const now = Date.now();
+      if (now - lastSaveAt < 5_000) return;
+      lastSaveAt = now;
+
+      saveProgress(latestTimeRef.current, latestDurationRef.current);
     };
 
     const onPause = () => flush();
     const onEnded = () => flush();
-    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+
     const onBeforeUnload = () => flush();
 
+    el.addEventListener("loadedmetadata", onLoadedMetadata);
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onEnded);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onBeforeUnload);
 
-    setTimeout(() => { if (!cancelled) el.play?.().catch(() => {}); }, 200);
+    setTimeout(() => applyResume(), 150);
+
+    setTimeout(async () => {
+      try {
+        await el.play();
+      } catch {}
+    }, 200);
 
     return () => {
-      cancelled = true;
-      if (interval) clearInterval(interval);
       flush();
+      el.removeEventListener("loadedmetadata", onLoadedMetadata);
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
@@ -388,113 +427,86 @@ export default function DoramaWatch() {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
+  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds]);
 
-  // ✅ TRACKING do IFRAME — DB fetch (seta savedSeconds → iframeSrc adiciona &t=X) + getCurrentTime polling
+  // ✅ TRACKING DO IFRAME (Bunny Stream via Player.js)
   useEffect(() => {
     if (!allowContinue || playerType !== "iframe") return;
     const el = iframeRef.current;
     if (!el) return;
 
     let cancelled = false;
-    let playerReady = false;
-    let dbDone = false;
-    let pollId = null;
-    let timeId = null;
-    lastSavedRef.current = 0;
-    latestTimeRef.current = 0;
-    latestDurationRef.current = 0;
-    setSavedSeconds(0);
 
-    // Poll só inicia depois que AMBOS (ready + DB fetch) estão prontos
-    const startPoll = () => {
-      if (pollId || !playerReady || !dbDone) return;
-      pollId = setInterval(() => {
-        if (cancelled) { clearInterval(pollId); return; }
-        const t = latestTimeRef.current;
-        if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
-      }, 5000);
+    const setup = () => {
+      if (cancelled || !window.playerjs) return;
+      const player = new window.playerjs.Player(el);
+      playerJsRef.current = player;
+
+      player.on("ready", () => {
+        if (cancelled || hasAppliedResumeRef.current) return;
+        const s = lastSavedRef.current;
+        if (s >= 10) {
+          player.setCurrentTime(s);
+          hasAppliedResumeRef.current = true;
+        }
+      });
+
+      let lastSaveAt = 0;
+      player.on("timeupdate", (data) => {
+        if (cancelled) return;
+        const s = data?.seconds ?? 0;
+        const dur = data?.duration ?? 0;
+        latestTimeRef.current = s;
+        latestDurationRef.current = dur;
+        setLiveSeconds(Math.floor(s));
+        const now = Date.now();
+        if (now - lastSaveAt < 5_000) return;
+        lastSaveAt = now;
+        saveProgress(s, dur);
+      });
     };
 
-    // Busca tempo salvo — setSavedSeconds dispara iframeSrc com &t=X para resume via URL
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from(WATCH_TABLE)
-          .select("current_time")
-          .eq("user_id", user.id)
-          .eq("dorama_id", dorama.id)
-          .eq("episode", EPISODE_DEFAULT)
-          .maybeSingle();
-        if (cancelled) return;
-        const t = data?.current_time;
-        const savedTime = typeof t === "number" ? Math.floor(t) : 0;
-        lastSavedRef.current = savedTime;
-        setSavedSeconds(savedTime);
-      } catch {}
-      if (!cancelled) { dbDone = true; startPoll(); }
-    })();
-
-    // Carrega Player.js eagerly — usado apenas para getCurrentTime polling
-    if (!window.playerjs) {
+    if (window.playerjs) {
+      setup();
+    } else {
       const script = document.createElement("script");
       script.src = "//assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
+      script.onload = () => { if (!cancelled) setup(); };
       document.head.appendChild(script);
     }
 
-    // Reinit Player.js em cada ready (cobre reload do iframe após &t= ser adicionado)
-    const handleBunnyReady = (e) => {
-      try {
-        const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (msg?.event !== "ready") return;
-        if (cancelled) return;
-        if (timeId) { clearInterval(timeId); timeId = null; }
-        playerJsRef.current = null;
-        if (window.playerjs) playerJsRef.current = new window.playerjs.Player(el);
-        playerReady = true;
-        startPoll();
-        if (playerJsRef.current) {
-          playerJsRef.current.getDuration((dur) => {
-            if (!cancelled && dur > 0) latestDurationRef.current = dur;
-          });
-          timeId = setInterval(() => {
-            if (cancelled) { clearInterval(timeId); return; }
-            playerJsRef.current?.getCurrentTime((t) => {
-              if (cancelled || !(t > 0)) return;
-              latestTimeRef.current = t;
-              setLiveSeconds(Math.floor(t));
-            });
-          }, 1000);
-        }
-      } catch {}
-    };
-    window.addEventListener("message", handleBunnyReady);
-
     return () => {
       cancelled = true;
-      window.removeEventListener("message", handleBunnyReady);
-      if (pollId) clearInterval(pollId);
-      if (timeId) clearInterval(timeId);
       playerJsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, playerType, videoUrl, dorama?.id, user?.id]);
+  }, [allowContinue, playerType, videoUrl]);
+
+  // ✅ AUTO-RESUME iframe após savedSeconds carregado do banco
+  useEffect(() => {
+    if (!allowContinue || playerType !== "iframe") return;
+    if (!playerJsRef.current || hasAppliedResumeRef.current) return;
+    if (savedSeconds < 10) return;
+    hasAppliedResumeRef.current = true;
+    playerJsRef.current.setCurrentTime(savedSeconds);
+  }, [allowContinue, playerType, savedSeconds]);
 
   const canResume = allowContinue && savedSeconds >= 10;
 
   const handleResume = async () => {
     if (!canResume) return;
     if (playerType === "iframe") {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ context: "player.js", version: "0.0.11", method: "setCurrentTime", value: savedSeconds }),
-        "*"
-      );
+      if (playerJsRef.current) {
+        playerJsRef.current.setCurrentTime(savedSeconds);
+        hasAppliedResumeRef.current = true;
+      }
       return;
     }
     const el = videoRef.current;
     if (!el) return;
     try {
       el.currentTime = savedSeconds;
+      hasAppliedResumeRef.current = true;
       await el.play?.();
     } catch {}
   };
