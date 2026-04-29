@@ -68,6 +68,9 @@ export default function DoramaWatch() {
   const iframeRef = useRef(null);
   const hlsRef = useRef(null);
   const playerJsRef = useRef(null);
+  const playerReadyRef = useRef(false);
+  const savedSecondsRef = useRef(0);
+  const saveProgressRef = useRef(null);
 
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
   const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
@@ -171,11 +174,12 @@ export default function DoramaWatch() {
     try {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
+      u.searchParams.set("api", "1");
       u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
-      return `${base}${join}autoplay=true&_ts=${Date.now()}`;
+      return `${base}${join}autoplay=true&api=1&_ts=${Date.now()}`;
     }
   }, [videoUrl, playerType]);
 
@@ -345,6 +349,11 @@ export default function DoramaWatch() {
     if (s > savedSeconds) setSavedSeconds(s);
   };
 
+  // Mantém refs sempre atualizados com os valores mais recentes
+  useEffect(() => { savedSecondsRef.current = savedSeconds; }, [savedSeconds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { saveProgressRef.current = saveProgress; });
+
   // ✅ TRACKING DO <VIDEO> + AUTO-RESUME + FLUSH
   useEffect(() => {
     const el = videoRef.current;
@@ -443,11 +452,14 @@ export default function DoramaWatch() {
       playerJsRef.current = player;
 
       player.on("ready", () => {
-        if (cancelled || hasAppliedResumeRef.current) return;
-        const s = lastSavedRef.current;
-        if (s >= 10) {
-          player.setCurrentTime(s);
-          hasAppliedResumeRef.current = true;
+        if (cancelled) return;
+        playerReadyRef.current = true;
+        if (!hasAppliedResumeRef.current) {
+          const s = savedSecondsRef.current;
+          if (s >= 10) {
+            player.setCurrentTime(s);
+            hasAppliedResumeRef.current = true;
+          }
         }
       });
 
@@ -462,7 +474,7 @@ export default function DoramaWatch() {
         const now = Date.now();
         if (now - lastSaveAt < 5_000) return;
         lastSaveAt = now;
-        saveProgress(s, dur);
+        saveProgressRef.current?.(s, dur);
       });
     };
 
@@ -478,14 +490,15 @@ export default function DoramaWatch() {
     return () => {
       cancelled = true;
       playerJsRef.current = null;
+      playerReadyRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, playerType, videoUrl]);
 
-  // ✅ AUTO-RESUME iframe após savedSeconds carregado do banco
+  // ✅ AUTO-RESUME iframe: cobre o caso em que savedSeconds chega DEPOIS do ready
   useEffect(() => {
     if (!allowContinue || playerType !== "iframe") return;
-    if (!playerJsRef.current || hasAppliedResumeRef.current) return;
+    if (!playerJsRef.current || !playerReadyRef.current || hasAppliedResumeRef.current) return;
     if (savedSeconds < 10) return;
     hasAppliedResumeRef.current = true;
     playerJsRef.current.setCurrentTime(savedSeconds);
