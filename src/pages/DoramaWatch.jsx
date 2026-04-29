@@ -268,15 +268,17 @@ export default function DoramaWatch() {
   }, [loading, isAuthenticated]);
 
   const saveProgress = async (seconds, durationMaybe) => {
-    if (!allowContinue) return;
+    console.log("[DP] saveProgress called — s:", Math.floor(seconds || 0), "allowContinue:", allowContinue);
+    if (!allowContinue) { console.log("[DP] saveProgress BLOCKED — allowContinue false"); return; }
 
     const s = Math.floor(seconds || 0);
-    if (s <= 0) return;
+    if (s <= 0) { console.log("[DP] saveProgress BLOCKED — s <= 0"); return; }
 
     const prev = Math.floor(lastSavedRef.current || 0);
-    if (prev >= 30 && s < prev - 5) return;
+    if (prev >= 30 && s < prev - 5) { console.log("[DP] saveProgress BLOCKED — anti-regressão prev:", prev, "s:", s); return; }
 
     const dur = Math.floor(durationMaybe || 0);
+    console.log("[DP] saveProgress UPSERTING s:", s, "dur:", dur);
 
     const { error: upsertError } = await supabase.from(WATCH_TABLE).upsert(
       {
@@ -296,6 +298,7 @@ export default function DoramaWatch() {
       return;
     }
 
+    console.log("[DP] saveProgress SUCCESS — saved:", s);
     lastSavedRef.current = s;
   };
 
@@ -332,6 +335,7 @@ export default function DoramaWatch() {
 
     // Busca tempo salvo — inicia interval depois do retorno para evitar overwrite
     (async () => {
+      console.log("[DP] video: DB fetch started — allowContinue:", allowContinue, "playerType:", playerType);
       try {
         const { data } = await supabase
           .from(WATCH_TABLE)
@@ -340,16 +344,19 @@ export default function DoramaWatch() {
           .eq("dorama_id", dorama.id)
           .eq("episode", EPISODE_DEFAULT)
           .maybeSingle();
-        if (cancelled) return;
+        if (cancelled) { console.log("[DP] video: DB fetch returned but cancelled"); return; }
         const t = data?.current_time;
         savedTime = typeof t === "number" ? Math.floor(t) : 0;
         lastSavedRef.current = savedTime;
         setSavedSeconds(savedTime);
+        console.log("[DP] video: DB fetch OK — savedTime:", savedTime, "readyState:", el.readyState);
         trySeek();
-      } catch {}
+      } catch (err) { console.error("[DP] video: DB fetch ERROR", err); }
       if (cancelled) return;
+      console.log("[DP] video: interval iniciado");
       interval = setInterval(() => {
         if (cancelled || !el.currentTime) return;
+        console.log("[DP] video: interval tick — currentTime:", el.currentTime);
         saveProgressRef.current?.(el.currentTime, el.duration);
       }, 5000);
     })();
@@ -412,16 +419,19 @@ export default function DoramaWatch() {
 
     // poll só inicia depois que AMBOS (ready + DB fetch) estão prontos
     const startPoll = () => {
-      if (pollId || !playerReady || !dbDone) return;
+      if (pollId || !playerReady || !dbDone) { console.log("[DP] iframe: startPoll aguardando — pollId:", !!pollId, "playerReady:", playerReady, "dbDone:", dbDone); return; }
+      console.log("[DP] iframe: poll iniciado");
       pollId = setInterval(() => {
         if (cancelled) { clearInterval(pollId); return; }
         const t = latestTimeRef.current;
+        console.log("[DP] iframe: poll tick — latestTime:", t);
         if (t > 0) saveProgressRef.current?.(t, latestDurationRef.current);
       }, 5000);
     };
 
     // Busca tempo salvo no banco
     (async () => {
+      console.log("[DP] iframe: DB fetch started");
       try {
         const { data } = await supabase
           .from(WATCH_TABLE)
@@ -430,14 +440,16 @@ export default function DoramaWatch() {
           .eq("dorama_id", dorama.id)
           .eq("episode", EPISODE_DEFAULT)
           .maybeSingle();
-        if (cancelled) return;
+        if (cancelled) { console.log("[DP] iframe: DB fetch returned but cancelled"); return; }
         const t = data?.current_time;
         savedTime = typeof t === "number" ? Math.floor(t) : 0;
         lastSavedRef.current = savedTime;
         setSavedSeconds(savedTime);
-      } catch {}
+        console.log("[DP] iframe: DB fetch OK — savedTime:", savedTime);
+      } catch (err) { console.error("[DP] iframe: DB fetch ERROR", err); }
       if (!cancelled) {
         dbDone = true;
+        console.log("[DP] iframe: dbDone=true, playerReady:", playerReady, "— chamando trySeek+startPoll");
         trySeek();
         startPoll();
       }
@@ -445,11 +457,13 @@ export default function DoramaWatch() {
 
     const setup = () => {
       if (cancelled || !window.playerjs) return;
+      console.log("[DP] iframe: setup() — criando Player.js instance");
       const player = new window.playerjs.Player(el);
       playerJsRef.current = player;
 
       player.on("ready", () => {
         if (cancelled) return;
+        console.log("[DP] iframe: ready! dbDone:", dbDone, "savedTime:", savedTime, "— chamando trySeek+startPoll");
         playerReady = true;
         trySeek();
         startPoll();
