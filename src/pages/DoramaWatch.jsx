@@ -32,6 +32,23 @@ export default function DoramaWatch() {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
 
+  // device_id lido/gerado uma única vez e mantido estável durante toda a sessão
+  const deviceIdRef = useRef(null);
+  if (deviceIdRef.current === null) {
+    try {
+      const stored = localStorage.getItem("dp_device_id");
+      if (stored) {
+        deviceIdRef.current = stored;
+      } else {
+        const id = crypto.randomUUID();
+        localStorage.setItem("dp_device_id", id);
+        deviceIdRef.current = id;
+      }
+    } catch {
+      deviceIdRef.current = crypto.randomUUID();
+    }
+  }
+
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
   const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
   const [liveSeconds, setLiveSeconds] = useState(0); // apenas informativo
@@ -324,13 +341,7 @@ export default function DoramaWatch() {
         const token = sessionData?.session?.access_token;
         if (!token) return null;
 
-        const deviceKey = "dp_device_id";
-        let deviceId;
-        try { deviceId = localStorage.getItem(deviceKey); } catch {}
-        if (!deviceId) {
-          deviceId = crypto.randomUUID();
-          try { localStorage.setItem(deviceKey, deviceId); } catch {}
-        }
+        const deviceId = deviceIdRef.current;
 
         const ua = navigator.userAgent || "";
         const deviceName =
