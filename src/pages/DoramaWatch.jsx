@@ -53,6 +53,11 @@ export default function DoramaWatch() {
   const [ipTrialRemaining, setIpTrialRemaining] = useState(0);
   const [ipTrialChecked, setIpTrialChecked] = useState(false);
 
+  // ✅ CLAIM-PLAYBACK: controle de streams simultâneos (só para logado + premium)
+  const [claimChecked, setClaimChecked] = useState(false);
+  const [claimAllowed, setClaimAllowed] = useState(false);
+  const [claimMessage, setClaimMessage] = useState("");
+
   const nextUrl = useMemo(() => {
     return location.pathname + location.search;
   }, [location.pathname, location.search]);
@@ -302,6 +307,97 @@ export default function DoramaWatch() {
     };
   }, [loading, isAuthenticated]);
 
+  // ✅ CLAIM-PLAYBACK: verifica limite de streams e mantém heartbeat
+  useEffect(() => {
+    if (!isAuthenticated || !isPremium || !dorama?.id || loading || checkingPremium) return;
+
+    setClaimChecked(false);
+    setClaimAllowed(false);
+    setClaimMessage("");
+
+    let heartbeatId;
+    let active = true;
+
+    const callClaim = async (force = false) => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) return null;
+
+        const deviceKey = "dp_device_id";
+        let deviceId;
+        try { deviceId = localStorage.getItem(deviceKey); } catch {}
+        if (!deviceId) {
+          deviceId = crypto.randomUUID();
+          try { localStorage.setItem(deviceKey, deviceId); } catch {}
+        }
+
+        const ua = navigator.userAgent || "";
+        const deviceName =
+          /iPhone/i.test(ua) ? "iPhone" :
+          /iPad/i.test(ua) ? "iPad" :
+          /Android/i.test(ua) ? "Android" :
+          /Windows/i.test(ua) ? "Windows" :
+          /Mac/i.test(ua) ? "Mac" : "Navegador";
+
+        const res = await fetch(
+          "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/claim-playback",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ device_id: deviceId, device_name: deviceName, force }),
+          }
+        );
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+
+    (async () => {
+      const data = await callClaim(false);
+      if (!active) return;
+      setClaimChecked(true);
+
+      if (data === null) {
+        // falha de rede: fail open para não bloquear usuários legítimos
+        setClaimAllowed(true);
+        return;
+      }
+
+      if (!data.allowed) {
+        setClaimAllowed(false);
+        setClaimMessage(data.message || "Limite de reproduções simultâneas atingido.");
+        return;
+      }
+
+      setClaimAllowed(true);
+
+      const interval = Math.max(10, data.heartbeat_interval_seconds ?? 30) * 1000;
+      heartbeatId = setInterval(async () => {
+        const ping = await callClaim(false);
+        if (!active) return;
+        if (ping !== null && !ping.allowed) {
+          clearInterval(heartbeatId);
+          setClaimAllowed(false);
+          setClaimMessage(ping.message || "Sessão encerrada em outro dispositivo.");
+          try {
+            const el = videoRef.current;
+            if (el && typeof el.pause === "function") el.pause();
+          } catch {}
+        }
+      }, interval);
+    })();
+
+    return () => {
+      active = false;
+      clearInterval(heartbeatId);
+    };
+  }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium]);
+
   // ✅ Carrega tempo salvo do banco
   useEffect(() => {
     if (!allowContinue) {
@@ -487,7 +583,7 @@ export default function DoramaWatch() {
   }
 
   // ✅ (CORREÇÃO DO BUG): só espera checkingPremium se estiver logado
-  if (loading || loadingDorama || (isAuthenticated && checkingPremium) || (!isAuthenticated && !ipTrialChecked)) {
+  if (loading || loadingDorama || (isAuthenticated && checkingPremium) || (!isAuthenticated && !ipTrialChecked) || (isAuthenticated && isPremium && !checkingPremium && !claimChecked)) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
         <Loader2 className="w-8 h-8 animate-spin text-purple-400 mr-2" />
@@ -629,6 +725,8 @@ export default function DoramaWatch() {
                 </div>
               ) : !isAuthenticated && (!ipTrialAllowed || ipTrialExpired) ? (
                 <div className="w-full h-full bg-black" />
+              ) : isAuthenticated && isPremium && !claimAllowed ? (
+                <div className="w-full h-full bg-black" />
               ) : !videoUrl ? (
                 <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500">
                   <p>Vídeo indisponível no momento.</p>
@@ -676,6 +774,18 @@ export default function DoramaWatch() {
                   >
                     Criar conta grátis
                   </Button>
+                </div>
+              )}
+
+              {/* ✅ OVERLAY: claim-playback bloqueado */}
+              {isAuthenticated && isPremium && claimChecked && !claimAllowed && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90 px-6 text-center">
+                  <p className="text-white text-lg font-semibold mb-2">
+                    Limite de reproduções simultâneas atingido
+                  </p>
+                  <p className="text-slate-300 text-sm">
+                    {claimMessage}
+                  </p>
                 </div>
               )}
             </div>
