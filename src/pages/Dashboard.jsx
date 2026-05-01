@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import Fuse from "fuse.js";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 import Navbar from "@/components/Navbar";
@@ -355,6 +356,14 @@ const DoramaSection = ({ title, icon, doramas, loading, error, id }) => {
   );
 };
 
+// Remove acentos e converte para minúsculas — usado no Fuse e na query de slug
+const normalizeText = (str) =>
+  (str || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// Converte para slug (igual ao admin) — usado para busca tolerante a acentos no banco
+const slugifyQuery = (str) =>
+  normalizeText(str).trim().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
+
 // ---------------- DASHBOARD PRINCIPAL ----------------
 const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const { user, loading: authLoading } = useAuth();
@@ -415,6 +424,18 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+
+  // Índice leve de todos os doramas — usado pelo Fuse quando o banco não retorna nada (typos)
+  const doramaIndexRef = useRef([]);
+  useEffect(() => {
+    supabase
+      .from("doramas")
+      .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new,bunny_url,bunny_stream_url")
+      .order("title")
+      .then(({ data }) => {
+        if (data) doramaIndexRef.current = data;
+      });
+  }, []);
 
   // ✅ refs e scroll para "Continuar Assistindo" (setas iguais às outras)
   const continueRef = useRef(null);
@@ -644,12 +665,11 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     );
   }, [authLoading, fetchCategory]);
 
-  // ✅ BUSCA REAL NO BANCO (à prova de vírgula, aspas, parênteses, etc.)
+  // ✅ BUSCA: ILIKE + slug (acentos) + Fuse.js (typos)
   useEffect(() => {
     const q = (searchQuery || "").trim();
-    const normalized = q.toLowerCase();
 
-    if (!normalized) {
+    if (!q) {
       setSearchResults([]);
       setSearchLoading(false);
       setSearchError(false);
@@ -660,14 +680,30 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     setSearchLoading(true);
     setSearchError(false);
 
+    const fuseOptions = {
+      keys: [
+        { name: "title", weight: 0.8 },
+        { name: "description", weight: 0.2 },
+      ],
+      threshold: 0.4,
+      ignoreLocation: true,
+      minMatchCharLength: 2,
+      getFn: (obj, path) => {
+        const key = Array.isArray(path) ? path[0] : path;
+        return normalizeText(obj[key] || "");
+      },
+    };
+
     const timer = setTimeout(async () => {
       try {
         const escapeForPostgrestQuoted = (value) => {
           return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
         };
 
+        const slugQ = slugifyQuery(q);
         const pattern = escapeForPostgrestQuoted(`%${q}%`);
-        const orClause = `title.ilike.${pattern},description.ilike.${pattern}`;
+        const slugPattern = escapeForPostgrestQuoted(`%${slugQ}%`);
+        const orClause = `title.ilike.${pattern},description.ilike.${pattern},slug.ilike.${slugPattern}`;
 
         const { data, error: err } = await runQueryWithFallback((selectStr) =>
           supabase
@@ -684,8 +720,26 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           console.error("[search] erro:", err);
           setSearchError(true);
           setSearchResults([]);
+          return;
+        }
+
+        const dbResults = data || [];
+
+        if (dbResults.length > 0) {
+          // Banco encontrou algo — reordena por relevância fuzzy
+          const fuse = new Fuse(dbResults, fuseOptions);
+          const hits = fuse.search(normalizeText(q));
+          setSearchResults(hits.length > 0 ? hits.map((r) => r.item) : dbResults);
         } else {
-          setSearchResults(data || []);
+          // Banco não encontrou nada — Fuse no índice local (typos)
+          const index = doramaIndexRef.current;
+          if (index.length > 0) {
+            const fuse = new Fuse(index, { ...fuseOptions, threshold: 0.35 });
+            const hits = fuse.search(normalizeText(q));
+            setSearchResults(hits.map((r) => r.item));
+          } else {
+            setSearchResults([]);
+          }
         }
       } catch (e) {
         if (isCancelled) return;
@@ -695,7 +749,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       } finally {
         if (!isCancelled) setSearchLoading(false);
       }
-    }, 250);
+    }, 300);
 
     return () => {
       isCancelled = true;
