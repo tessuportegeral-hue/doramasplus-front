@@ -45,13 +45,13 @@ export default function DoramaWatch() {
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
 
-  // ✅ TESTE GRÁTIS (NOVO): 20 minutos GLOBAL para quem NÃO está logado
-  const TRIAL_SECONDS = 20 * 60; // 20 min
-  const TRIAL_START_KEY = "dp_trial_started_at_ms";
-  const TRIAL_LOCK_KEY = "dp_trial_locked";
+  // ✅ TESTE GRÁTIS via IP (edge function)
+  const FREE_TRIAL_URL = "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/free-trial";
 
-  const [trialRemaining, setTrialRemaining] = useState(TRIAL_SECONDS);
-  const [trialExpired, setTrialExpired] = useState(false);
+  const [ipTrialAllowed, setIpTrialAllowed] = useState(false);
+  const [ipTrialExpired, setIpTrialExpired] = useState(false);
+  const [ipTrialRemaining, setIpTrialRemaining] = useState(0);
+  const [ipTrialChecked, setIpTrialChecked] = useState(false);
 
   const nextUrl = useMemo(() => {
     return location.pathname + location.search;
@@ -220,53 +220,86 @@ export default function DoramaWatch() {
     return playerType === "mp4" || playerType === "hls" || playerType === "video";
   }, [isPremium, user?.id, dorama?.id, isIphoneMode, playerType]);
 
-  // ✅ TESTE GRÁTIS: relógio GLOBAL usando localStorage (só para NÃO logado)
+  // ✅ TESTE GRÁTIS: controle por IP via edge function (só para NÃO logado)
   useEffect(() => {
     if (loading) return;
 
     if (isAuthenticated) {
-      setTrialExpired(false);
-      setTrialRemaining(TRIAL_SECONDS);
+      setIpTrialChecked(true);
       return;
     }
 
-    try {
-      const locked = localStorage.getItem(TRIAL_LOCK_KEY) === "1";
-      if (locked) {
-        setTrialExpired(true);
-        setTrialRemaining(0);
+    let countdownId;
+    let pingId;
+    let active = true;
+
+    const callApi = async (action) => {
+      try {
+        const res = await fetch(FREE_TRIAL_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        return await res.json();
+      } catch {
+        return null;
+      }
+    };
+
+    const handleExpired = () => {
+      if (!active) return;
+      clearInterval(countdownId);
+      clearInterval(pingId);
+      setIpTrialExpired(true);
+      setIpTrialAllowed(false);
+      setIpTrialRemaining(0);
+      try {
+        const el = videoRef.current;
+        if (el && typeof el.pause === "function") el.pause();
+      } catch {}
+    };
+
+    (async () => {
+      const data = await callApi("start");
+      if (!active) return;
+      setIpTrialChecked(true);
+
+      if (!data || !data.allowed || data.status === "expired") {
+        setIpTrialExpired(true);
+        setIpTrialAllowed(false);
         return;
       }
 
-      let startMs = Number(localStorage.getItem(TRIAL_START_KEY) || "0");
-      if (!startMs || Number.isNaN(startMs)) {
-        startMs = Date.now();
-        localStorage.setItem(TRIAL_START_KEY, String(startMs));
-      }
+      let remaining = data.remaining_seconds ?? 600;
+      setIpTrialAllowed(true);
+      setIpTrialRemaining(remaining);
 
-      const tick = () => {
-        const elapsed = Math.floor((Date.now() - startMs) / 1000);
-        const remain = Math.max(0, TRIAL_SECONDS - elapsed);
-        setTrialRemaining(remain);
-
-        if (remain <= 0) {
-          localStorage.setItem(TRIAL_LOCK_KEY, "1");
-          setTrialExpired(true);
-
-          try {
-            const el = videoRef.current;
-            if (el && typeof el.pause === "function") el.pause();
-          } catch {}
+      countdownId = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          handleExpired();
+        } else {
+          setIpTrialRemaining(remaining);
         }
-      };
+      }, 1000);
 
-      tick();
-      const iv = setInterval(tick, 1000);
-      return () => clearInterval(iv);
-    } catch {
-      setTrialRemaining(TRIAL_SECONDS);
-      setTrialExpired(false);
-    }
+      pingId = setInterval(async () => {
+        const pingData = await callApi("ping");
+        if (!active) return;
+        if (!pingData || !pingData.allowed) {
+          handleExpired();
+        } else if (pingData.remaining_seconds != null) {
+          remaining = pingData.remaining_seconds;
+          setIpTrialRemaining(pingData.remaining_seconds);
+        }
+      }, 30_000);
+    })();
+
+    return () => {
+      active = false;
+      clearInterval(countdownId);
+      clearInterval(pingId);
+    };
   }, [loading, isAuthenticated]);
 
   // ✅ Carrega tempo salvo do banco
@@ -453,20 +486,8 @@ export default function DoramaWatch() {
     );
   }
 
-  // ✅ teste grátis acabou -> signup
-  if (!loading && !isAuthenticated && trialExpired) {
-    const _srcParam = new URLSearchParams(location.search).get("src") || "";
-    const _srcSuffix = _srcParam ? `&src=${encodeURIComponent(_srcParam)}` : "";
-    return (
-      <Navigate
-        to={`/signup?next=${encodeURIComponent(location.pathname + location.search)}${_srcSuffix}`}
-        replace
-      />
-    );
-  }
-
   // ✅ (CORREÇÃO DO BUG): só espera checkingPremium se estiver logado
-  if (loading || loadingDorama || (isAuthenticated && checkingPremium)) {
+  if (loading || loadingDorama || (isAuthenticated && checkingPremium) || (!isAuthenticated && !ipTrialChecked)) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
         <Loader2 className="w-8 h-8 animate-spin text-purple-400 mr-2" />
@@ -493,8 +514,11 @@ export default function DoramaWatch() {
     );
   }
 
-  // ✅ barra do teste grátis (0..1). Quanto menor, mais perto do fim.
-  const trialProgress = Math.max(0, Math.min(1, trialRemaining / TRIAL_SECONDS));
+  const formatTrialTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
 
   return (
     <>
@@ -518,20 +542,13 @@ export default function DoramaWatch() {
         {/* Player */}
         <main className="flex-1 flex flex-col items-center justify-start w-full bg-black">
           <div className="w-full max-w-[1400px] mx-auto px-0 sm:px-4">
-            {/* ✅ TESTE GRÁTIS: BARRINHA (sem tempo) */}
-            {!isAuthenticated && !trialExpired && (
+            {/* ✅ TESTE GRÁTIS: aviso (só quando ativo) */}
+            {!isAuthenticated && ipTrialAllowed && !ipTrialExpired && (
               <div className="px-3 sm:px-0 mb-3">
                 <div className="w-full rounded-lg border border-emerald-500/20 bg-emerald-900/10 px-4 py-3 text-sm text-slate-200">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-semibold text-emerald-200">🎁 Teste grátis em andamento</span>
                     <span className="text-slate-300/90">Crie sua conta para continuar depois</span>
-                  </div>
-
-                  <div className="mt-2 w-full h-2 bg-slate-800/70 rounded-full overflow-hidden">
-                    <div
-                      className="h-2 bg-emerald-400"
-                      style={{ width: `${Math.round(trialProgress * 100)}%` }}
-                    />
                   </div>
                 </div>
               </div>
@@ -632,6 +649,32 @@ export default function DoramaWatch() {
                   className="absolute inset-0 w-full h-full"
                   src={playerType === "mp4" || playerType === "video" ? videoUrl : undefined}
                 />
+              )}
+
+              {/* ✅ CONTADOR REGRESSIVO: canto superior direito */}
+              {!isAuthenticated && ipTrialAllowed && !ipTrialExpired && (
+                <div className="absolute top-3 right-3 z-10 bg-black/60 text-emerald-300 text-xs font-mono px-2 py-1 rounded-full pointer-events-none select-none">
+                  Teste grátis: {formatTrialTime(ipTrialRemaining)}
+                </div>
+              )}
+
+              {/* ✅ OVERLAY: teste expirado */}
+              {!isAuthenticated && ipTrialExpired && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/90 px-6 text-center">
+                  <p className="text-white text-lg font-semibold mb-2">
+                    Seu teste gratuito de 10 minutos acabou.
+                  </p>
+                  <p className="text-slate-300 text-sm mb-6">
+                    Crie uma conta para continuar assistindo!
+                  </p>
+                  <Button
+                    onClick={() => navigate(`/signup?next=${encodeURIComponent(location.pathname + location.search)}`)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                    size="lg"
+                  >
+                    Criar conta grátis
+                  </Button>
+                </div>
               )}
             </div>
           </div>
