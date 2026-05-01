@@ -627,6 +627,8 @@ export default function DoramaWatch() {
                     Assinar agora
                   </Button>
                 </div>
+              ) : !isAuthenticated && (!ipTrialAllowed || ipTrialExpired) ? (
+                <div className="w-full h-full bg-black" />
               ) : !videoUrl ? (
                 <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500">
                   <p>Vídeo indisponível no momento.</p>
