@@ -140,16 +140,13 @@ export default function AdminAnalytics() {
     mrr_quarterly_estimated: 0,
   });
 
-  // Retenção D30 (VIEW: admin_retencao_d30)
+  // Retenção D30
   const [retD30, setRetD30] = useState({
     base_com_30_dias: 0,
     ainda_ativos: 0,
     retencao_d30: 0,
   });
 
-  // ✅ Retenção múltiplos cortes (VIEW: admin_retencao_multiplos_cortes)
-  const [retMulti, setRetMulti] = useState([]); // array de linhas
-  const [retMultiWarning, setRetMultiWarning] = useState("");
 
   // Datas derivadas (de acordo com quickPeriod + inputs)
   const { periodStart, periodEnd, periodLabel } = useMemo(() => {
@@ -295,86 +292,118 @@ export default function AdminAnalytics() {
   }, [navigate]);
 
   const fetchAllMetrics = useCallback(async () => {
-    // Só busca se for admin confirmado
     if (!adminChecked || !isAdmin) return;
 
     setLoading(true);
     setError("");
     setWarning("");
-    setRetMultiWarning("");
 
     try {
-      // ✅ 1) RPC (periodizado) — fonte principal dos cards do período
-      const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_metrics_period", {
-        p_start: toISO(periodStart),
-        p_end: toISO(periodEnd),
-        price_monthly: PRICE_MONTHLY,
-        price_quarterly: PRICE_QUARTERLY,
-      });
+      const now = new Date();
+      const d30ago = new Date(now.getTime() - 30 * 86400000);
+      const d60ago = new Date(now.getTime() - 60 * 86400000);
 
-      if (rpcErr) {
-        throw new Error(rpcErr.message || "Erro ao rodar admin_metrics_period");
-      }
+      // ---- 1. Assinaturas ativas (subscriptions) ----
+      const [
+        { count: cTotal, error: e1 },
+        { count: cMonthly, error: e2 },
+        { count: cQuarterly, error: e3 },
+      ] = await Promise.all([
+        supabase.from("subscriptions").select("id", { count: "exact", head: true })
+          .eq("status", "active").gt("end_at", now.toISOString()),
+        supabase.from("subscriptions").select("id", { count: "exact", head: true })
+          .eq("status", "active").gt("end_at", now.toISOString()).ilike("plan_name", "%Padrão%"),
+        supabase.from("subscriptions").select("id", { count: "exact", head: true })
+          .eq("status", "active").gt("end_at", now.toISOString()).ilike("plan_name", "%Trimestral%"),
+      ]);
+      if (e1 || e2 || e3) throw new Error((e1 || e2 || e3).message);
 
-      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      const activeNow = safeNum(cTotal);
+      const activeMonthly = safeNum(cMonthly);
+      const activeQuarterly = safeNum(cQuarterly);
+      const mrrMonthlyVal = activeMonthly * PRICE_MONTHLY;
+      const mrrQuarterlyVal = (activeQuarterly * PRICE_QUARTERLY) / 3;
+      const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
+
+      // ---- 2. PIX pendentes ----
+      const [
+        { count: pendingNow, error: e4 },
+        { count: pendingPeriod, error: e5 },
+      ] = await Promise.all([
+        supabase.from("pix_payments").select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+        supabase.from("pix_payments").select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+          .gte("created_at", toISO(periodStart))
+          .lte("created_at", toISO(periodEnd)),
+      ]);
+      if (e4) setWarning(`Aviso (PIX pendentes): ${e4.message}`);
+      if (e5) setWarning(`Aviso (PIX pendentes período): ${e5.message}`);
+
+      // ---- 3. Vendas PIX pagas no período (status = 'paid') ----
+      const { data: soldData, error: e6 } = await supabase
+        .from("pix_payments")
+        .select("amount")
+        .eq("status", "paid")
+        .gte("created_at", toISO(periodStart))
+        .lte("created_at", toISO(periodEnd));
+      if (e6) throw new Error(e6.message);
+
+      const midPrice = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2;
+      const soldRecords = soldData || [];
+      const soldTotal = soldRecords.length;
+      const soldMonthly = soldRecords.filter(r => safeNum(r.amount) < midPrice).length;
+      const soldQuarterly = soldRecords.filter(r => safeNum(r.amount) >= midPrice).length;
+      const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount), 0);
 
       setMetrics({
-        active_now: safeNum(row?.active_now),
-        active_now_monthly: safeNum(row?.active_now_monthly),
-        active_now_quarterly: safeNum(row?.active_now_quarterly),
-
-        pending_now: safeNum(row?.pending_now),
-        pending_in_period: safeNum(row?.pending_in_period),
-
-        sold_total: safeNum(row?.sold_total),
-        sold_monthly: safeNum(row?.sold_monthly),
-        sold_quarterly: safeNum(row?.sold_quarterly),
-
-        revenue_estimated_in_period: safeNum(row?.revenue_estimated_in_period),
-
-        mrr_total_estimated: safeNum(row?.mrr_total_estimated),
-        mrr_monthly_estimated: safeNum(row?.mrr_monthly_estimated),
-        mrr_quarterly_estimated: safeNum(row?.mrr_quarterly_estimated),
+        active_now: activeNow,
+        active_now_monthly: activeMonthly,
+        active_now_quarterly: activeQuarterly,
+        pending_now: safeNum(pendingNow),
+        pending_in_period: safeNum(pendingPeriod),
+        sold_total: soldTotal,
+        sold_monthly: soldMonthly,
+        sold_quarterly: soldQuarterly,
+        revenue_estimated_in_period: revenuePeriod,
+        mrr_total_estimated: mrrTotalVal,
+        mrr_monthly_estimated: mrrMonthlyVal,
+        mrr_quarterly_estimated: mrrQuarterlyVal,
       });
 
-      // ✅ 2) Retenção D30 (VIEW) — NÃO depende do filtro do período
-      // ✅ FIX DEFINITIVO: busca '*' pra não quebrar quando você renomear coluna na VIEW.
-      const { data: d30Data, error: d30Err } = await supabase
-        .from("admin_retencao_d30")
-        .select("*")
-        .maybeSingle();
+      // ---- 4. Retenção D30 (direto do banco, status = 'paid') ----
+      // Base: usuários que pagaram entre 60 e 30 dias atrás
+      const { data: baseData, error: e7 } = await supabase
+        .from("pix_payments")
+        .select("user_id")
+        .eq("status", "paid")
+        .gte("created_at", d60ago.toISOString())
+        .lt("created_at", d30ago.toISOString());
 
-      if (d30Err) {
-        console.warn("admin_retencao_d30 error:", d30Err);
-        setWarning(`Aviso (Retenção D30): ${d30Err.message || "sem acesso à VIEW"}`);
+      if (e7) {
+        setWarning(`Aviso (Retenção D30): ${e7.message}`);
         setRetD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
       } else {
-        const rawRet =
-          d30Data?.retencao_d30 ??
-          d30Data?.retencao_d30_pct ??
-          d30Data?.retencao_d30_percent ??
-          d30Data?.retencao_d30_porcentagem ??
-          0;
+        const baseIds = [...new Set((baseData || []).map(r => r.user_id))];
+        const d30Base = baseIds.length;
+        let d30Retained = 0;
+
+        if (d30Base > 0) {
+          // Retidos: dos que estavam na base, quem pagou novamente nos últimos 30 dias
+          const { data: retData } = await supabase
+            .from("pix_payments")
+            .select("user_id")
+            .eq("status", "paid")
+            .gte("created_at", d30ago.toISOString())
+            .in("user_id", baseIds);
+          d30Retained = new Set((retData || []).map(r => r.user_id)).size;
+        }
 
         setRetD30({
-          base_com_30_dias: safeNum(d30Data?.base_com_30_dias),
-          ainda_ativos: safeNum(d30Data?.ainda_ativos),
-          retencao_d30: safeNum(rawRet),
+          base_com_30_dias: d30Base,
+          ainda_ativos: d30Retained,
+          retencao_d30: d30Base > 0 ? (d30Retained / d30Base) * 100 : 0,
         });
-      }
-
-      // ✅ 3) Retenção múltiplos cortes (VIEW) — 30/45/60/90/120 (ou o que existir na view)
-      const { data: multiData, error: multiErr } = await supabase
-        .from("admin_retencao_multiplos_cortes")
-        .select("*")
-        .order("dias_corte", { ascending: true });
-
-      if (multiErr) {
-        console.warn("admin_retencao_multiplos_cortes error:", multiErr);
-        setRetMultiWarning(`Aviso (Retenção múltiplos cortes): ${multiErr.message || "sem acesso à VIEW"}`);
-        setRetMulti([]);
-      } else {
-        setRetMulti(Array.isArray(multiData) ? multiData : []);
       }
     } catch (e) {
       console.error(e);
@@ -634,16 +663,6 @@ export default function AdminAnalytics() {
           </div>
         ) : null}
 
-        {!error && retMultiWarning ? (
-          <div className="mt-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 p-4 text-sm text-yellow-100">
-            <div className="flex items-center gap-2 font-semibold">
-              <AlertCircle className="w-4 h-4" />
-              Aviso
-            </div>
-            <div className="mt-1 text-yellow-100/90 break-words">{retMultiWarning}</div>
-          </div>
-        ) : null}
-
         {loading ? (
           <div className="mt-6 flex items-center gap-2 text-white/70">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -725,7 +744,7 @@ export default function AdminAnalytics() {
                     "Base com 30 dias",
                     `${retD30.base_com_30_dias}`,
                     <Users className="w-5 h-5 text-white/70" />,
-                    "Quem já poderia ter renovado (coorte)"
+                    "Pagaram entre 60 e 30 dias atrás"
                   )}
                 </div>
 
@@ -734,7 +753,7 @@ export default function AdminAnalytics() {
                     "Ainda ativos",
                     `${retD30.ainda_ativos}`,
                     <CheckIcon />,
-                    "Dessa base, quem continua ativo",
+                    "Pagaram novamente nos últimos 30 dias",
                     "ok"
                   )}
                 </div>
@@ -744,90 +763,13 @@ export default function AdminAnalytics() {
                     "Retenção D30",
                     formatPct(retD30.retencao_d30),
                     <TrendingUp className="w-5 h-5 text-green-300" />,
-                    "VIEW: admin_retencao_d30",
+                    "pix_payments, status='paid'",
                     "ok"
                   )}
                 </div>
               </div>
 
               <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
-            </div>
-
-            {/* ✅ Retenção múltiplos cortes (VIEW) */}
-            <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div className="text-sm font-semibold text-white/80">Retenção por cortes (30 / 45 / 60 / 90 / 120)</div>
-                  <div className="text-xs text-white/45 mt-1">
-                    VIEW: <span className="text-white/60">admin_retencao_multiplos_cortes</span> (vai preenchendo conforme o tempo passa)
-                  </div>
-                </div>
-
-                <button
-                  onClick={fetchAllMetrics}
-                  className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm hover:bg-white/10 transition"
-                >
-                  Recarregar
-                </button>
-              </div>
-
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm min-w-[720px]">
-                  <thead>
-                    <tr className="text-left border-b border-white/10 text-white/70">
-                      <th className="py-2 pr-4">Dias</th>
-                      <th className="py-2 pr-4">Base</th>
-                      <th className="py-2 pr-4">Ainda ativos</th>
-                      <th className="py-2 pr-4">Retenção</th>
-                      <th className="py-2 pr-4">Base mensal</th>
-                      <th className="py-2 pr-4">Ativos mensal</th>
-                      <th className="py-2 pr-4">Base trimestral</th>
-                      <th className="py-2 pr-0">Ativos trimestral</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {retMulti?.length ? (
-                      retMulti.map((r) => {
-                        const dias = safeNum(r?.dias_corte);
-                        const baseTotal = safeNum(r?.base_total);
-                        const aindaAtivos = safeNum(r?.ainda_ativos);
-                        const retPct = r?.retencao_pct;
-
-                        const baseMensal = safeNum(r?.base_mensal);
-                        const aindaMensal = safeNum(r?.ainda_mensal);
-                        const baseTri = safeNum(r?.base_trimestr);
-                        const aindaTri = safeNum(r?.ainda_trimestr);
-
-                        return (
-                          <tr key={dias} className="border-b border-white/5">
-                            <td className="py-2 pr-4">{dias}</td>
-                            <td className="py-2 pr-4">{baseTotal}</td>
-                            <td className="py-2 pr-4">{aindaAtivos}</td>
-                            <td className="py-2 pr-4">
-                              {retPct === null || retPct === undefined ? "—" : `${safeNum(retPct).toFixed(2)}%`}
-                            </td>
-                            <td className="py-2 pr-4">{baseMensal}</td>
-                            <td className="py-2 pr-4">{aindaMensal}</td>
-                            <td className="py-2 pr-4">{baseTri}</td>
-                            <td className="py-2 pr-0">{aindaTri}</td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td className="py-3 text-white/50" colSpan={8}>
-                          Sem dados na view (ou sem permissão). Se você acabou de criar, pode levar alguns segundos.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-3 text-xs text-white/45">
-                Obs: se em 60/90/120 aparecer base 0 e retenção “—”, isso é normal quando ainda não existe gente com esse tempo.
-              </div>
             </div>
 
             {/* Vendas (período selecionado) */}
@@ -880,7 +822,7 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-3 text-xs text-white/45">
-                Obs: mantive seu painel como está. Só corrigi o bug do date e adicionei a view de retenção por cortes pra você acompanhar 30/45/60/90/120.
+                Obs: todos os dados vêm de queries diretas — subscriptions para ativos/MRR, pix_payments (status='paid') para vendas/receita/retenção.
               </div>
             </div>
           </>
