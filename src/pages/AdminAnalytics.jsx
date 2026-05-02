@@ -343,18 +343,18 @@ export default function AdminAnalytics() {
       // ---- 3. Vendas PIX pagas no período (status = 'paid') ----
       const { data: soldData, error: e6 } = await supabase
         .from("pix_payments")
-        .select("amount")
+        .select("amount_cents")
         .eq("status", "paid")
         .gte("created_at", toISO(periodStart))
         .lte("created_at", toISO(periodEnd));
       if (e6) throw new Error(e6.message);
 
-      const midPrice = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2;
+      const midPriceCents = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2 * 100;
       const soldRecords = soldData || [];
       const soldTotal = soldRecords.length;
-      const soldMonthly = soldRecords.filter(r => safeNum(r.amount) < midPrice).length;
-      const soldQuarterly = soldRecords.filter(r => safeNum(r.amount) >= midPrice).length;
-      const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount), 0);
+      const soldMonthly = soldRecords.filter(r => safeNum(r.amount_cents) < midPriceCents).length;
+      const soldQuarterly = soldRecords.filter(r => safeNum(r.amount_cents) >= midPriceCents).length;
+      const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount_cents), 0) / 100;
 
       setMetrics({
         active_now: activeNow,
