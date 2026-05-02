@@ -325,33 +325,10 @@ export default function AdminAnalytics() {
       const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
 
       // ---- 2-4. Métricas PIX via edge function (bypassa RLS com service_role) ----
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (!token) throw new Error("Sem sessão ativa");
-
-      const pixRes = await fetch(
-        "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-analytics",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            period_start: toISO(periodStart),
-            period_end: toISO(periodEnd),
-          }),
-        }
-      );
-      if (!pixRes.ok) throw new Error(`admin-analytics: ${pixRes.status}`);
-      const pix = await pixRes.json();
-
-      const midPriceCents = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2 * 100;
-      const soldRecords = pix.sold_records || [];
-      const soldTotal = soldRecords.length;
-      const soldMonthly = soldRecords.filter(r => safeNum(r.amount_cents) < midPriceCents).length;
-      const soldQuarterly = soldRecords.filter(r => safeNum(r.amount_cents) >= midPriceCents).length;
-      const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount_cents), 0) / 100;
+      const { data: pix, error: pixErr } = await supabase.functions.invoke("admin-analytics", {
+        body: { period_start: toISO(periodStart), period_end: toISO(periodEnd) },
+      });
+      if (pixErr) throw new Error(`admin-analytics: ${pixErr.message}`);
 
       setMetrics({
         active_now: activeNow,
@@ -359,10 +336,10 @@ export default function AdminAnalytics() {
         active_now_quarterly: activeQuarterly,
         pending_now: safeNum(pix.pending_now),
         pending_in_period: safeNum(pix.pending_in_period),
-        sold_total: soldTotal,
-        sold_monthly: soldMonthly,
-        sold_quarterly: soldQuarterly,
-        revenue_estimated_in_period: revenuePeriod,
+        sold_total: safeNum(pix.sold_total),
+        sold_monthly: safeNum(pix.sold_monthly),
+        sold_quarterly: safeNum(pix.sold_quarterly),
+        revenue_estimated_in_period: safeNum(pix.revenue_period),
         mrr_total_estimated: mrrTotalVal,
         mrr_monthly_estimated: mrrMonthlyVal,
         mrr_quarterly_estimated: mrrQuarterlyVal,
@@ -371,7 +348,7 @@ export default function AdminAnalytics() {
       setRetD30({
         base_com_30_dias: safeNum(pix.d30_base),
         ainda_ativos: safeNum(pix.d30_retained),
-        retencao_d30: pix.d30_base > 0 ? (pix.d30_retained / pix.d30_base) * 100 : 0,
+        retencao_d30: safeNum(pix.d30_rate),
       });
     } catch (e) {
       console.error(e);
