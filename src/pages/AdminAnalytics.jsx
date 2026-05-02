@@ -342,12 +342,19 @@ export default function AdminAnalytics() {
       if (e5) setWarning(`Aviso (PIX pendentes período): ${e5.message}`);
 
       // ---- 3. Vendas PIX pagas no período (status = 'paid') ----
+      const _startISO = toISO(periodStart);
+      const _endISO = toISO(periodEnd);
+      console.log("[faturamento] filtro período:", { start: _startISO, end: _endISO });
+
       const { data: soldData, error: e6 } = await supabase
         .from("pix_payments")
         .select("amount_cents")
         .eq("status", "paid")
-        .gte("created_at", toISO(periodStart))
-        .lte("created_at", toISO(periodEnd));
+        .gte("created_at", _startISO)
+        .lte("created_at", _endISO);
+
+      console.log("[faturamento] resultado Supabase:", { soldData, error: e6 });
+
       if (e6) throw new Error(e6.message);
 
       const midPriceCents = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2 * 100;
@@ -356,6 +363,7 @@ export default function AdminAnalytics() {
       const soldMonthly = soldRecords.filter(r => safeNum(r.amount_cents) < midPriceCents).length;
       const soldQuarterly = soldRecords.filter(r => safeNum(r.amount_cents) >= midPriceCents).length;
       const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount_cents), 0) / 100;
+      console.log("[faturamento] calculado:", { soldTotal, soldMonthly, soldQuarterly, revenuePeriod });
 
       setMetrics({
         active_now: activeNow,
