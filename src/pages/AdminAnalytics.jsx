@@ -92,6 +92,22 @@ export default function AdminAnalytics() {
   const [adminChecked, setAdminChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Assistindo ao vivo
+  const [viewersNow, setViewersNow] = useState(null);
+
+  useEffect(() => {
+    const fetchViewers = async () => {
+      const { count } = await supabase
+        .from('playback_sessions')
+        .select('user_id', { count: 'exact', head: true })
+        .gt('last_heartbeat', new Date(Date.now() - 25000).toISOString());
+      setViewersNow(count ?? 0);
+    };
+    fetchViewers();
+    const id = setInterval(fetchViewers, 20000);
+    return () => clearInterval(id);
+  }, []);
+
   // Filtro de período
   const [quickPeriod, setQuickPeriod] = useState("this_month"); // this_month | last_month | custom
   const [startDateStr, setStartDateStr] = useState("");
@@ -517,6 +533,22 @@ export default function AdminAnalytics() {
               Suporte
             </button>
           </div>
+        </div>
+
+        {/* Assistindo ao vivo agora */}
+        <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5 flex items-center gap-5">
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+          </span>
+          <div className="text-4xl font-bold tabular-nums">
+            {viewersNow === null ? (
+              <Loader2 className="w-6 h-6 animate-spin text-white/40" />
+            ) : (
+              viewersNow
+            )}
+          </div>
+          <div className="text-sm text-white/60">assistindo agora</div>
         </div>
 
         {/* Filtro */}
