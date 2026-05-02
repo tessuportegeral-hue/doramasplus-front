@@ -1,5 +1,5 @@
 // src/pages/AdminDashboard.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { supabase } from '@/lib/supabaseClient';
@@ -345,6 +345,23 @@ const AdminDashboard = () => {
     }
   };
 
+  const [viewersNow, setViewersNow] = useState(null);
+
+  useEffect(() => {
+    const fetchViewers = async () => {
+      const threshold = new Date(Date.now() - 25 * 1000).toISOString();
+      const { count } = await supabase
+        .from('playback_sessions')
+        .select('*', { count: 'exact', head: true })
+        .gt('last_heartbeat', threshold);
+      setViewersNow(count ?? 0);
+    };
+
+    fetchViewers();
+    const interval = setInterval(fetchViewers, 20000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('isAdmin');
     navigate('/admin/login');
@@ -416,6 +433,27 @@ const AdminDashboard = () => {
         </header>
 
         <main className="max-w-7xl mx-auto">
+          {/* Card Ao vivo agora */}
+          <div className="bg-slate-900 p-6 rounded-lg border border-slate-800 shadow-lg mb-6 flex items-center gap-5">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </span>
+              <span className="text-sm font-medium text-slate-400 uppercase tracking-widest">
+                Ao vivo agora
+              </span>
+            </div>
+            <div className="text-5xl font-bold text-white tabular-nums">
+              {viewersNow === null ? (
+                <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
+              ) : (
+                viewersNow
+              )}
+            </div>
+            <span className="text-slate-400 text-sm">assistindo agora</span>
+          </div>
+
           {/* Busca com auto-complete */}
           <div className="bg-slate-900 p-6 rounded-lg border border-slate-800 shadow-lg mb-8">
             <div className="relative flex flex-col sm:flex-row gap-4">
