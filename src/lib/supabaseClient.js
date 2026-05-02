@@ -1,4 +1,3 @@
-import { supabase } from './customSupabaseClient';
+import { supabase, whatsappSupabase } from './customSupabaseClient';
 
-// Re-export the pre-configured client as requested
-export { supabase };
+export { supabase, whatsappSupabase };

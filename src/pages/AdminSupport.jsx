@@ -1,7 +1,6 @@
 // src/pages/AdminSupport.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase, whatsappSupabase } from "@/lib/supabaseClient";
 
 export default function AdminSupport() {
   const [conversations, setConversations] = useState([]);
@@ -320,21 +319,7 @@ export default function AdminSupport() {
     };
   }, []);
 
-  // ✅ Client separado SOMENTE pro schema whatsapp (não mexe no resto do projeto)
-  const supportSupabase = useMemo(() => {
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!url || !anon) {
-      console.error("[AdminSupport] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
-      return null;
-    }
-
-    return createClient(url, anon, {
-      auth: { persistSession: true },
-      db: { schema: "whatsapp" }, // 👈 aqui é o ponto
-    });
-  }, []);
+  const supportSupabase = whatsappSupabase;
 
   useEffect(() => {
     loadConversations();

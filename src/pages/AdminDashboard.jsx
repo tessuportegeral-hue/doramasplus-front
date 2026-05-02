@@ -352,7 +352,7 @@ const AdminDashboard = () => {
       const threshold = new Date(Date.now() - 25 * 1000).toISOString();
       const { count } = await supabase
         .from('playback_sessions')
-        .select('*', { count: 'exact', head: true })
+        .select('user_id', { count: 'exact', head: true })
         .gt('last_heartbeat', threshold);
       setViewersNow(count ?? 0);
     };

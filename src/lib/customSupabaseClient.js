@@ -67,3 +67,14 @@ const customSupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
 export default customSupabaseClient;
 
 export { customSupabaseClient, customSupabaseClient as supabase };
+
+export const whatsappSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+    storageKey: "sb-auth-token",
+    storage: safeStorage,
+  },
+  db: { schema: "whatsapp" },
+});
