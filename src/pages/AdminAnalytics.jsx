@@ -37,19 +37,20 @@ function fromDateInputValue(v) {
   if (!v) return null;
   const [yyyy, mm, dd] = v.split("-").map((x) => parseInt(x, 10));
   if (!yyyy || !mm || !dd) return null;
-  return new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+  return new Date(`${v}T00:00:00-03:00`);
 }
 function startOfDay(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  return new Date(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T00:00:00-03:00`);
 }
 function endOfDay(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  return new Date(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T23:59:59.999-03:00`);
 }
 function startOfMonth(d) {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+  return new Date(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01T00:00:00-03:00`);
 }
 function endOfMonth(d) {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  return new Date(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(lastDay)}T23:59:59.999-03:00`);
 }
 function addMonths(d, months) {
   const x = new Date(d);
