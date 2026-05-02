@@ -301,8 +301,6 @@ export default function AdminAnalytics() {
 
     try {
       const now = new Date();
-      const d30ago = new Date(now.getTime() - 30 * 86400000);
-      const d60ago = new Date(now.getTime() - 60 * 86400000);
 
       // ---- 1. Assinaturas ativas (subscriptions) ----
       const [
@@ -326,51 +324,41 @@ export default function AdminAnalytics() {
       const mrrQuarterlyVal = (activeQuarterly * PRICE_QUARTERLY) / 3;
       const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
 
-      // ---- 2. PIX pendentes ----
-      const [
-        { count: pendingNow, error: e4 },
-        { count: pendingPeriod, error: e5 },
-      ] = await Promise.all([
-        supabase.from("pix_payments").select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
-        supabase.from("pix_payments").select("id", { count: "exact", head: true })
-          .eq("status", "pending")
-          .gte("created_at", toISO(periodStart))
-          .lte("created_at", toISO(periodEnd)),
-      ]);
-      if (e4) setWarning(`Aviso (PIX pendentes): ${e4.message}`);
-      if (e5) setWarning(`Aviso (PIX pendentes período): ${e5.message}`);
+      // ---- 2-4. Métricas PIX via edge function (bypassa RLS com service_role) ----
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error("Sem sessão ativa");
 
-      // ---- 3. Vendas PIX pagas no período (status = 'paid') ----
-      const _startISO = toISO(periodStart);
-      const _endISO = toISO(periodEnd);
-      console.log("[faturamento] filtro período:", { start: _startISO, end: _endISO });
-
-      const { data: soldData, error: e6 } = await supabase
-        .from("pix_payments")
-        .select("amount_cents")
-        .eq("status", "paid")
-        .gte("created_at", _startISO)
-        .lte("created_at", _endISO);
-
-      console.log("[faturamento] resultado Supabase:", { soldData, error: e6 });
-
-      if (e6) throw new Error(e6.message);
+      const pixRes = await fetch(
+        "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-analytics",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            period_start: toISO(periodStart),
+            period_end: toISO(periodEnd),
+          }),
+        }
+      );
+      if (!pixRes.ok) throw new Error(`admin-analytics: ${pixRes.status}`);
+      const pix = await pixRes.json();
 
       const midPriceCents = (PRICE_MONTHLY + PRICE_QUARTERLY) / 2 * 100;
-      const soldRecords = soldData || [];
+      const soldRecords = pix.sold_records || [];
       const soldTotal = soldRecords.length;
       const soldMonthly = soldRecords.filter(r => safeNum(r.amount_cents) < midPriceCents).length;
       const soldQuarterly = soldRecords.filter(r => safeNum(r.amount_cents) >= midPriceCents).length;
       const revenuePeriod = soldRecords.reduce((s, r) => s + safeNum(r.amount_cents), 0) / 100;
-      console.log("[faturamento] calculado:", { soldTotal, soldMonthly, soldQuarterly, revenuePeriod });
 
       setMetrics({
         active_now: activeNow,
         active_now_monthly: activeMonthly,
         active_now_quarterly: activeQuarterly,
-        pending_now: safeNum(pendingNow),
-        pending_in_period: safeNum(pendingPeriod),
+        pending_now: safeNum(pix.pending_now),
+        pending_in_period: safeNum(pix.pending_in_period),
         sold_total: soldTotal,
         sold_monthly: soldMonthly,
         sold_quarterly: soldQuarterly,
@@ -380,40 +368,11 @@ export default function AdminAnalytics() {
         mrr_quarterly_estimated: mrrQuarterlyVal,
       });
 
-      // ---- 4. Retenção D30 (direto do banco, status = 'paid') ----
-      // Base: usuários que pagaram entre 60 e 30 dias atrás
-      const { data: baseData, error: e7 } = await supabase
-        .from("pix_payments")
-        .select("user_id")
-        .eq("status", "paid")
-        .gte("created_at", d60ago.toISOString())
-        .lt("created_at", d30ago.toISOString());
-
-      if (e7) {
-        setWarning(`Aviso (Retenção D30): ${e7.message}`);
-        setRetD30({ base_com_30_dias: 0, ainda_ativos: 0, retencao_d30: 0 });
-      } else {
-        const baseIds = [...new Set((baseData || []).map(r => r.user_id))];
-        const d30Base = baseIds.length;
-        let d30Retained = 0;
-
-        if (d30Base > 0) {
-          // Retidos: dos que estavam na base, quem pagou novamente nos últimos 30 dias
-          const { data: retData } = await supabase
-            .from("pix_payments")
-            .select("user_id")
-            .eq("status", "paid")
-            .gte("created_at", d30ago.toISOString())
-            .in("user_id", baseIds);
-          d30Retained = new Set((retData || []).map(r => r.user_id)).size;
-        }
-
-        setRetD30({
-          base_com_30_dias: d30Base,
-          ainda_ativos: d30Retained,
-          retencao_d30: d30Base > 0 ? (d30Retained / d30Base) * 100 : 0,
-        });
-      }
+      setRetD30({
+        base_com_30_dias: safeNum(pix.d30_base),
+        ainda_ativos: safeNum(pix.d30_retained),
+        retencao_d30: pix.d30_base > 0 ? (pix.d30_retained / pix.d30_base) * 100 : 0,
+      });
     } catch (e) {
       console.error(e);
       setError(String(e?.message || e || "Erro desconhecido"));
@@ -772,7 +731,7 @@ export default function AdminAnalytics() {
                     "Retenção D30",
                     formatPct(retD30.retencao_d30),
                     <TrendingUp className="w-5 h-5 text-green-300" />,
-                    "pix_payments, status='paid'",
+                    "via edge function admin-analytics",
                     "ok"
                   )}
                 </div>
@@ -831,7 +790,7 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-3 text-xs text-white/45">
-                Obs: todos os dados vêm de queries diretas — subscriptions para ativos/MRR, pix_payments (status='paid') para vendas/receita/retenção.
+                Obs: subscriptions consultado direto (RLS permite admin); pix_payments via edge function admin-analytics (service_role, sem restrição de RLS).
               </div>
             </div>
           </>
