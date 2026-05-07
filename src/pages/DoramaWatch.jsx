@@ -59,6 +59,10 @@ export default function DoramaWatch() {
   const latestTimeRef = useRef(0);
   const latestDurationRef = useRef(0);
 
+  // ✅ IFRAME: contador local + tempo pra retomar (?t=) — fixado uma vez por dorama
+  const iframeLocalCounterRef = useRef(0);
+  const [iframeResumeT, setIframeResumeT] = useState(0);
+
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
 
@@ -174,22 +178,26 @@ export default function DoramaWatch() {
     return "none";
   }, [videoUrl]);
 
-  // ✅ autoplay no iframe (apenas visual)
+  // ✅ autoplay no iframe + retomar via ?t= (Bunny embed lê t em segundos)
   const iframeSrc = useMemo(() => {
     if (playerType !== "iframe") return "";
     const base = (videoUrl || "").trim();
     if (!base) return "";
 
+    const resume = iframeResumeT >= 10 ? Math.floor(iframeResumeT) : 0;
+
     try {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
+      if (resume > 0) u.searchParams.set("t", String(resume));
       u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
-      return `${base}${join}autoplay=true&_ts=${Date.now()}`;
+      const tParam = resume > 0 ? `&t=${resume}` : "";
+      return `${base}${join}autoplay=true${tParam}&_ts=${Date.now()}`;
     }
-  }, [videoUrl, playerType]);
+  }, [videoUrl, playerType, iframeResumeT]);
 
   // ✅ HLS (somente quando playerType === "hls")
   useEffect(() => {
@@ -239,7 +247,7 @@ export default function DoramaWatch() {
     if (!user?.id) return false;
     if (!dorama?.id) return false;
     if (isIphoneMode) return false;
-    return playerType === "mp4" || playerType === "hls" || playerType === "video";
+    return playerType === "mp4" || playerType === "hls" || playerType === "video" || playerType === "iframe";
   }, [isPremium, user?.id, dorama?.id, isIphoneMode, playerType]);
 
   // ✅ TESTE GRÁTIS: controle por IP via edge function (só para NÃO logado)
@@ -416,8 +424,13 @@ export default function DoramaWatch() {
       setLiveSeconds(0);
       lastSavedRef.current = 0;
       hasAppliedResumeRef.current = false;
+      iframeLocalCounterRef.current = 0;
+      setIframeResumeT(0);
       return;
     }
+
+    iframeLocalCounterRef.current = 0;
+    setIframeResumeT(0);
 
     (async () => {
       try {
@@ -439,12 +452,16 @@ export default function DoramaWatch() {
 
         lastSavedRef.current = saved;
         hasAppliedResumeRef.current = false;
+        iframeLocalCounterRef.current = saved;
+        setIframeResumeT(saved);
       } catch (err) {
         console.error("watch_history select fatal:", err);
         setSavedSeconds(0);
         setLiveSeconds(0);
         lastSavedRef.current = 0;
         hasAppliedResumeRef.current = false;
+        iframeLocalCounterRef.current = 0;
+        setIframeResumeT(0);
       }
     })();
   }, [allowContinue, user?.id, dorama?.id]);
@@ -568,6 +585,77 @@ export default function DoramaWatch() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds]);
+
+  // ✅ TRACKING DO IFRAME (Bunny embed) — postMessage + fallback contador local
+  useEffect(() => {
+    if (!allowContinue) return;
+    if (playerType !== "iframe") return;
+    if (!user?.id || !dorama?.id) return;
+    if (!claimAllowed) return; // só rastreia se o player estiver realmente liberado/renderizado
+
+    let isPaused = false;
+    let lastRealTime = 0;
+    let lastRealTimeAt = 0;
+
+    const onMessage = (e) => {
+      let data = e.data;
+      if (typeof data === "string") {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (!data || typeof data !== "object") return;
+
+      const evt = data.type || data.event || data.message;
+      if (evt === "pause" || evt === "paused") isPaused = true;
+      else if (evt === "play" || evt === "playing") isPaused = false;
+
+      const t = data.currentTime ?? data.time ?? data.position ?? data.seconds;
+      if (typeof t === "number" && isFinite(t) && t > 0) {
+        lastRealTime = t;
+        lastRealTimeAt = Date.now();
+      }
+    };
+
+    const tick = () => {
+      if (document.visibilityState === "hidden") return;
+      if (isPaused) return;
+
+      const now = Date.now();
+      if (lastRealTime > 0 && now - lastRealTimeAt < 15_000) {
+        // postMessage entregou um tempo real recente — usa ele
+        iframeLocalCounterRef.current = Math.floor(lastRealTime);
+      } else {
+        // fallback: incrementa 5s
+        iframeLocalCounterRef.current += 5;
+      }
+
+      saveProgress(iframeLocalCounterRef.current, 0);
+    };
+
+    const flush = () => {
+      if (iframeLocalCounterRef.current > 0) {
+        saveProgress(iframeLocalCounterRef.current, 0);
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onBeforeUnload = () => flush();
+
+    window.addEventListener("message", onMessage);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    const intervalId = setInterval(tick, 5_000);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("message", onMessage);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowContinue, playerType, dorama?.id, user?.id, claimAllowed]);
 
   const canResume = allowContinue && savedSeconds >= 10;
 
