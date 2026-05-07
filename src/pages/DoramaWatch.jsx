@@ -231,7 +231,7 @@ export default function DoramaWatch() {
     } else {
       el.src = videoUrl;
     }
-  }, [videoUrl, playerType]);
+  }, [videoUrl, playerType, claimAllowed]);
 
   const goIphoneMode = () => {
     navigate(`/dorama/${dorama?.slug || slugFromUrl}/watch?mode=iphone`, { replace: true });
@@ -584,7 +584,7 @@ export default function DoramaWatch() {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds]);
+  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds, claimAllowed]);
 
   // ✅ TRACKING DO IFRAME (Bunny embed) — postMessage + fallback contador local
   useEffect(() => {
