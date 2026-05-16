@@ -15,9 +15,33 @@ export default function DoramasChat() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const proactiveFiredRef = useRef(false);
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
+
+  // Dora proativa em /plans: abre o chat após 15s parado na página
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.location.pathname.includes("/plans")) return;
+    if (proactiveFiredRef.current) return;
+    if (open) return;
+
+    const timer = setTimeout(() => {
+      if (proactiveFiredRef.current) return;
+      proactiveFiredRef.current = true;
+      setOpen(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Oi! Posso te ajudar a escolher o melhor plano? 😊",
+        },
+      ]);
+    }, 15000);
+
+    return () => clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -311,7 +335,7 @@ export default function DoramasChat() {
           {/* Quick suggestions (only at start) */}
           {messages.length === 1 && (
             <div style={{ padding: "0 16px 8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {["Como assinar?", "Não consigo acessar", "Me recomenda um dorama"].map((q) => (
+              {["Quero ativar meu acesso", "Não consigo acessar", "Me recomenda um dorama"].map((q) => (
                 <button
                   key={q}
                   onClick={() => sendText(q)}
