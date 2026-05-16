@@ -57,6 +57,32 @@ export default function DoramasChat() {
     }
   };
 
+  const sendText = async (text) => {
+    if (loading) return;
+    const newMessages = [...messages, { role: "user", content: text }];
+    setMessages(newMessages);
+    setLoading(true);
+    try {
+      const response = await fetch(
+        'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-chat',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          }),
+        }
+      );
+      const data = await response.json();
+      const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "Ops, tive um problema técnico. Tenta de novo em instantes! 😅" }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -261,7 +287,7 @@ export default function DoramasChat() {
               {["Como assinar?", "Não consigo acessar", "Me recomenda um dorama"].map((q) => (
                 <button
                   key={q}
-                  onClick={() => { setInput(q); setTimeout(sendMessage, 0); setMessages((prev) => [...prev, { role: "user", content: q }]); setInput(""); }}
+                  onClick={() => sendText(q)}
                   style={{
                     padding: "5px 10px",
                     borderRadius: "20px",
