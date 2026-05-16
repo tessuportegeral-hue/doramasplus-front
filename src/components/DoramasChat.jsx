@@ -73,10 +73,19 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      supabase.from('dora_conversations').insert([
-        { session_id: sessionIdRef.current, role: 'user', content: text },
-        { session_id: sessionIdRef.current, role: 'assistant', content: reply },
-      ]);
+      fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDgxMTI5OTAsImV4cCI6MjAyMzY4ODk5MH0.9HnHLan5t0ROjkVf7r7YXb1P5FRKHJJeJfH4fhMsLLI',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDgxMTI5OTAsImV4cCI6MjAyMzY4ODk5MH0.9HnHLan5t0ROjkVf7r7YXb1P5FRKHJJeJfH4fhMsLLI',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify([
+          { session_id: sessionIdRef.current, role: 'user', content: text },
+          { session_id: sessionIdRef.current, role: 'assistant', content: reply }
+        ])
+      });
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -106,10 +115,19 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      supabase.from('dora_conversations').insert([
-        { session_id: sessionIdRef.current, role: 'user', content: text },
-        { session_id: sessionIdRef.current, role: 'assistant', content: reply },
-      ]);
+      fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDgxMTI5OTAsImV4cCI6MjAyMzY4ODk5MH0.9HnHLan5t0ROjkVf7r7YXb1P5FRKHJJeJfH4fhMsLLI',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDgxMTI5OTAsImV4cCI6MjAyMzY4ODk5MH0.9HnHLan5t0ROjkVf7r7YXb1P5FRKHJJeJfH4fhMsLLI',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify([
+          { session_id: sessionIdRef.current, role: 'user', content: text },
+          { session_id: sessionIdRef.current, role: 'assistant', content: reply }
+        ])
+      });
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "Ops, tive um problema técnico. Tenta de novo em instantes! 😅" }]);
     } finally {
