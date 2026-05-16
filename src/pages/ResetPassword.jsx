@@ -5,42 +5,120 @@ import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from 'lucide-react';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [checkingLink, setCheckingLink] = useState(true);
-  const [validLink, setValidLink] = useState(false);
+  // 'checking' | 'request' | 'reset' | 'invalid'
+  const [mode, setMode] = useState('checking');
 
+  // Fluxo 1: pedir recuperação por email
+  const [email, setEmail] = useState('');
+  const [requestSent, setRequestSent] = useState(false);
+
+  // Fluxo 2: definir nova senha
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // controla olhinho
 
-  // Verifica se o usuário veio de um link de recuperação válido
+  // Decide o fluxo com base na URL:
+  // - sem indicador de recuperação → formulário pra pedir email
+  // - com indicador → aguarda sessão de recuperação e abre o formulário de nova senha
   useEffect(() => {
-    const checkRecoverySession = async () => {
-      try {
-        const { data, error } = await supabase.auth.getUser();
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    const hasRecoveryHash =
+      hash.includes('type=recovery') || hash.includes('access_token');
+    const hasRecoveryQuery =
+      search.includes('code=') || search.includes('token=');
 
-        if (error || !data?.user) {
-          setValidLink(false);
-        } else {
-          setValidLink(true);
-        }
-      } catch (err) {
-        console.error('Erro ao verificar sessão de recuperação:', err);
-        setValidLink(false);
-      } finally {
-        setCheckingLink(false);
+    if (!hasRecoveryHash && !hasRecoveryQuery) {
+      setMode('request');
+      return;
+    }
+
+    let resolved = false;
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        resolved = true;
+        setMode('reset');
       }
-    };
+    });
 
-    checkRecoverySession();
+    // Fallback: se em 4s nenhum evento disparou, valida com getSession
+    const t = setTimeout(async () => {
+      if (resolved) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          setMode('reset');
+        } else {
+          setMode('invalid');
+        }
+      } catch {
+        setMode('invalid');
+      }
+    }, 4000);
+
+    return () => {
+      clearTimeout(t);
+      sub?.subscription?.unsubscribe?.();
+    };
   }, []);
 
+  // -------- Fluxo 1: pedir email de recuperação --------
+  const handleRequestReset = async (e) => {
+    e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      toast({
+        title: 'Informe seu email',
+        description: 'Digite o email da sua conta para enviarmos o link.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        console.error('Erro ao solicitar recuperação:', error);
+        toast({
+          title: 'Erro ao enviar email',
+          description: error.message || 'Tente novamente em alguns instantes.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setRequestSent(true);
+      toast({
+        title: 'Email enviado!',
+        description:
+          'Confira sua caixa de entrada (e o spam) e siga o link para redefinir sua senha.',
+      });
+    } catch (err) {
+      console.error('Erro inesperado ao solicitar recuperação:', err);
+      toast({
+        title: 'Erro inesperado',
+        description: 'Tente novamente em alguns instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // -------- Fluxo 2: definir nova senha --------
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -74,9 +152,7 @@ const ResetPassword = () => {
     try {
       setLoading(true);
 
-      const { error } = await supabase.auth.updateUser({
-        password,
-      });
+      const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
         console.error('Erro ao atualizar senha:', error);
@@ -108,12 +184,12 @@ const ResetPassword = () => {
     }
   };
 
-  // Enquanto verifica se existe sessão de recuperação
-  if (checkingLink) {
+  // ----- Loading inicial enquanto decide o modo -----
+  if (mode === 'checking') {
     return (
       <>
         <Helmet>
-          <title>Redefinir senha | DoramasPlus</title>
+          <title>Recuperar senha | DoramasPlus</title>
         </Helmet>
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
           <div className="flex flex-col items-center gap-3">
@@ -125,8 +201,84 @@ const ResetPassword = () => {
     );
   }
 
-  // Se não tiver sessão válida, mostra mensagem de link inválido/expirado
-  if (!validLink) {
+  // ----- Modo 1: pedir recuperação por email -----
+  if (mode === 'request') {
+    return (
+      <>
+        <Helmet>
+          <title>Recuperar senha | DoramasPlus</title>
+        </Helmet>
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
+          <div className="max-w-md w-full bg-slate-900/95 rounded-2xl p-6 shadow-lg border border-slate-800">
+            {requestSent ? (
+              <div className="text-center">
+                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
+                <h1 className="text-2xl font-semibold mb-2">Email enviado!</h1>
+                <p className="text-sm text-slate-300 mb-6">
+                  Enviamos um link de recuperação para <strong>{email}</strong>.
+                  Confira sua caixa de entrada e a pasta de spam.
+                </p>
+                <Button className="w-full" onClick={() => navigate('/login')}>
+                  Voltar para o login
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <Mail className="w-5 h-5 text-violet-400" />
+                  <h1 className="text-2xl font-semibold">Recuperar senha</h1>
+                </div>
+                <p className="text-sm text-slate-300 mb-6">
+                  Digite o email da sua conta. Enviaremos um link para você
+                  definir uma nova senha.
+                </p>
+
+                <form onSubmit={handleRequestReset} className="space-y-4">
+                  <div>
+                    <label className="text-sm mb-1 block">Email</label>
+                    <Input
+                      type="email"
+                      placeholder="seuemail@exemplo.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      className="h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:border-violet-500"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full mt-2 h-11 text-base"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      'Enviar link de recuperação'
+                    )}
+                  </Button>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="block mt-4 text-sm text-violet-400 hover:underline mx-auto"
+                >
+                  Voltar para o login
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ----- Link inválido / expirado -----
+  if (mode === 'invalid') {
     return (
       <>
         <Helmet>
@@ -138,14 +290,16 @@ const ResetPassword = () => {
               Link de recuperação inválido ou expirado
             </h1>
             <p className="text-sm text-slate-300 mb-4">
-              Solicite uma nova recuperação de senha na tela de login.
+              Solicite uma nova recuperação de senha.
               Por segurança, cada link só pode ser usado por um tempo limitado.
             </p>
             <Button
               className="w-full"
-              onClick={() => navigate('/login')}
+              onClick={() => {
+                window.location.replace('/reset-password');
+              }}
             >
-              Voltar para o login
+              Solicitar novo link
             </Button>
           </div>
         </div>
@@ -153,7 +307,7 @@ const ResetPassword = () => {
     );
   }
 
-  // Tela normal de redefinição de senha
+  // ----- Modo 2: definir nova senha (após clicar no link do email) -----
   return (
     <>
       <Helmet>
