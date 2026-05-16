@@ -16,6 +16,7 @@ import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
+import DoramasChat from '@/components/DoramasChat';
 
 // ✅ (NOVO) Gate obrigatório do WhatsApp/phone
 import RequirePhoneGate from '@/components/RequirePhoneGate';
@@ -422,6 +423,7 @@ function App() {
 
       <Toaster />
       <InstallAppBanner />
+      <DoramasChat />
     </>
   );
 }
