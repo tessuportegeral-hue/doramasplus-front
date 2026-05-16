@@ -14,10 +14,20 @@ export default function DoramasChat() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const proactiveFiredRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus();
@@ -225,12 +235,12 @@ export default function DoramasChat() {
         <div
           style={{
             position: "fixed",
-            bottom: "90px",
-            right: "24px",
+            bottom: isMobile ? "80px" : "90px",
+            right: isMobile ? "12px" : "24px",
             width: "360px",
-            maxWidth: "calc(100vw - 48px)",
-            height: "500px",
-            maxHeight: "calc(100vh - 120px)",
+            maxWidth: isMobile ? "calc(100vw - 24px)" : "calc(100vw - 48px)",
+            height: isMobile ? "60vh" : "500px",
+            maxHeight: isMobile ? "60vh" : "calc(100vh - 120px)",
             borderRadius: "16px",
             background: "#0f0f0f",
             border: "1px solid #2a2a2a",
@@ -311,33 +321,59 @@ export default function DoramasChat() {
             }}
           >
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                className="chat-msg"
-                style={{
-                  display: "flex",
-                  justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-                }}
-              >
+              <div key={i}>
                 <div
+                  className="chat-msg"
                   style={{
-                    maxWidth: "82%",
-                    padding: "10px 14px",
-                    borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                    background:
-                      msg.role === "user"
-                        ? "linear-gradient(135deg, #e74c3c, #c0392b)"
-                        : "#1e1e1e",
-                    color: "#fff",
-                    fontSize: "13.5px",
-                    lineHeight: "1.5",
-                    fontFamily: "system-ui, -apple-system, sans-serif",
-                    border: msg.role === "assistant" ? "1px solid #2a2a2a" : "none",
-                    wordBreak: "break-word",
+                    display: "flex",
+                    justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
                   }}
                 >
-                  {renderText(msg.content)}
+                  <div
+                    style={{
+                      maxWidth: "82%",
+                      padding: "10px 14px",
+                      borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      background:
+                        msg.role === "user"
+                          ? "linear-gradient(135deg, #e74c3c, #c0392b)"
+                          : "#1e1e1e",
+                      color: "#fff",
+                      fontSize: "13.5px",
+                      lineHeight: "1.5",
+                      fontFamily: "system-ui, -apple-system, sans-serif",
+                      border: msg.role === "assistant" ? "1px solid #2a2a2a" : "none",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {renderText(msg.content)}
+                  </div>
                 </div>
+                {i === 0 && messages.length === 1 && (
+                  <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {["Quero ativar meu acesso", "Esqueci minha senha", "Tem dorama dublado?"].map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => sendText(q)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: "20px",
+                          border: "1px solid #333",
+                          background: "transparent",
+                          color: "#bbb",
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          fontFamily: "system-ui",
+                          transition: "all 0.15s",
+                        }}
+                        onMouseOver={(e) => { e.target.style.borderColor = "#e74c3c"; e.target.style.color = "#e74c3c"; }}
+                        onMouseOut={(e) => { e.target.style.borderColor = "#333"; e.target.style.color = "#bbb"; }}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
 
@@ -359,33 +395,6 @@ export default function DoramasChat() {
             )}
             <div ref={messagesEndRef} />
           </div>
-
-          {/* Quick suggestions (only at start) */}
-          {messages.length === 1 && (
-            <div style={{ padding: "0 16px 8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {["Quero ativar meu acesso", "Esqueci minha senha", "Tem dorama dublado?"].map((q) => (
-                <button
-                  key={q}
-                  onClick={() => sendText(q)}
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: "20px",
-                    border: "1px solid #333",
-                    background: "transparent",
-                    color: "#bbb",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    fontFamily: "system-ui",
-                    transition: "all 0.15s",
-                  }}
-                  onMouseOver={(e) => { e.target.style.borderColor = "#e74c3c"; e.target.style.color = "#e74c3c"; }}
-                  onMouseOut={(e) => { e.target.style.borderColor = "#333"; e.target.style.color = "#bbb"; }}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Input area */}
           <div
