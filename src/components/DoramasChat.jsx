@@ -335,7 +335,7 @@ export default function DoramasChat() {
           {/* Quick suggestions (only at start) */}
           {messages.length === 1 && (
             <div style={{ padding: "0 16px 8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {["Quero ativar meu acesso", "Não consigo acessar", "Me recomenda um dorama"].map((q) => (
+              {["Quero ativar meu acesso", "Esqueci minha senha", "Tem dorama dublado?"].map((q) => (
                 <button
                   key={q}
                   onClick={() => sendText(q)}
