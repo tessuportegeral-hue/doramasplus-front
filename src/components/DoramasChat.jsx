@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
 
 const WHATSAPP = "5518996796654"; // ex: 5511999999999
 
@@ -35,13 +34,17 @@ export default function DoramasChat() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('dora-chat', {
-        body: {
-          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-        },
-      });
-
-      if (error) throw error;
+      const response = await fetch(
+        'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-chat',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          }),
+        }
+      );
+      const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
