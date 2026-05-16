@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 const WHATSAPP = "5518996796654"; // ex: 5511999999999
 
@@ -16,6 +17,7 @@ export default function DoramasChat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const proactiveFiredRef = useRef(false);
+  const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus();
@@ -71,6 +73,10 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      supabase.from('dora_conversations').insert([
+        { session_id: sessionIdRef.current, role: 'user', content: text },
+        { session_id: sessionIdRef.current, role: 'assistant', content: reply },
+      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -100,6 +106,10 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      supabase.from('dora_conversations').insert([
+        { session_id: sessionIdRef.current, role: 'user', content: text },
+        { session_id: sessionIdRef.current, role: 'assistant', content: reply },
+      ]);
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "Ops, tive um problema técnico. Tenta de novo em instantes! 😅" }]);
     } finally {
