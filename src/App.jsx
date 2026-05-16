@@ -11,12 +11,14 @@ import {
   Route,
   Navigate,
   useLocation,
+  useNavigate,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import DoramasChat from '@/components/DoramasChat';
+import { supabase } from '@/lib/supabaseClient';
 
 // ✅ (NOVO) Gate obrigatório do WhatsApp/phone
 import RequirePhoneGate from '@/components/RequirePhoneGate';
@@ -226,6 +228,42 @@ function DeviceGuard({ children }) {
   */
 }
 
+// ✅ Garante que o link de recuperação de senha sempre caia em /reset-password,
+// mesmo quando o Supabase faz fallback para a Site URL (geralmente o "/" do app).
+function PasswordRecoveryRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    // 1) Se ainda existir o hash de recuperação na URL e não estamos em /reset-password,
+    //    força reload preservando o hash para o client do Supabase processar lá.
+    const hash = window.location.hash || '';
+    const hasRecoveryHash =
+      hash.includes('type=recovery') || hash.includes('access_token');
+    if (hasRecoveryHash && location.pathname !== '/reset-password') {
+      window.location.replace(
+        '/reset-password' + window.location.search + hash
+      );
+      return;
+    }
+
+    // 2) Se o client já processou o hash e disparou PASSWORD_RECOVERY,
+    //    redireciona pra /reset-password com flag explícita.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === 'PASSWORD_RECOVERY' &&
+        window.location.pathname !== '/reset-password'
+      ) {
+        navigate('/reset-password?recovery=1', { replace: true });
+      }
+    });
+
+    return () => sub?.subscription?.unsubscribe?.();
+  }, [navigate, location.pathname]);
+
+  return null;
+}
+
 function TrafficSourceTracker() {
   const location = useLocation();
   useEffect(() => {
@@ -263,6 +301,7 @@ function App() {
 
       <AuthProvider>
         <Router>
+          <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}

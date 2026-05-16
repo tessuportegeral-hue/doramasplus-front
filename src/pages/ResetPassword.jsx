@@ -34,7 +34,9 @@ const ResetPassword = () => {
     const hasRecoveryHash =
       hash.includes('type=recovery') || hash.includes('access_token');
     const hasRecoveryQuery =
-      search.includes('code=') || search.includes('token=');
+      search.includes('code=') ||
+      search.includes('token=') ||
+      search.includes('recovery=1');
 
     if (!hasRecoveryHash && !hasRecoveryQuery) {
       setMode('request');
@@ -87,7 +89,7 @@ const ResetPassword = () => {
     try {
       setLoading(true);
       const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: 'https://doramasplus.com.br/reset-password',
       });
 
       if (error) {
