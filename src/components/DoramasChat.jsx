@@ -90,14 +90,41 @@ export default function DoramasChat() {
     }
   };
 
-  // Simple markdown bold parser
+  // Simple markdown bold + URL parser
+  const renderLinks = (text, keyPrefix) => {
+    const urlRegex = /(https:\/\/[^\s]+)/g;
+    const segments = text.split(urlRegex);
+    return segments.map((seg, j) => {
+      if (urlRegex.test(seg)) {
+        urlRegex.lastIndex = 0;
+        const isWhats = seg.startsWith("https://wa.me/");
+        return (
+          <a
+            key={`${keyPrefix}-l-${j}`}
+            href={seg}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: isWhats ? "#25D366" : "#e74c3c",
+              textDecoration: "underline",
+              wordBreak: "break-all",
+            }}
+          >
+            {seg}
+          </a>
+        );
+      }
+      return <span key={`${keyPrefix}-t-${j}`}>{seg}</span>;
+    });
+  };
+
   const renderText = (text) => {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) =>
       part.startsWith("**") && part.endsWith("**") ? (
-        <strong key={i}>{part.slice(2, -2)}</strong>
+        <strong key={i}>{renderLinks(part.slice(2, -2), `b${i}`)}</strong>
       ) : (
-        <span key={i}>{part}</span>
+        <span key={i}>{renderLinks(part, `s${i}`)}</span>
       )
     );
   };
