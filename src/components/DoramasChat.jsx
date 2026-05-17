@@ -83,6 +83,8 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
@@ -92,8 +94,8 @@ export default function DoramasChat() {
           'Prefer': 'return=minimal'
         },
         body: JSON.stringify([
-          { session_id: sessionIdRef.current, role: 'user', content: text },
-          { session_id: sessionIdRef.current, role: 'assistant', content: reply }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: reply }
         ])
       });
     } catch {
@@ -125,6 +127,8 @@ export default function DoramasChat() {
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
@@ -134,8 +138,8 @@ export default function DoramasChat() {
           'Prefer': 'return=minimal'
         },
         body: JSON.stringify([
-          { session_id: sessionIdRef.current, role: 'user', content: text },
-          { session_id: sessionIdRef.current, role: 'assistant', content: reply }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: reply }
         ])
       });
     } catch {
