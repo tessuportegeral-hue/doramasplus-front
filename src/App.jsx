@@ -48,6 +48,9 @@ import ResetPassword from '@/pages/ResetPassword';
 // ✅ (ADICIONADO) Página do vídeo
 import ComoFunciona from '@/pages/ComoFunciona';
 
+// ✅ Programa de indicação
+import Indicar from '@/pages/Indicar';
+
 // Admin
 import AdminLogin from '@/pages/AdminLogin';
 import AdminAnalytics from '@/pages/AdminAnalytics';
@@ -349,6 +352,7 @@ function App() {
                 {/* Auth */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/cadastro" element={<Signup />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* 🔓 DETALHE DO DORAMA PÚBLICO */}
@@ -397,6 +401,16 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <SubscriptionPlans />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ✅ Programa de indicação */}
+                <Route
+                  path="/indicar"
+                  element={
+                    <ProtectedRoute>
+                      <Indicar />
                     </ProtectedRoute>
                   }
                 />

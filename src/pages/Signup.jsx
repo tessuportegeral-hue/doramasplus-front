@@ -44,6 +44,18 @@ const Signup = () => {
     } catch {}
   }, [location.search]);
 
+  // ✅ captura ?ref= e salva no localStorage para usar depois do signup
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(location.search);
+      const ref = (params.get('ref') || '').trim();
+      if (ref) {
+        localStorage.setItem('doramasplus_ref', ref);
+      }
+    } catch {}
+  }, [location.search]);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -116,6 +128,31 @@ const Signup = () => {
               variant: 'destructive',
             });
           }
+        }
+      } catch {
+        // silencioso: não deixa isso atrapalhar criação da conta
+      }
+
+      // ✅ salva referred_by (programa de indicação)
+      try {
+        const userId = data?.user?.id || data?.session?.user?.id || null;
+        const refCode = (localStorage.getItem('doramasplus_ref') || '').trim();
+        if (userId && refCode) {
+          // busca o referrer pelo ref_code
+          const { data: referrer } = await supabase
+            .from('profiles')
+            .select('id, ref_code')
+            .eq('ref_code', refCode)
+            .maybeSingle();
+
+          // só salva se: encontrou referrer E não é o próprio usuário (anti auto-indicação)
+          if (referrer?.id && referrer.id !== userId) {
+            await supabase
+              .from('profiles')
+              .update({ referred_by: referrer.id })
+              .eq('id', userId);
+          }
+          localStorage.removeItem('doramasplus_ref');
         }
       } catch {
         // silencioso: não deixa isso atrapalhar criação da conta
