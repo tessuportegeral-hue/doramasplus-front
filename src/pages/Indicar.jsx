@@ -101,8 +101,9 @@ const Indicar = () => {
                 Indique e ganhe 15 dias grátis
               </h1>
               <p className="text-slate-400">
-                Compartilhe seu link. A cada amigo que assinar o DoramasPlus pelo Pix,
-                você ganha <strong className="text-white">15 dias</strong> adicionados na sua conta.
+                Compartilhe seu link. A cada amigo que se cadastrar pelo seu link e
+                fizer o primeiro pagamento, você ganha{' '}
+                <strong className="text-white">15 dias</strong> adicionados na sua conta.
               </p>
             </div>
 
