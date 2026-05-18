@@ -269,12 +269,20 @@ function TrafficSourceTracker() {
   useEffect(() => {
     try {
       const src = new URLSearchParams(location.search).get('src');
-      if (src) {
-        const val = src.trim().toLowerCase();
-        localStorage.setItem('dp_traffic_src', val);
-        localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
-        sessionStorage.setItem('dp_traffic_src', val);
-      }
+      if (!src) return;
+      const val = src.trim().toLowerCase();
+      if (!val) return;
+
+      // First-touch: se já tem valor salvo no localStorage dentro do TTL de 7 dias,
+      // não sobrescreve. Assim ads vindo antes do Google continua valendo.
+      const existing = (localStorage.getItem('dp_traffic_src') || '').trim().toLowerCase();
+      const ts = Number(localStorage.getItem('dp_traffic_src_ts') || '0');
+      const isFresh = ts && Date.now() - ts < 7 * 24 * 60 * 60 * 1000;
+      if (existing && isFresh) return;
+
+      localStorage.setItem('dp_traffic_src', val);
+      localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
+      sessionStorage.setItem('dp_traffic_src', val);
     } catch {}
   }, [location.search]);
   return null;
