@@ -1,23 +1,45 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/SupabaseAuthContext";
+import { Eye, EyeOff } from "lucide-react";
 
 const EDGE_FN_URL =
   "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/delete-account";
 
 export default function DeleteAccountModal({ isOpen, onClose }) {
   const navigate = useNavigate();
-  const [confirmation, setConfirmation] = useState("");
+  const { user } = useAuth();
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const canDelete = confirmation === "EXCLUIR";
+  const canDelete = password.length > 0 && !loading;
 
-  async function handleDelete() {
+  async function handleDelete(e) {
+    e?.preventDefault?.();
     if (!canDelete) return;
+
+    const email = user?.email;
+    if (!email) {
+      setError("Sessão inválida. Faça login novamente.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError("Senha incorreta. Tente novamente.");
+        return;
+      }
 
       const {
         data: { session },
@@ -53,7 +75,8 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
 
   function handleClose() {
     if (loading) return;
-    setConfirmation("");
+    setPassword("");
+    setShowPassword(false);
     setError("");
     onClose();
   }
@@ -76,7 +99,8 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
         if (e.target === e.currentTarget) handleClose();
       }}
     >
-      <div
+      <form
+        onSubmit={handleDelete}
         style={{
           width: "100%",
           maxWidth: 420,
@@ -92,6 +116,7 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
             Excluir minha conta
           </div>
           <button
+            type="button"
             onClick={handleClose}
             disabled={loading}
             style={{
@@ -114,28 +139,51 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
           perderá o acesso à sua assinatura.
         </p>
 
-        {/* Campo de confirmação */}
+        {/* Campo de senha */}
         <label style={{ display: "block", color: "rgba(255,255,255,0.6)", fontSize: 13, marginBottom: 6 }}>
-          Digite <strong style={{ color: "#ef4444" }}>EXCLUIR</strong> para confirmar
+          Digite sua <strong style={{ color: "#ef4444" }}>senha</strong> para confirmar
         </label>
-        <input
-          type="text"
-          value={confirmation}
-          onChange={(e) => setConfirmation(e.target.value)}
-          disabled={loading}
-          placeholder="EXCLUIR"
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #2a2a2a",
-            background: "rgba(255,255,255,0.04)",
-            color: "#fff",
-            fontSize: 14,
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            placeholder="Sua senha"
+            autoComplete="current-password"
+            style={{
+              width: "100%",
+              padding: "10px 40px 10px 12px",
+              borderRadius: 10,
+              border: "1px solid #2a2a2a",
+              background: "rgba(255,255,255,0.04)",
+              color: "#fff",
+              fontSize: 14,
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            tabIndex={-1}
+            style={{
+              position: "absolute",
+              right: 10,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              color: "rgba(255,255,255,0.55)",
+              cursor: "pointer",
+              padding: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
 
         {error && (
           <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>{error}</p>
@@ -144,6 +192,7 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
         {/* Botões */}
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button
+            type="button"
             onClick={handleClose}
             disabled={loading}
             style={{
@@ -160,25 +209,25 @@ export default function DeleteAccountModal({ isOpen, onClose }) {
             Cancelar
           </button>
           <button
-            onClick={handleDelete}
-            disabled={!canDelete || loading}
+            type="submit"
+            disabled={!canDelete}
             style={{
               flex: 1,
               padding: "11px",
               borderRadius: 10,
               border: "none",
-              background: canDelete && !loading ? "#ef4444" : "rgba(239,68,68,0.25)",
-              color: canDelete && !loading ? "#fff" : "rgba(255,255,255,0.35)",
+              background: canDelete ? "#ef4444" : "rgba(239,68,68,0.25)",
+              color: canDelete ? "#fff" : "rgba(255,255,255,0.35)",
               fontSize: 14,
               fontWeight: 700,
-              cursor: canDelete && !loading ? "pointer" : "not-allowed",
+              cursor: canDelete ? "pointer" : "not-allowed",
               transition: "background 0.15s",
             }}
           >
             {loading ? "Excluindo…" : "Excluir conta"}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
