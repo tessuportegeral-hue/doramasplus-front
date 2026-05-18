@@ -93,6 +93,7 @@ const MinhaConta = () => {
   }, [nextBillingRaw]);
 
   const expired = typeof daysLeft === 'number' && daysLeft <= 0;
+  const isCanceledOrExpired = statusRaw === 'canceled' || expired;
   const noSubscription = !loading && !subscription;
   const showRenew = noSubscription || expired || !isActive;
 
@@ -157,6 +158,10 @@ const MinhaConta = () => {
                     {isActive ? (
                       <span className="inline-flex items-center gap-1 text-emerald-300 font-semibold">
                         <CheckCircle2 className="w-4 h-4" /> Ativa
+                      </span>
+                    ) : isCanceledOrExpired ? (
+                      <span className="inline-flex items-center gap-1 text-red-400 font-semibold">
+                        <AlertTriangle className="w-4 h-4" /> Vencida
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-300 font-semibold">

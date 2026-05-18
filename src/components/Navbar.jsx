@@ -682,18 +682,22 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                           </p>
                         )}
 
-                        {statusLabel && (
-                          <p className="mt-1">
-                            Status{' '}
-                            <span className={
-                              statusLabel === 'active'
-                                ? 'text-green-400 font-semibold'
-                                : 'text-amber-300 font-semibold'
-                            }>
-                              {statusLabel}
-                            </span>
-                          </p>
-                        )}
+                        {statusLabel && (() => {
+                          const lower = String(statusLabel).toLowerCase();
+                          const isExpired = lower === 'canceled' || (typeof daysLeft === 'number' && daysLeft <= 0);
+                          const displayStatus = isExpired ? 'Vencida' : statusLabel;
+                          const colorClass = lower === 'active'
+                            ? 'text-green-400 font-semibold'
+                            : isExpired
+                              ? 'text-red-400 font-semibold'
+                              : 'text-amber-300 font-semibold';
+                          return (
+                            <p className="mt-1">
+                              Status{' '}
+                              <span className={colorClass}>{displayStatus}</span>
+                            </p>
+                          );
+                        })()}
 
                         {nextBilling && (
                           <p className="mt-1 flex items-center gap-1">
