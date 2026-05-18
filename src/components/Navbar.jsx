@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import DeleteAccountModal from '@/components/DeleteAccountModal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { motion } from 'framer-motion';
 import {
   Play,
@@ -21,6 +22,10 @@ import {
   HeartHandshake,
   Eye,
   Sparkles,
+  Gift,
+  KeyRound,
+  Trash2,
+  UserCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -30,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 
@@ -38,6 +44,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { user, isAuthenticated } = useAuth();
 
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
@@ -400,42 +407,126 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   </DropdownMenu>
                 )}
 
-                <div className="flex items-center space-x-3 pl-4 border-l border-slate-700">
-                  <User className="w-5 h-5 text-purple-400" />
-                  <div className="flex flex-col">
-                    <span className="text-sm text-slate-300">{displayName}</span>
+                <div className="flex items-center pl-4 border-l border-slate-700">
+                  {showSubscribeNow && (
+                    <button
+                      type="button"
+                      onClick={handleGoPlans}
+                      className="mr-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition"
+                    >
+                      Assine agora <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
 
-                    {!subLoading && subscription && (
-                      <span className="text-xs text-slate-400">
-                        {planName && `${planName} • `}
-                        {nextBilling && `vence em ${nextBilling}`}
-                      </span>
-                    )}
-
-                    {/* ✅ (NOVO) botão Assine agora exatamente aqui */}
-                    {showSubscribeNow && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        onClick={handleGoPlans}
-                        className="mt-1 inline-flex items-center gap-2 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition"
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-full hover:bg-slate-800/60 transition group"
                       >
-                        Assine agora <ArrowRight className="w-4 h-4" />
+                        <div className="w-8 h-8 rounded-full bg-purple-500/15 border border-purple-500/30 flex items-center justify-center">
+                          <User className="w-4 h-4 text-purple-300" />
+                        </div>
+                        <span className="text-sm text-slate-200 max-w-[140px] truncate">
+                          {displayName}
+                        </span>
+                        <ChevronDown className="w-4 h-4 text-slate-400 group-data-[state=open]:rotate-180 transition" />
                       </button>
-                    )}
-                  </div>
+                    </DropdownMenuTrigger>
 
-                  <Button variant="ghost" size="sm" onClick={handleLogout}>
-                    <LogOut className="w-4 h-4 mr-2" /> Sair
-                  </Button>
+                    <DropdownMenuContent
+                      align="end"
+                      sideOffset={8}
+                      className="bg-slate-900 border-slate-800 text-slate-200 w-72 p-2"
+                    >
+                      {/* Header */}
+                      <div className="px-2 py-2.5 border-b border-slate-800 mb-1">
+                        <p className="text-sm font-semibold text-white truncate">
+                          {displayName}
+                        </p>
+                        {user?.email && (
+                          <p className="text-xs text-slate-400 truncate">
+                            {user.email}
+                          </p>
+                        )}
+
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          {subLoading ? (
+                            <span className="text-xs text-slate-500">
+                              Carregando assinatura…
+                            </span>
+                          ) : !subscription ? (
+                            <span className="text-xs text-amber-300">
+                              Sem assinatura ativa
+                            </span>
+                          ) : (
+                            <span
+                              className={
+                                'text-xs font-semibold inline-flex items-center gap-1 ' +
+                                (String(statusLabel || '').toLowerCase() === 'active'
+                                  ? 'text-emerald-300'
+                                  : 'text-amber-300')
+                              }
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              {statusLabel || 'inativa'}
+                            </span>
+                          )}
+
+                          {nextBilling && (
+                            <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {nextBilling}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <DropdownMenuItem
+                        onClick={() => navigate('/minha-conta')}
+                        className="cursor-pointer focus:bg-slate-800"
+                      >
+                        <UserCircle className="w-4 h-4 text-purple-300" />
+                        <span className="ml-2">Minha Assinatura</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => navigate('/indicar')}
+                        className="cursor-pointer focus:bg-slate-800"
+                      >
+                        <Gift className="w-4 h-4 text-emerald-300" />
+                        <span className="ml-2">
+                          🎁 Indicar e ganhar dias grátis
+                        </span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => setChangePasswordOpen(true)}
+                        className="cursor-pointer focus:bg-slate-800"
+                      >
+                        <KeyRound className="w-4 h-4 text-blue-300" />
+                        <span className="ml-2">Trocar senha</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuSeparator className="bg-slate-800" />
+
+                      <DropdownMenuItem
+                        onClick={() => setDeleteModalOpen(true)}
+                        className="cursor-pointer focus:bg-red-500/10 text-red-400 focus:text-red-300"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="ml-2">Excluir conta</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={handleLogout}
+                        className="cursor-pointer focus:bg-slate-800"
+                      >
+                        <LogOut className="w-4 h-4 text-slate-300" />
+                        <span className="ml-2">Sair</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setDeleteModalOpen(true)}
-                  className="text-xs text-red-500/60 hover:text-red-400 transition ml-1"
-                >
-                  Excluir conta
-                </button>
               </>
             ) : (
               <>
@@ -523,19 +614,53 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   </div>
                 )}
 
-                <div className="pt-3 border-t border-slate-800 mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                <div className="pt-3 border-t border-slate-800 mt-2">
+                  <div className="flex items-center gap-2 mb-1">
                     <User className="w-5 h-5 text-purple-400" />
-                    <span className="text-sm text-slate-200">{displayName}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-200 truncate">{displayName}</p>
+                      {user?.email && (
+                        <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                      )}
+                    </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleLogout}
-                    className="text-red-400 hover:text-red-300 flex items-center gap-1"
-                  >
-                    <LogOut className="w-4 h-4" /> Sair
-                  </Button>
+
+                  <div className="mt-3 flex flex-col gap-2">
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); navigate('/minha-conta'); }}
+                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
+                    >
+                      <UserCircle className="w-4 h-4 text-purple-300" /> Minha Assinatura
+                    </button>
+
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); navigate('/indicar'); }}
+                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
+                    >
+                      <Gift className="w-4 h-4 text-emerald-300" /> 🎁 Indicar e ganhar dias grátis
+                    </button>
+
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); setChangePasswordOpen(true); }}
+                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
+                    >
+                      <KeyRound className="w-4 h-4 text-blue-300" /> Trocar senha
+                    </button>
+
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); setDeleteModalOpen(true); }}
+                      className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm text-left"
+                    >
+                      <Trash2 className="w-4 h-4" /> Excluir conta
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm text-left"
+                    >
+                      <LogOut className="w-4 h-4" /> Sair
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-200 flex gap-3">
@@ -591,13 +716,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => { setMobileMenuOpen(false); setDeleteModalOpen(true); }}
-                  className="text-xs text-red-500/60 hover:text-red-400 transition text-left pt-1"
-                >
-                  Excluir minha conta
-                </button>
               </>
             ) : (
               <div className="flex flex-col gap-2">
@@ -617,6 +735,11 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
     <DeleteAccountModal
       isOpen={deleteModalOpen}
       onClose={() => setDeleteModalOpen(false)}
+    />
+
+    <ChangePasswordModal
+      isOpen={changePasswordOpen}
+      onClose={() => setChangePasswordOpen(false)}
     />
     </>
   );

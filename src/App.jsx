@@ -51,6 +51,9 @@ import ComoFunciona from '@/pages/ComoFunciona';
 // ✅ Programa de indicação
 import Indicar from '@/pages/Indicar';
 
+// ✅ Minha Conta
+import MinhaConta from '@/pages/MinhaConta';
+
 // Admin
 import AdminLogin from '@/pages/AdminLogin';
 import AdminAnalytics from '@/pages/AdminAnalytics';
@@ -411,6 +414,16 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Indicar />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ✅ Minha Conta */}
+                <Route
+                  path="/minha-conta"
+                  element={
+                    <ProtectedRoute>
+                      <MinhaConta />
                     </ProtectedRoute>
                   }
                 />
