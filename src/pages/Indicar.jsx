@@ -169,7 +169,7 @@ const Indicar = () => {
               <p className="text-white font-semibold mb-2">Como funciona</p>
               <p>1. Compartilhe seu link com amigos.</p>
               <p>2. Quando o amigo se cadastrar pelo seu link e fizer o primeiro pagamento via Pix, você ganha 15 dias grátis.</p>
-              <p>3. Os dias são somados automaticamente ao final da sua assinatura atual.</p>
+              <p>3. Os dias são somados imediatamente ao seu vencimento atual.</p>
               <p className="text-xs text-slate-500 pt-2">
                 * O crédito vale apenas para contas novas. Auto-indicação não é permitida.
               </p>
