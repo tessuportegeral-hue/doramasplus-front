@@ -1,5 +1,9 @@
 {
   "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/sitemap"
+    },
     { "source": "/(.*)", "destination": "/" }
   ]
 }
