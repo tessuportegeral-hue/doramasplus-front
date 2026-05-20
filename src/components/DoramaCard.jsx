@@ -106,7 +106,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
           </div>
         )}
 
-        <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight mb-1 group-hover:text-purple-400 transition-colors">
+        <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight min-h-[2.5em] mb-1 group-hover:text-purple-400 transition-colors">
           <Link to={linkTarget}>
             {dorama.title}
           </Link>
