@@ -1,21 +1,23 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Play, Calendar, ImageOff } from 'lucide-react';
+import { Play, Calendar, Eye, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const DoramaCard = ({ dorama, index, hideYear = false }) => {
-  const getGenres = () => {
-    if (!dorama.genres) return [];
-    if (Array.isArray(dorama.genres)) return dorama.genres;
-    if (typeof dorama.genres === 'string') {
-      return dorama.genres.split(',').map(g => g.trim()).filter(Boolean);
-    }
-    return [];
-  };
+// Views fictícios determinísticos a partir do id (djb2), entre 1300 e 3500
+const generateViews = (id) => {
+  const s = String(id || '');
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) + s.charCodeAt(i);
+    h |= 0;
+  }
+  const min = 1300;
+  const max = 3500;
+  return min + (Math.abs(h) % (max - min + 1));
+};
 
-  const displayGenres = getGenres();
-
+const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false }) => {
   const linkTarget = dorama.slug ? `/dorama/${dorama.slug}` : `/dorama/${dorama.id}`;
 
   const coverUrl = useMemo(() => {
@@ -35,7 +37,6 @@ const DoramaCard = ({ dorama, index, hideYear = false }) => {
 
     if (typeof yr === 'string') {
       const onlyDigits = yr.trim();
-      // pega "2024" ou "2024-..." etc
       const m = onlyDigits.match(/\b(19|20)\d{2}\b/);
       if (m?.[0]) return m[0];
     }
@@ -49,19 +50,22 @@ const DoramaCard = ({ dorama, index, hideYear = false }) => {
     return 'TBA';
   }, [dorama]);
 
+  const views = useMemo(() => generateViews(dorama.id), [dorama.id]);
+  const formattedViews = useMemo(() => views.toLocaleString('pt-BR'), [views]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
-      className="group relative bg-slate-900 rounded-[12px] overflow-hidden 
-                 border border-slate-800 
-                 shadow-lg shadow-black/30 
-                 hover:border-purple-500/50 
-                 hover:shadow-2xl hover:shadow-purple-500/20 
-                 transition-all duration-250 ease-in-out 
-                 hover:scale-[1.03] 
-                 flex flex-col h-full"
+      className="group relative bg-slate-900 rounded-[12px] overflow-hidden
+                 border border-slate-800
+                 shadow-lg shadow-black/30
+                 hover:border-purple-500/50
+                 hover:shadow-2xl hover:shadow-purple-500/20
+                 transition-all duration-250 ease-in-out
+                 hover:scale-[1.03]
+                 flex flex-col"
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-slate-950 rounded-t-[12px]">
         {coverUrl ? (
@@ -77,7 +81,7 @@ const DoramaCard = ({ dorama, index, hideYear = false }) => {
           </div>
         )}
 
-        {dorama.language === 'dublado' && (
+        {dorama.language === 'dublado' && !hideDubladoBadge && (
           <span className="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold tracking-wide bg-purple-600 text-white rounded shadow-md">
             DUBLADO
           </span>
@@ -94,43 +98,34 @@ const DoramaCard = ({ dorama, index, hideYear = false }) => {
         </div>
       </div>
 
-      <div className="p-4 flex flex-col flex-grow">
+      <div className="p-2.5 flex flex-col">
         {!hideYear && (
-          <div className="flex items-center justify-between mb-2 text-xs text-slate-400">
-            <div className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              <span>{displayYear}</span>
-            </div>
+          <div className="flex items-center gap-1 mb-1 text-[11px] text-slate-400">
+            <Calendar className="w-3 h-3" />
+            <span>{displayYear}</span>
           </div>
         )}
 
-        <h3 className={`text-lg font-bold text-white mb-2 ${hideYear ? 'line-clamp-2' : 'line-clamp-1'} group-hover:text-purple-400 transition-colors`}>
+        <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight mb-1 group-hover:text-purple-400 transition-colors">
           <Link to={linkTarget}>
             {dorama.title}
           </Link>
         </h3>
 
-        <div className="flex flex-wrap gap-2 mb-4 h-6 overflow-hidden">
-          {displayGenres.slice(0, 2).map((g, i) => (
-            <span
-              key={i}
-              className="text-xs text-slate-300 bg-slate-800 px-2 py-1 rounded-md whitespace-nowrap"
-            >
-              {g}
-            </span>
-          ))}
+        <div className="flex items-center gap-1 mb-2 text-xs text-slate-400">
+          <Eye className="w-3 h-3" />
+          <span>{formattedViews}</span>
         </div>
 
-        <div className="mt-auto">
-          <Link to={linkTarget} className="w-full block">
-            <Button
-              variant="outline"
-              className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 group-hover:border-purple-500/50 group-hover:text-purple-300"
-            >
-              Assistir Agora
-            </Button>
-          </Link>
-        </div>
+        <Link to={linkTarget} className="w-full block">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 group-hover:border-purple-500/50 group-hover:text-purple-300"
+          >
+            Assistir Agora
+          </Button>
+        </Link>
       </div>
     </motion.div>
   );

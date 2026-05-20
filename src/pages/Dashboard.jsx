@@ -272,7 +272,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
 };
 
 // ---------------- SECTION BLOCK (CARROSSEL COM SETAS) ----------------
-const DoramaSection = ({ title, icon, doramas, loading, error, id }) => {
+const DoramaSection = ({ title, icon, doramas, loading, error, id, hideDubladoBadge = false }) => {
   const listRef = useRef(null);
 
   const handleScroll = (direction) => {
@@ -329,7 +329,7 @@ const DoramaSection = ({ title, icon, doramas, loading, error, id }) => {
                 key={d.id}
                 className="min-w-[150px] sm:min-w-[180px] md:min-w-[200px]"
               >
-                <DoramaCard dorama={d} index={index} hideYear />
+                <DoramaCard dorama={d} index={index} hideYear hideDubladoBadge={hideDubladoBadge} />
               </div>
             ))}
           </div>
@@ -1166,6 +1166,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.dubbed}
             loading={loading.dubbed}
             error={error.dubbed}
+            hideDubladoBadge
           />
         )}
 
