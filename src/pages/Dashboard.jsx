@@ -329,7 +329,7 @@ const DoramaSection = ({ title, icon, doramas, loading, error, id }) => {
                 key={d.id}
                 className="min-w-[150px] sm:min-w-[180px] md:min-w-[200px]"
               >
-                <DoramaCard dorama={d} index={index} />
+                <DoramaCard dorama={d} index={index} hideYear />
               </div>
             ))}
           </div>
@@ -1033,7 +1033,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {searchResults.map((dorama, index) => (
-                  <DoramaCard key={dorama.id} dorama={dorama} index={index} />
+                  <DoramaCard key={dorama.id} dorama={dorama} index={index} hideYear />
                 ))}
               </div>
             )}

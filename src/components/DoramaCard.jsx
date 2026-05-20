@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Play, Calendar, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const DoramaCard = ({ dorama, index }) => {
+const DoramaCard = ({ dorama, index, hideYear = false }) => {
   const getGenres = () => {
     if (!dorama.genres) return [];
     if (Array.isArray(dorama.genres)) return dorama.genres;
@@ -77,6 +77,12 @@ const DoramaCard = ({ dorama, index }) => {
           </div>
         )}
 
+        {dorama.language === 'dublado' && (
+          <span className="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold tracking-wide bg-purple-600 text-white rounded shadow-md">
+            DUBLADO
+          </span>
+        )}
+
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
 
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
@@ -89,14 +95,16 @@ const DoramaCard = ({ dorama, index }) => {
       </div>
 
       <div className="p-4 flex flex-col flex-grow">
-        <div className="flex items-center justify-between mb-2 text-xs text-slate-400">
-          <div className="flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            <span>{displayYear}</span>
+        {!hideYear && (
+          <div className="flex items-center justify-between mb-2 text-xs text-slate-400">
+            <div className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              <span>{displayYear}</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <h3 className="text-lg font-bold text-white mb-2 line-clamp-1 group-hover:text-purple-400 transition-colors">
+        <h3 className={`text-lg font-bold text-white mb-2 ${hideYear ? 'line-clamp-2' : 'line-clamp-1'} group-hover:text-purple-400 transition-colors`}>
           <Link to={linkTarget}>
             {dorama.title}
           </Link>
