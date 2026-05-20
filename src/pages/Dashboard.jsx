@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 import Navbar from "@/components/Navbar";
 import DoramaCard from "@/components/DoramaCard";
-import WelcomeMessage from "@/components/WelcomeMessage";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -845,8 +844,6 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       <Navbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
 
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 pt-[100px] md:pt-[110px]">
-        <WelcomeMessage user={user} />
-
         {/* ✅ (NOVO) BOTÃO "ASSINE AGORA" — só pra logado que NUNCA foi assinante */}
         {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
           <div className="mb-4 md:mb-6">

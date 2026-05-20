@@ -60,7 +60,33 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const [subLoading, setSubLoading] = useState(false);
   const [subscription, setSubscription] = useState(null);
 
-  // ✅ META PIXEL (carrega 1x e dispara PageView por rota)
+  // 📱 telefone do profiles (pra Advanced Matching do Pixel)
+  const [userPhone, setUserPhone] = useState('');
+
+  useEffect(() => {
+    if (!user) { setUserPhone(''); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('phone')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!error && data?.phone) {
+          setUserPhone(String(data.phone).trim());
+        } else {
+          setUserPhone('');
+        }
+      } catch {
+        if (!cancelled) setUserPhone('');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ✅ META PIXEL — carrega 1x, re-init quando email/telefone mudarem (Advanced Matching)
   useEffect(() => {
     try {
       if (typeof window === 'undefined') return;
@@ -87,10 +113,23 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
         })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
       }
 
-      // Init 1x
-      if (!window.__dp_fb_inited) {
-        window.fbq('init', META_PIXEL_ID);
-        window.__dp_fb_inited = true;
+      // Advanced Matching: o Pixel hasheia em/ph automaticamente.
+      // Re-inicializa quando email ou telefone mudarem (ex.: usuário acabou de logar).
+      const email = user?.email ? String(user.email).trim().toLowerCase() : '';
+      const phone = userPhone || '';
+      const initKey = `${email}|${phone}`;
+
+      if (window.__dp_fb_init_key !== initKey) {
+        const advanced = {};
+        if (email) advanced.em = email;
+        if (phone) advanced.ph = phone;
+
+        if (Object.keys(advanced).length > 0) {
+          window.fbq('init', META_PIXEL_ID, advanced);
+        } else {
+          window.fbq('init', META_PIXEL_ID);
+        }
+        window.__dp_fb_init_key = initKey;
       }
 
       // PageView em SPA (a cada troca de rota)
@@ -100,7 +139,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
     } catch {
       // não quebra nada
     }
-  }, [META_PIXEL_ID, location.pathname]);
+  }, [META_PIXEL_ID, location.pathname, user?.email, userPhone]);
 
   useEffect(() => {
     if (!user) {
