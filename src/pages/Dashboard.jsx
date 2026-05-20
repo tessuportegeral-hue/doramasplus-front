@@ -24,6 +24,10 @@ import {
   Baby,
   HeartHandshake,
   Eye,
+  Heart,
+  Moon,
+  Tv,
+  Flag,
   Megaphone,
   ExternalLink,
 } from "lucide-react";
@@ -34,9 +38,9 @@ const RECOMMENDED_LIMIT = 400; // ✅ 300 -> 400 (recomendados)
 // ✅ Seletores em fallback (pra NUNCA quebrar por coluna inexistente)
 const SELECT_LEVELS = [
   // Mais completo (se existir tudo)
-  "id,slug,title,original_title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,bunny_url,bunny_stream_url",
+  "id,slug,title,original_title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro,bunny_url,bunny_stream_url",
   // Médio (remove campos que costumam não existir em alguns schemas)
-  "id,slug,title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,bunny_url,bunny_stream_url",
+  "id,slug,title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro,bunny_url,bunny_stream_url",
   // Mínimo (quase impossível falhar)
   "id,slug,title,description,created_at,cover_url,language,is_featured,is_new,bunny_url,bunny_stream_url",
 ];
@@ -394,6 +398,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     baby: [],
     taboo: [],
     hidden: [],
+    lobos_vampiros: [],
+    bl_gl: [],
+    brasileiro: [],
+    anime: [],
   });
 
   const [loading, setLoading] = useState({
@@ -404,6 +412,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     baby: true,
     taboo: true,
     hidden: true,
+    lobos_vampiros: true,
+    bl_gl: true,
+    brasileiro: true,
+    anime: true,
   });
 
   const [error, setError] = useState({
@@ -414,6 +426,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     baby: false,
     taboo: false,
     hidden: false,
+    lobos_vampiros: false,
+    bl_gl: false,
+    brasileiro: false,
+    anime: false,
   });
 
   const [continueWatching, setContinueWatching] = useState([]);
@@ -648,6 +664,50 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           .from("doramas")
           .select(selectStr)
           .eq("is_taboo_relationship", true)
+          .order("created_at", { ascending: false }),
+      LIST_LIMIT
+    );
+
+    fetchCategory(
+      "lobos_vampiros",
+      (selectStr) =>
+        supabase
+          .from("doramas")
+          .select(selectStr)
+          .eq("is_lobos_vampiros", true)
+          .order("created_at", { ascending: false }),
+      LIST_LIMIT
+    );
+
+    fetchCategory(
+      "bl_gl",
+      (selectStr) =>
+        supabase
+          .from("doramas")
+          .select(selectStr)
+          .eq("is_bl_gl", true)
+          .order("created_at", { ascending: false }),
+      LIST_LIMIT
+    );
+
+    fetchCategory(
+      "brasileiro",
+      (selectStr) =>
+        supabase
+          .from("doramas")
+          .select(selectStr)
+          .eq("is_brasileiro", true)
+          .order("created_at", { ascending: false }),
+      LIST_LIMIT
+    );
+
+    fetchCategory(
+      "anime",
+      (selectStr) =>
+        supabase
+          .from("doramas")
+          .select(selectStr)
+          .eq("is_anime", true)
           .order("created_at", { ascending: false }),
       LIST_LIMIT
     );
@@ -1128,6 +1188,50 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.taboo}
             loading={loading.taboo}
             error={error.taboo}
+          />
+        )}
+
+        {!normalizedQuery && (
+          <DoramaSection
+            id="lobos-vampiros"
+            title="Lobos & Vampiros"
+            icon={<Moon className="w-6 h-6 text-indigo-400" />}
+            doramas={doramas.lobos_vampiros}
+            loading={loading.lobos_vampiros}
+            error={error.lobos_vampiros}
+          />
+        )}
+
+        {!normalizedQuery && (
+          <DoramaSection
+            id="bl-gl"
+            title="BL & GL"
+            icon={<Heart className="w-6 h-6 text-rose-400" />}
+            doramas={doramas.bl_gl}
+            loading={loading.bl_gl}
+            error={error.bl_gl}
+          />
+        )}
+
+        {!normalizedQuery && (
+          <DoramaSection
+            id="brasileiros"
+            title="Brasileiros"
+            icon={<Flag className="w-6 h-6 text-emerald-400" />}
+            doramas={doramas.brasileiro}
+            loading={loading.brasileiro}
+            error={error.brasileiro}
+          />
+        )}
+
+        {!normalizedQuery && (
+          <DoramaSection
+            id="animes"
+            title="Animes"
+            icon={<Tv className="w-6 h-6 text-cyan-400" />}
+            doramas={doramas.anime}
+            loading={loading.anime}
+            error={error.anime}
           />
         )}
 

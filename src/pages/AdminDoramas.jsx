@@ -21,6 +21,10 @@ import {
   Baby,
   HeartHandshake,
   Eye,
+  Heart,
+  Moon,
+  Tv,
+  Flag,
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -108,6 +112,10 @@ export default function AdminDoramas() {
     is_baby_pregnancy: false,
     is_taboo_relationship: false,
     is_hidden_identity: false,
+    is_bl_gl: false,
+    is_lobos_vampiros: false,
+    is_anime: false,
+    is_brasileiro: false,
     language: 'legendado',
   });
 
@@ -318,6 +326,10 @@ export default function AdminDoramas() {
       is_baby_pregnancy: false,
       is_taboo_relationship: false,
       is_hidden_identity: false,
+      is_bl_gl: false,
+      is_lobos_vampiros: false,
+      is_anime: false,
+      is_brasileiro: false,
       language: 'legendado',
     });
     setIsEditing(false);
@@ -377,6 +389,10 @@ export default function AdminDoramas() {
         is_baby_pregnancy: formData.is_baby_pregnancy,
         is_taboo_relationship: formData.is_taboo_relationship,
         is_hidden_identity: formData.is_hidden_identity,
+        is_bl_gl: formData.is_bl_gl,
+        is_lobos_vampiros: formData.is_lobos_vampiros,
+        is_anime: formData.is_anime,
+        is_brasileiro: formData.is_brasileiro,
         language: formData.language,
       };
 
@@ -453,6 +469,10 @@ export default function AdminDoramas() {
       is_baby_pregnancy: dorama.is_baby_pregnancy || false,
       is_taboo_relationship: dorama.is_taboo_relationship || false,
       is_hidden_identity: dorama.is_hidden_identity || false,
+      is_bl_gl: dorama.is_bl_gl || false,
+      is_lobos_vampiros: dorama.is_lobos_vampiros || false,
+      is_anime: dorama.is_anime || false,
+      is_brasileiro: dorama.is_brasileiro || false,
       language: dorama.language || 'legendado',
     });
     setEditingId(dorama.id);
@@ -718,6 +738,62 @@ export default function AdminDoramas() {
                       />
                       <span className="text-sm text-slate-300 flex items-center gap-1">
                         <Eye className="w-3 h-3" /> Identidade escondida
+                      </span>
+                    </label>
+
+                    {/* BL & GL */}
+                    <label className="flex items-center gap-2 cursor-pointer hover:text-rose-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="is_bl_gl"
+                        checked={formData.is_bl_gl}
+                        onChange={handleInputChange}
+                        className="rounded border-slate-700 bg-slate-950 text-rose-500 focus:ring-rose-500"
+                      />
+                      <span className="text-sm text-slate-300 flex items-center gap-1">
+                        <Heart className="w-3 h-3" /> BL & GL
+                      </span>
+                    </label>
+
+                    {/* Lobos & Vampiros */}
+                    <label className="flex items-center gap-2 cursor-pointer hover:text-indigo-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="is_lobos_vampiros"
+                        checked={formData.is_lobos_vampiros}
+                        onChange={handleInputChange}
+                        className="rounded border-slate-700 bg-slate-950 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-slate-300 flex items-center gap-1">
+                        <Moon className="w-3 h-3" /> Lobos & Vampiros
+                      </span>
+                    </label>
+
+                    {/* Animes */}
+                    <label className="flex items-center gap-2 cursor-pointer hover:text-cyan-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="is_anime"
+                        checked={formData.is_anime}
+                        onChange={handleInputChange}
+                        className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-cyan-500"
+                      />
+                      <span className="text-sm text-slate-300 flex items-center gap-1">
+                        <Tv className="w-3 h-3" /> Animes
+                      </span>
+                    </label>
+
+                    {/* Brasileiros */}
+                    <label className="flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition-colors">
+                      <input
+                        type="checkbox"
+                        name="is_brasileiro"
+                        checked={formData.is_brasileiro}
+                        onChange={handleInputChange}
+                        className="rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-slate-300 flex items-center gap-1">
+                        <Flag className="w-3 h-3" /> Brasileiros
                       </span>
                     </label>
 
@@ -1075,6 +1151,26 @@ export default function AdminDoramas() {
                               {dorama.is_hidden_identity && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-teal-500/10 text-teal-300 border border-teal-500/20 rounded flex items-center gap-1">
                                   <Eye className="w-3 h-3" /> Identidade escondida
+                                </span>
+                              )}
+                              {dorama.is_bl_gl && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/20 rounded flex items-center gap-1">
+                                  <Heart className="w-3 h-3" /> BL & GL
+                                </span>
+                              )}
+                              {dorama.is_lobos_vampiros && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded flex items-center gap-1">
+                                  <Moon className="w-3 h-3" /> Lobos & Vampiros
+                                </span>
+                              )}
+                              {dorama.is_anime && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 rounded flex items-center gap-1">
+                                  <Tv className="w-3 h-3" /> Animes
+                                </span>
+                              )}
+                              {dorama.is_brasileiro && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded flex items-center gap-1">
+                                  <Flag className="w-3 h-3" /> Brasileiros
                                 </span>
                               )}
                               {dorama.is_recommended && (
