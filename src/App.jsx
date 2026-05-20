@@ -274,21 +274,45 @@ function TrafficSourceTracker() {
   const location = useLocation();
   useEffect(() => {
     try {
-      const src = new URLSearchParams(location.search).get('src');
-      if (!src) return;
-      const val = src.trim().toLowerCase();
-      if (!val) return;
+      const params = new URLSearchParams(location.search);
+      const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
-      // First-touch: se já tem valor salvo no localStorage dentro do TTL de 7 dias,
-      // não sobrescreve. Assim ads vindo antes do Google continua valendo.
-      const existing = (localStorage.getItem('dp_traffic_src') || '').trim().toLowerCase();
-      const ts = Number(localStorage.getItem('dp_traffic_src_ts') || '0');
-      const isFresh = ts && Date.now() - ts < 7 * 24 * 60 * 60 * 1000;
-      if (existing && isFresh) return;
+      // ===== src (first-touch, TTL 7 dias) =====
+      const src = (params.get('src') || '').trim().toLowerCase();
+      if (src) {
+        const existing = (localStorage.getItem('dp_traffic_src') || '').trim().toLowerCase();
+        const ts = Number(localStorage.getItem('dp_traffic_src_ts') || '0');
+        const isFresh = ts && Date.now() - ts < SEVEN_DAYS;
+        if (!(existing && isFresh)) {
+          localStorage.setItem('dp_traffic_src', src);
+          localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
+          sessionStorage.setItem('dp_traffic_src', src);
+        }
+      }
 
-      localStorage.setItem('dp_traffic_src', val);
-      localStorage.setItem('dp_traffic_src_ts', String(Date.now()));
-      sessionStorage.setItem('dp_traffic_src', val);
+      // ===== UTMs (first-touch, TTL 7 dias por campo) =====
+      const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+      for (const key of utmKeys) {
+        const val = (params.get(key) || '').trim();
+        if (!val) continue;
+        const storageKey = `dp_${key}`;
+        const tsKey = `dp_${key}_ts`;
+        const existing = (localStorage.getItem(storageKey) || '').trim();
+        const ts = Number(localStorage.getItem(tsKey) || '0');
+        const isFresh = ts && Date.now() - ts < SEVEN_DAYS;
+        if (existing && isFresh) continue;
+        localStorage.setItem(storageKey, val);
+        localStorage.setItem(tsKey, String(Date.now()));
+      }
+
+      // ===== fbclid (first-touch, sem TTL) =====
+      const fbclid = (params.get('fbclid') || '').trim();
+      if (fbclid) {
+        const existing = (localStorage.getItem('dp_fbclid') || '').trim();
+        if (!existing) {
+          localStorage.setItem('dp_fbclid', fbclid);
+        }
+      }
     } catch {}
   }, [location.search]);
   return null;

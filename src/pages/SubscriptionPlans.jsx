@@ -236,11 +236,30 @@ const SubscriptionPlans = () => {
       const event_id = `ic_${planType}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       fireInitiateCheckout({ planType, planName, value, eventId: event_id });
 
+      // UTMs + fbclid salvos pelo TrafficSourceTracker (first-touch)
+      let utm_source = '', utm_medium = '', utm_campaign = '', utm_content = '', fbclid = '';
+      try {
+        utm_source = localStorage.getItem('dp_utm_source') || '';
+        utm_medium = localStorage.getItem('dp_utm_medium') || '';
+        utm_campaign = localStorage.getItem('dp_utm_campaign') || '';
+        utm_content = localStorage.getItem('dp_utm_content') || '';
+        fbclid = localStorage.getItem('dp_fbclid') || '';
+      } catch {}
+
       // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)
       const { data, error } = await supabase.functions.invoke(
         'infinitepay-create-checkout',
         {
-          body: { plan: planType, event_id, source },
+          body: {
+            plan: planType,
+            event_id,
+            source,
+            utm_source,
+            utm_medium,
+            utm_campaign,
+            utm_content,
+            fbclid,
+          },
         }
       );
 
