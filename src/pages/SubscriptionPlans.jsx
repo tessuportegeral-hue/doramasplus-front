@@ -243,7 +243,12 @@ const SubscriptionPlans = () => {
         utm_medium = localStorage.getItem('dp_utm_medium') || '';
         utm_campaign = localStorage.getItem('dp_utm_campaign') || '';
         utm_content = localStorage.getItem('dp_utm_content') || '';
-        fbclid = localStorage.getItem('dp_fbclid') || '';
+        // fbclid: cookie (7d) com fallback no localStorage
+        const cookieFbclid = document.cookie
+          .split('; ')
+          .find((r) => r.startsWith('dp_fbclid='))
+          ?.split('=')[1] || '';
+        fbclid = cookieFbclid || localStorage.getItem('dp_fbclid') || '';
       } catch {}
 
       // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)

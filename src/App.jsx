@@ -305,9 +305,13 @@ function TrafficSourceTracker() {
         localStorage.setItem(tsKey, String(Date.now()));
       }
 
-      // ===== fbclid (first-touch, sem TTL) =====
+      // ===== fbclid (first-touch, cookie com 7 dias + localStorage como fallback) =====
       const fbclid = (params.get('fbclid') || '').trim();
       if (fbclid) {
+        // Cookie com 7 dias de validade
+        try {
+          document.cookie = `dp_fbclid=${fbclid}; max-age=${7 * 24 * 60 * 60}; path=/; SameSite=Lax`;
+        } catch {}
         const existing = (localStorage.getItem('dp_fbclid') || '').trim();
         if (!existing) {
           localStorage.setItem('dp_fbclid', fbclid);
