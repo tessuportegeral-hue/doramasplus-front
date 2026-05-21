@@ -345,6 +345,7 @@ function App() {
         <Router>
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
+          <DoramasChat />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
@@ -525,7 +526,6 @@ function App() {
 
       <Toaster />
       <InstallAppBanner />
-      <DoramasChat />
     </>
   );
 }

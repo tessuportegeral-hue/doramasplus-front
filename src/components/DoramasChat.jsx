@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 
 const WHATSAPP = "5518996796654"; // ex: 5511999999999
 
 
 export default function DoramasChat() {
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -194,6 +196,11 @@ export default function DoramasChat() {
       )
     );
   };
+
+  // Esconde o chat da Dora nas telas do player (/watch)
+  if ((location.pathname || "").includes("/watch")) {
+    return null;
+  }
 
   return (
     <>
