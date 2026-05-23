@@ -238,18 +238,36 @@ const SubscriptionPlans = () => {
 
       // UTMs + fbclid salvos pelo TrafficSourceTracker (first-touch)
       let utm_source = '', utm_medium = '', utm_campaign = '', utm_content = '', fbclid = '';
+
       try {
         utm_source = localStorage.getItem('dp_utm_source') || '';
         utm_medium = localStorage.getItem('dp_utm_medium') || '';
         utm_campaign = localStorage.getItem('dp_utm_campaign') || '';
         utm_content = localStorage.getItem('dp_utm_content') || '';
-        // fbclid: cookie (7d) com fallback no localStorage
-        const cookieFbclid = document.cookie
-          .split('; ')
-          .find((r) => r.startsWith('dp_fbclid='))
-          ?.split('=')[1] || '';
-        fbclid = cookieFbclid || localStorage.getItem('dp_fbclid') || '';
       } catch {}
+
+      // fbclid: 1º URL atual, 2º cookie (7d), 3º localStorage (sem TTL)
+      // try/catch separados pra falha em um nao zerar os outros
+      try {
+        const fromUrl = (new URLSearchParams(window.location.search).get('fbclid') || '').trim();
+        if (fromUrl) fbclid = fromUrl;
+      } catch {}
+
+      if (!fbclid) {
+        try {
+          const cookieFbclid = document.cookie
+            .split('; ')
+            .find((r) => r.startsWith('dp_fbclid='))
+            ?.split('=')[1] || '';
+          if (cookieFbclid) fbclid = cookieFbclid;
+        } catch {}
+      }
+
+      if (!fbclid) {
+        try {
+          fbclid = localStorage.getItem('dp_fbclid') || '';
+        } catch {}
+      }
 
       // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)
       const { data, error } = await supabase.functions.invoke(

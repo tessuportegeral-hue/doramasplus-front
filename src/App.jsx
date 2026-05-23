@@ -308,9 +308,12 @@ function TrafficSourceTracker() {
       // ===== fbclid (first-touch, cookie com 7 dias + localStorage como fallback) =====
       const fbclid = (params.get('fbclid') || '').trim();
       if (fbclid) {
-        // Cookie com 7 dias de validade
+        // Cookie com 7 dias de validade.
+        // Em producao usa Domain=.doramasplus.com.br pra compartilhar entre apex e www.
         try {
-          document.cookie = `dp_fbclid=${fbclid}; max-age=${7 * 24 * 60 * 60}; path=/; SameSite=Lax`;
+          const isDoramasplus = /(^|\.)doramasplus\.com\.br$/i.test(window.location.hostname);
+          const domainAttr = isDoramasplus ? '; Domain=.doramasplus.com.br' : '';
+          document.cookie = `dp_fbclid=${fbclid}; max-age=${7 * 24 * 60 * 60}; path=/; SameSite=Lax${domainAttr}`;
         } catch {}
         const existing = (localStorage.getItem('dp_fbclid') || '').trim();
         if (!existing) {
