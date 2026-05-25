@@ -16,7 +16,7 @@ const SINGLE_SESSION_TEST_EMAIL = null;
 // Demais usuários ficam no caminho legado (lê bunny_url direto da row),
 // preservado intacto pra evitar regressão do incidente anterior.
 // Para liberar pra TODOS: mude para null (igual SINGLE_SESSION_TEST_EMAIL).
-const STREAM_TOKEN_TEST_EMAIL = 'tesagencia@gmail.com';
+const STREAM_TOKEN_TEST_EMAIL = null;
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();

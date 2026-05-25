@@ -33,7 +33,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // estiver estável em todos os players (HLS, MP4, iframe Bunny), mudar
 // pra null pra liberar a todos os usuários autenticados.
 // Pattern espelhado em evict-session/index.ts.
-const STREAM_TOKEN_TEST_EMAIL: string | null = 'tesagencia@gmail.com'
+const STREAM_TOKEN_TEST_EMAIL: string | null = null
 // ============================
 
 const corsHeaders = {
