@@ -12,11 +12,13 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = null;
 
-// ✅ ROLLOUT GATEADO — só este email chama a edge function get-stream-url.
-// Demais usuários ficam no caminho legado (lê bunny_url direto da row),
-// preservado intacto pra evitar regressão do incidente anterior.
-// Para liberar pra TODOS: mude para null (igual SINGLE_SESSION_TEST_EMAIL).
-const STREAM_TOKEN_TEST_EMAIL = 'tesagencia@gmail.com';
+// ✅ ROLLOUT GATEADO — quando != null, só este email chama a edge function
+// get-stream-url; os demais ficam no caminho legado (lê bunny_url direto
+// da row). Com null, TODOS os usuários autenticados passam pela edge e
+// recebem URL assinada — necessário quando Token Authentication do Bunny
+// está ativo, senão o player recebe URL crua e o Bunny retorna 401.
+// Espelho do gate em supabase/functions/get-stream-url/index.ts.
+const STREAM_TOKEN_TEST_EMAIL = null;
 
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();

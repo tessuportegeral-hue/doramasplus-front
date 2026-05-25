@@ -70,10 +70,15 @@ async function signCdnUrl(
   const u = new URL(rawUrl)
   const expires = Math.floor(Date.now() / 1000) + ttlSec
 
-  const isHls = u.pathname.toLowerCase().endsWith('.m3u8')
+  // Bunny CDN computa o hash sobre o path DECODED. `u.pathname` mantém
+  // %20 / %C3%A7, então se hashearmos com o pathname cru o token nunca
+  // bate em arquivos com espaço/acento no nome (ex.: "Dilemas de um
+  // amor Eterno.mp4") e o Bunny retorna 401.
+  const decodedPath = decodeURIComponent(u.pathname)
+  const isHls = decodedPath.toLowerCase().endsWith('.m3u8')
   const signedPath = isHls
-    ? u.pathname.replace(/[^/]+$/, '') // diretório (ex.: /abc-123/def/)
-    : u.pathname
+    ? decodedPath.replace(/[^/]+$/, '') // diretório com trailing slash (ex.: /abc-123/def/)
+    : decodedPath
 
   const digest = await crypto.subtle.digest(
     'SHA-256',
