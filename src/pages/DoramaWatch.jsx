@@ -12,6 +12,12 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = null;
 
+// ✅ ROLLOUT GATEADO — só este email chama a edge function get-stream-url.
+// Demais usuários ficam no caminho legado (lê bunny_url direto da row),
+// preservado intacto pra evitar regressão do incidente anterior.
+// Para liberar pra TODOS: mude para null (igual SINGLE_SESSION_TEST_EMAIL).
+const STREAM_TOKEN_TEST_EMAIL = 'tesagencia@gmail.com';
+
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();
   const navigate = useNavigate();
@@ -148,8 +154,41 @@ export default function DoramaWatch() {
     fetchDorama();
   }, [slugFromUrl]);
 
+  // ✅ Gate de rollout — só tesagencia consome a URL vinda da edge function
+  // get-stream-url. Os demais usuários ficam no useMemo legado abaixo,
+  // intocado em relação ao que está em produção hoje.
+  const useStreamToken =
+    !STREAM_TOKEN_TEST_EMAIL || user?.email === STREAM_TOKEN_TEST_EMAIL;
+
+  const [signedVideoUrl, setSignedVideoUrl] = useState("");
+
+  useEffect(() => {
+    if (!useStreamToken || !dorama?.id) {
+      setSignedVideoUrl("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: fnErr } = await supabase.functions.invoke(
+        "get-stream-url",
+        { body: { dorama_id: dorama.id, mode: isIphoneMode ? "iphone" : "normal" } }
+      );
+      if (cancelled) return;
+      if (fnErr || !data?.url) {
+        console.error("[DoramaWatch] get-stream-url falhou:", fnErr);
+        setSignedVideoUrl("");
+        return;
+      }
+      setSignedVideoUrl(data.url);
+    })();
+    return () => { cancelled = true; };
+  }, [useStreamToken, dorama?.id, isIphoneMode]);
+
   // ✅ Escolhe URL (normal vs iphone)
   const videoUrl = useMemo(() => {
+    // Bifurcação: tesagencia usa URL da edge function; demais, caminho legado.
+    if (useStreamToken) return signedVideoUrl;
+
     if (!dorama) return "";
 
     const embed = (dorama.bunny_embed_url || "").trim();
@@ -158,7 +197,7 @@ export default function DoramaWatch() {
     const iphone = (dorama.bunny_stream_url || dorama.bunny_url || embed || "").trim();
 
     return isIphoneMode ? iphone : normal;
-  }, [dorama, isIphoneMode]);
+  }, [useStreamToken, signedVideoUrl, dorama, isIphoneMode]);
 
   const hasStream = !!(dorama?.bunny_stream_url && String(dorama.bunny_stream_url).trim());
 
