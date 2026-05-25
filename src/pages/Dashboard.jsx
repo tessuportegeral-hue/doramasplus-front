@@ -32,8 +32,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-const LIST_LIMIT = 250; // ✅ 150 -> 250 (abas/categorias)
-const RECOMMENDED_LIMIT = 400; // ✅ 300 -> 400 (recomendados)
+const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
+const RECOMMENDED_LIMIT = 100; // antes: 400
 
 // ✅ Seletores em fallback (pra NUNCA quebrar por coluna inexistente)
 const SELECT_LEVELS = [
@@ -129,6 +129,8 @@ const HeroSection = ({ featuredDoramas, loading }) => {
             src={bannerUrl}
             alt={current.title}
             className="absolute inset-0 w-full h-full object-cover"
+            decoding="async"
+            fetchpriority="high"
           />
         ) : (
           <div className="absolute inset-0 bg-slate-900" />
@@ -200,6 +202,8 @@ const HeroSection = ({ featuredDoramas, loading }) => {
                 src={bannerUrl}
                 alt={current.title}
                 className="w-full h-full object-cover"
+                decoding="async"
+                fetchpriority="high"
               />
             ) : (
               <div className="w-full h-full bg-slate-900" />
@@ -244,6 +248,8 @@ const HeroSection = ({ featuredDoramas, loading }) => {
                 src={posterUrl}
                 alt={current.title}
                 className="w-full h-full object-cover"
+                decoding="async"
+                fetchpriority="high"
               />
             </div>
           )}
@@ -440,16 +446,24 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const [searchError, setSearchError] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
 
-  // Índice leve de todos os doramas — usado pelo Fuse quando o banco não retorna nada (typos)
+  // Índice de todos os doramas (1791 rows) — usado pelo Fuse quando o banco
+  // não retorna nada (typos). Carregado SOB DEMANDA na primeira busca pra
+  // não pesar o first paint da home (era ~2MB de JSON no mount).
   const doramaIndexRef = useRef([]);
-  useEffect(() => {
-    supabase
-      .from("doramas")
-      .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new")
-      .order("title")
-      .then(({ data }) => {
-        if (data) doramaIndexRef.current = data;
-      });
+  const doramaIndexLoadingRef = useRef(false);
+  const ensureDoramaIndex = useCallback(async () => {
+    if (doramaIndexRef.current.length > 0) return;
+    if (doramaIndexLoadingRef.current) return;
+    doramaIndexLoadingRef.current = true;
+    try {
+      const { data } = await supabase
+        .from("doramas")
+        .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new")
+        .order("title");
+      if (data) doramaIndexRef.current = data;
+    } finally {
+      doramaIndexLoadingRef.current = false;
+    }
   }, []);
 
   // ✅ refs e scroll para "Continuar Assistindo" (setas iguais às outras)
@@ -790,7 +804,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           const hits = fuse.search(normalizeText(q));
           setSearchResults(hits.length > 0 ? hits.map((r) => r.item) : dbResults);
         } else {
-          // Banco não encontrou nada — Fuse no índice local (typos)
+          // Banco não encontrou nada — Fuse no índice completo (typos).
+          // Carrega o índice na demanda (1ª busca paga o custo, demais reusam).
+          await ensureDoramaIndex();
+          if (isCancelled) return;
           const index = doramaIndexRef.current;
           if (index.length > 0) {
             const fuse = new Fuse(index, { ...fuseOptions, threshold: 0.35 });
@@ -814,7 +831,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       isCancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, ensureDoramaIndex]);
 
   // Carregar continuar assistindo (2 queries leves)
   useEffect(() => {
@@ -1088,6 +1105,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                               alt={item.title}
                               className="w-full h-full object-cover object-center"
                               loading="lazy"
+                              decoding="async"
                             />
                           </div>
                         ) : (

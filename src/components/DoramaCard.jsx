@@ -74,6 +74,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
             alt={dorama.title}
             className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-slate-700 bg-slate-900">

@@ -890,6 +890,7 @@ export default function DoramaWatch() {
                   controls
                   playsInline
                   autoPlay
+                  preload="auto"
                   className="absolute inset-0 w-full h-full"
                   src={playerType === "mp4" || playerType === "video" ? videoUrl : undefined}
                 />
