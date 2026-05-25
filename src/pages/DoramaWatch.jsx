@@ -63,11 +63,6 @@ export default function DoramaWatch() {
   const iframeLocalCounterRef = useRef(0);
   const [iframeResumeT, setIframeResumeT] = useState(0);
 
-  // currentTime real do player Bunny via postMessage (player.js protocol).
-  // Atualizado em tempo real conforme o iframe envia eventos timeupdate.
-  // Lido na renovação de token pra resumir do exato momento da expiração.
-  const iframeCurrentTimeRef = useRef(0);
-
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
 
@@ -153,78 +148,35 @@ export default function DoramaWatch() {
     fetchDorama();
   }, [slugFromUrl]);
 
-  // ✅ URL assinada + tipo de player vindos da edge function get-stream-url.
-  // Token Authentication do Bunny exige re-assinatura periódica: o TTL é
-  // de 15min e renovamos 60s antes de expirar. A renovação troca o `src`
-  // do <video>, o que reinicia o player; o resume via watch_history
-  // recoloca a posição automaticamente.
-  const [videoUrl, setVideoUrl] = useState("");
-  const [playerType, setPlayerType] = useState("none");
-  const [streamExpiresAt, setStreamExpiresAt] = useState(0);
+  // ✅ Escolhe URL (normal vs iphone)
+  const videoUrl = useMemo(() => {
+    if (!dorama) return "";
 
-  useEffect(() => {
-    if (!dorama?.id) {
-      setVideoUrl("");
-      setPlayerType("none");
-      setStreamExpiresAt(0);
-      return;
-    }
+    const embed = (dorama.bunny_embed_url || "").trim();
 
-    let cancelled = false;
-    let renewTimer = null;
+    const normal = (dorama.bunny_url || dorama.bunny_stream_url || embed || "").trim();
+    const iphone = (dorama.bunny_stream_url || dorama.bunny_url || embed || "").trim();
 
-    const load = async () => {
-      // Captura a posição atual do iframe ANTES de trocar a URL. Em first
-      // load esse valor é 0 (nenhum timeupdate ainda) e a gente preserva
-      // o iframeResumeT vindo do watch_history. Em renovação, vem o tempo
-      // real do player Bunny — usado pra resumir do mesmo instante.
-      // Fallback: se postMessage não estiver enviando timeupdate por algum
-      // motivo, usa o contador local (incrementado a cada 5s no playback).
-      const capturedIframeTime =
-        iframeCurrentTimeRef.current > 0
-          ? iframeCurrentTimeRef.current
-          : iframeLocalCounterRef.current;
-
-      const { data, error: fnErr } = await supabase.functions.invoke(
-        "get-stream-url",
-        { body: { dorama_id: dorama.id, mode: isIphoneMode ? "iphone" : "normal" } }
-      );
-      if (cancelled) return;
-      if (fnErr || !data?.url) {
-        console.error("[DoramaWatch] get-stream-url falhou:", fnErr);
-        setVideoUrl("");
-        setPlayerType("none");
-        setStreamExpiresAt(0);
-        return;
-      }
-
-      // Atualiza iframeResumeT ANTES de setVideoUrl pra que o iframeSrc
-      // useMemo recompute uma vez só, já com o novo URL + ?t= correto.
-      // React 18 batcha as 3 chamadas — uma renderização única.
-      if (data.playerType === "iframe" && capturedIframeTime >= 10) {
-        setIframeResumeT(capturedIframeTime);
-      }
-      setVideoUrl(data.url);
-      setPlayerType(data.playerType || "none");
-      setStreamExpiresAt(Number(data.expiresAt) || 0);
-
-      // Agenda renovação 60s antes da expiração
-      const expiresAt = Number(data.expiresAt) || 0;
-      const msUntilRenew = (expiresAt - 60) * 1000 - Date.now();
-      if (msUntilRenew > 0) {
-        renewTimer = setTimeout(load, msUntilRenew);
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-      if (renewTimer) clearTimeout(renewTimer);
-    };
-  }, [dorama?.id, isIphoneMode]);
+    return isIphoneMode ? iphone : normal;
+  }, [dorama, isIphoneMode]);
 
   const hasStream = !!(dorama?.bunny_stream_url && String(dorama.bunny_stream_url).trim());
+
+  // ✅ tipo do player
+  const playerType = useMemo(() => {
+    const url = (videoUrl || "").toLowerCase();
+    if (!url) return "none";
+
+    if (url.includes(".m3u8")) return "hls";
+    if (url.includes(".mp4")) return "mp4";
+
+    if (url.includes("iframe.mediadelivery.net")) return "iframe";
+    if (url.includes("/embed/")) return "iframe";
+
+    if (url.startsWith("http")) return "video";
+
+    return "none";
+  }, [videoUrl]);
 
   // ✅ autoplay no iframe + retomar via ?t= (Bunny embed lê t em segundos)
   const iframeSrc = useMemo(() => {
@@ -246,41 +198,6 @@ export default function DoramaWatch() {
       return `${base}${join}autoplay=true${tParam}&_ts=${Date.now()}`;
     }
   }, [videoUrl, playerType, iframeResumeT]);
-
-  // ✅ Bunny iframe → postMessage: escuta timeupdate pra saber o currentTime real.
-  // O subscribe é mandado no onLoad da iframe (toda vez que recarrega, inclusive
-  // após renovação de token). Aqui só ficamos com o listener global de receive.
-  useEffect(() => {
-    const handleMessage = (e) => {
-      if (e.origin !== "https://iframe.mediadelivery.net") return;
-      try {
-        const msg = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (localStorage.getItem('dp_debug') === '1') {
-          console.log('[bunny msg]', msg);
-        }
-        if (msg?.event !== "timeupdate") return;
-        const seconds =
-          msg?.value?.seconds ??
-          msg?.data?.seconds ??
-          (typeof msg?.value === "number" ? msg.value : null);
-        const n = Number(seconds);
-        if (Number.isFinite(n) && n >= 0) {
-          iframeCurrentTimeRef.current = n;
-        }
-      } catch {}
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  const handleIframeLoad = (e) => {
-    try {
-      e.target.contentWindow?.postMessage(
-        JSON.stringify({ method: "addEventListener", value: "timeupdate" }),
-        "https://iframe.mediadelivery.net"
-      );
-    } catch {}
-  };
 
   // ✅ HLS (somente quando playerType === "hls")
   useEffect(() => {
@@ -920,14 +837,12 @@ export default function DoramaWatch() {
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
                   loading="lazy"
-                  onLoad={handleIframeLoad}
                   className="absolute inset-0 w-full h-full border-0 block"
                 />
               ) : (
                 <video
                   ref={videoRef}
                   controls
-                  controlsList="nodownload"
                   playsInline
                   autoPlay
                   className="absolute inset-0 w-full h-full"
