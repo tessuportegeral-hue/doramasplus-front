@@ -163,7 +163,13 @@ export default function DoramaWatch() {
   const [signedVideoUrl, setSignedVideoUrl] = useState("");
 
   useEffect(() => {
-    if (!useStreamToken || !dorama?.id) {
+    // Gate em user?.id: garante que o auth hidratou e o JWT está pronto
+    // antes de chamar a função. Sem isso, em link direto pra /watch o
+    // dorama pode carregar antes do auth, a chamada vai sem Authorization,
+    // a função retorna 401 e signedVideoUrl trava em "" pra sempre porque
+    // useStreamToken (com TEST_EMAIL=null) já é true desde o início e o
+    // effect não re-dispara quando user finalmente chega.
+    if (!useStreamToken || !dorama?.id || !user?.id) {
       setSignedVideoUrl("");
       return;
     }
@@ -182,7 +188,7 @@ export default function DoramaWatch() {
       setSignedVideoUrl(data.url);
     })();
     return () => { cancelled = true; };
-  }, [useStreamToken, dorama?.id, isIphoneMode]);
+  }, [useStreamToken, dorama?.id, isIphoneMode, user?.id]);
 
   // ✅ Escolhe URL (normal vs iphone)
   const videoUrl = useMemo(() => {
