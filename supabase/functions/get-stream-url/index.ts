@@ -43,19 +43,84 @@ const corsHeaders = {
 
 const STREAM_TTL_SECONDS = 15 * 60 // 15 minutos
 
-// ====== SIGNING (TODO) ======
+// ====== SIGNING ======
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Bunny CDN / Storage Pull Zone Token Authentication
+//   token = base64url( sha256_raw( security_key + path + expires ) )
 //
-// async function signCdnUrl(rawUrl: string, key: string, ttlSec: number, pathPrefix?: string) {
-//   // base64url( sha256_raw( key + path + expires [+ path_allowed] ) )
-//   // Para HLS: passar o diretório como pathPrefix pra cobrir todos os .ts
-// }
+// Para HLS (.m3u8): assina o diretório do playlist via `token_path`. Com
+// isso, todos os segmentos .ts / .m4s sob esse diretório passam a
+// validação com o MESMO token — caso contrário cada segmento daria 401.
+// Para .mp4 / outros: assina o path exato do arquivo.
+async function signCdnUrl(
+  rawUrl: string,
+  key: string,
+  ttlSec: number,
+): Promise<{ url: string; expiresAt: number }> {
+  const u = new URL(rawUrl)
+  const expires = Math.floor(Date.now() / 1000) + ttlSec
+
+  const isHls = u.pathname.toLowerCase().endsWith('.m3u8')
+  const signedPath = isHls
+    ? u.pathname.replace(/[^/]+$/, '') // diretório (ex.: /abc-123/def/)
+    : u.pathname
+
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(key + signedPath + String(expires)),
+  )
+  const token = base64UrlEncode(new Uint8Array(digest))
+
+  u.searchParams.set('token', token)
+  u.searchParams.set('expires', String(expires))
+  if (isHls) {
+    u.searchParams.set('token_path', signedPath)
+  }
+
+  return { url: u.toString(), expiresAt: expires }
+}
+
+// Bunny Stream Library Token Authentication (iframe.mediadelivery.net)
+//   token = sha256_hex( token_auth_key + videoId + expires )
 //
-// async function signStreamEmbed(embedUrl: string, key: string, ttlSec: number) {
-//   // sha256_hex( key + videoId + expires )
-//   // videoId extraído de /embed/<libId>/<videoId>
-// }
-//
-// ============================
+// videoId é o último segmento do path /embed/<libraryId>/<videoId>.
+// Token vai em hex (não base64).
+async function signStreamEmbed(
+  embedUrl: string,
+  key: string,
+  ttlSec: number,
+): Promise<{ url: string; expiresAt: number }> {
+  const u = new URL(embedUrl)
+  const parts = u.pathname.split('/').filter(Boolean)
+  const videoId = parts[parts.length - 1]
+  if (!videoId) {
+    throw new Error('signStreamEmbed: videoId not found in URL path')
+  }
+
+  const expires = Math.floor(Date.now() / 1000) + ttlSec
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(key + videoId + String(expires)),
+  )
+  const token = bytesToHex(new Uint8Array(digest))
+
+  u.searchParams.set('token', token)
+  u.searchParams.set('expires', String(expires))
+
+  return { url: u.toString(), expiresAt: expires }
+}
+
+// =====================
 
 function detectPlayerType(url: string): 'hls' | 'mp4' | 'iframe' | 'video' | 'none' {
   const u = (url || '').toLowerCase()
@@ -139,17 +204,42 @@ Deno.serve(async (req: Request) => {
       return jsonResp(404, { error: 'No stream URL available' })
     }
 
-    // 7) Assina
-    // TODO: substituir o `url = rawUrl` por chamada à função de signing
-    // apropriada conforme o domínio:
-    //   - *.b-cdn.net                  → signCdnUrl(rawUrl, BUNNY_CDN_TOKEN_KEY, TTL, pathPrefix)
-    //   - iframe.mediadelivery.net     → signStreamEmbed(rawUrl, BUNNY_STREAM_TOKEN_KEY, TTL)
-    //
-    // Por enquanto devolve URL CRUA — permite validar end-to-end o gate
-    // (frontend chamando a função só pra tesagencia, demais usuários no
-    // caminho antigo) antes do signing real entrar.
-    const expiresAt = Math.floor(Date.now() / 1000) + STREAM_TTL_SECONDS
-    const url = rawUrl
+    // 7) Assina conforme o domínio da URL
+    let url: string
+    let expiresAt: number
+
+    try {
+      const host = new URL(rawUrl).hostname.toLowerCase()
+
+      if (host.endsWith('.b-cdn.net')) {
+        const cdnKey = Deno.env.get('BUNNY_CDN_TOKEN_KEY')
+        if (!cdnKey) {
+          console.error('[get-stream-url] BUNNY_CDN_TOKEN_KEY missing in env')
+          return jsonResp(500, { error: 'Server misconfigured' })
+        }
+        const signed = await signCdnUrl(rawUrl, cdnKey, STREAM_TTL_SECONDS)
+        url = signed.url
+        expiresAt = signed.expiresAt
+      } else if (host === 'iframe.mediadelivery.net') {
+        const streamKey = Deno.env.get('BUNNY_STREAM_TOKEN_KEY')
+        if (!streamKey) {
+          console.error('[get-stream-url] BUNNY_STREAM_TOKEN_KEY missing in env')
+          return jsonResp(500, { error: 'Server misconfigured' })
+        }
+        const signed = await signStreamEmbed(rawUrl, streamKey, STREAM_TTL_SECONDS)
+        url = signed.url
+        expiresAt = signed.expiresAt
+      } else {
+        // Domínio fora do esperado: deixa passar sem assinar pra não quebrar
+        // (mesmo comportamento da versão anterior). Logamos pra investigar.
+        console.warn('[get-stream-url] unrecognized host, returning unsigned:', host)
+        url = rawUrl
+        expiresAt = Math.floor(Date.now() / 1000) + STREAM_TTL_SECONDS
+      }
+    } catch (signErr) {
+      console.error('[get-stream-url] signing failed:', signErr)
+      return jsonResp(500, { error: 'Failed to sign URL' })
+    }
 
     return jsonResp(200, {
       url,
