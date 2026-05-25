@@ -38,11 +38,11 @@ const RECOMMENDED_LIMIT = 400; // ✅ 300 -> 400 (recomendados)
 // ✅ Seletores em fallback (pra NUNCA quebrar por coluna inexistente)
 const SELECT_LEVELS = [
   // Mais completo (se existir tudo)
-  "id,slug,title,original_title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro,bunny_url,bunny_stream_url",
+  "id,slug,title,original_title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
   // Médio (remove campos que costumam não existir em alguns schemas)
-  "id,slug,title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro,bunny_url,bunny_stream_url",
+  "id,slug,title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
   // Mínimo (quase impossível falhar)
-  "id,slug,title,description,created_at,cover_url,language,is_featured,is_new,bunny_url,bunny_stream_url",
+  "id,slug,title,description,created_at,cover_url,language,is_featured,is_new",
 ];
 
 const isMissingColumnError = (err) => {
@@ -445,7 +445,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   useEffect(() => {
     supabase
       .from("doramas")
-      .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new,bunny_url,bunny_stream_url")
+      .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new")
       .order("title")
       .then(({ data }) => {
         if (data) doramaIndexRef.current = data;
