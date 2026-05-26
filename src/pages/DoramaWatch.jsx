@@ -890,6 +890,9 @@ export default function DoramaWatch() {
                 <video
                   ref={videoRef}
                   controls
+                  controlsList="nodownload"
+                  disablePictureInPicture
+                  onContextMenu={(e) => e.preventDefault()}
                   playsInline
                   autoPlay
                   preload="auto"
