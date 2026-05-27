@@ -611,11 +611,12 @@ export default function DoramaWatch() {
         flush();
         try { el.pause(); } catch {}
       } else {
-        // aba voltou — se o browser resetou o currentTime, corrige posição sem dar play
-        const saved = latestTimeRef.current;
-        if (saved > 5 && el.currentTime < saved - 3) {
+        // aba voltou — se resetou pro começo, volta automaticamente pro último segundo salvo
+        const saved = lastSavedRef.current;
+        if (saved > 5 && el.currentTime < 3) {
           try {
             el.currentTime = saved;
+            el.play().catch(() => {});
           } catch {}
         }
       }
