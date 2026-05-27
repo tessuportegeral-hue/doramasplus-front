@@ -603,15 +603,7 @@ export default function DoramaWatch() {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         flush();
-      } else {
-        // aba voltou — corrige se o browser resetou o currentTime pro zero
-        const saved = latestTimeRef.current;
-        if (saved > 5 && el.currentTime < saved - 3) {
-          try {
-            el.currentTime = saved;
-            el.play().catch(() => {});
-          } catch {}
-        }
+        try { el.pause(); } catch {}
       }
     };
 
