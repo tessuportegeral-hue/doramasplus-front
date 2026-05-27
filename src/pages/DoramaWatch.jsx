@@ -564,11 +564,13 @@ export default function DoramaWatch() {
 
     const applyResume = async () => {
       if (hasAppliedResumeRef.current) return;
-      if (!savedSeconds || savedSeconds < 10) return;
+      // usa lastSavedRef pra pegar sempre o valor mais recente, não o closure de savedSeconds
+      const resumeTo = lastSavedRef.current > 0 ? lastSavedRef.current : savedSeconds;
+      if (!resumeTo || resumeTo < 10) return;
       if (el.readyState < 1) return;
 
       try {
-        el.currentTime = savedSeconds;
+        el.currentTime = resumeTo;
         hasAppliedResumeRef.current = true;
         try {
           await el.play();
