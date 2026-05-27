@@ -41,6 +41,17 @@ export default function DoramaDetail() {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      if (typeof window.fbq === 'function') {
+        window.fbq('track', 'PageView');
+      }
+    } catch (e) {
+      console.error('[pixel] PageView DoramaDetail error:', e);
+    }
+  }, [slugFromUrl]);
+
+  useEffect(() => {
     const fetchDorama = async () => {
       try {
         if (!slugFromUrl) {
