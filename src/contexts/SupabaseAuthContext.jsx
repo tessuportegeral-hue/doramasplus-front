@@ -408,35 +408,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const onVisible = async () => {
       if (!activeUserIdRef.current) return;
-
-      // ✅ FIX: verifica premium silenciosamente, sem setar checkingPremium(true)
-      // Isso evita desmontar o player de quem está assistindo
-      try {
-        const { data: subscriptions } = await supabase
-          .from("subscriptions")
-          .select("status, end_at, current_period_end, created_at")
-          .eq("user_id", activeUserIdRef.current)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-        const subs = Array.isArray(subscriptions) ? subscriptions : [];
-        const now = new Date();
-        const ACTIVE_STATUSES = new Set(["active", "trialing", "paid"]);
-        const hasActiveSub = subs.some((sub) => {
-          const status = String(sub?.status ?? "").trim().toLowerCase();
-          if (!ACTIVE_STATUSES.has(status)) return false;
-          const v = sub?.end_at || sub?.current_period_end;
-          if (!v) return true;
-          const d = new Date(v);
-          return !Number.isNaN(d.getTime()) && d > now;
-        });
-
-        // Só atualiza se perdeu premium — não dispara re-render desnecessário
-        if (!hasActiveSub && isPremiumRef.current) {
-          setIsPremium(false);
-          isPremiumRef.current = false;
-        }
-      } catch {}
+      await checkPremiumStatus(activeUserIdRef.current);
+      if (!isPremiumRef.current) startPremiumPolling(activeUserIdRef.current);
 
       if (ENABLE_SINGLE_SESSION) {
         const ok = await validateSession();
@@ -458,7 +431,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener("visibilitychange", onVisibility);
       } catch {}
     };
-  }, [validateSession, forceSignOut]);
+  }, [checkPremiumStatus, startPremiumPolling, validateSession, forceSignOut]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {
