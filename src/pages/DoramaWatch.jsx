@@ -564,13 +564,11 @@ export default function DoramaWatch() {
 
     const applyResume = async () => {
       if (hasAppliedResumeRef.current) return;
-      // usa lastSavedRef pra pegar sempre o valor mais recente, não o closure de savedSeconds
-      const resumeTo = lastSavedRef.current > 0 ? lastSavedRef.current : savedSeconds;
-      if (!resumeTo || resumeTo < 10) return;
+      if (!savedSeconds || savedSeconds < 10) return;
       if (el.readyState < 1) return;
 
       try {
-        el.currentTime = resumeTo;
+        el.currentTime = savedSeconds;
         hasAppliedResumeRef.current = true;
         try {
           await el.play();
@@ -602,26 +600,8 @@ export default function DoramaWatch() {
     const onPause = () => flush();
     const onEnded = () => flush();
 
-    const onEmptied = () => {
-      // browser descarregou o stream (saiu da aba, mobile matou processo, etc)
-      // reseta a trava pra applyResume rodar de novo quando o vídeo recarregar
-      hasAppliedResumeRef.current = false;
-    };
-
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        flush();
-        try { el.pause(); } catch {}
-      } else {
-        // aba voltou — se resetou pro começo, volta automaticamente pro último segundo salvo
-        const saved = lastSavedRef.current;
-        if (saved > 5 && el.currentTime < 3) {
-          try {
-            el.currentTime = saved;
-            el.play().catch(() => {});
-          } catch {}
-        }
-      }
+      if (document.visibilityState === "hidden") flush();
     };
 
     const onBeforeUnload = () => flush();
@@ -630,7 +610,6 @@ export default function DoramaWatch() {
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onEnded);
-    el.addEventListener("emptied", onEmptied);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onBeforeUnload);
 
@@ -648,12 +627,11 @@ export default function DoramaWatch() {
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
-      el.removeEventListener("emptied", onEmptied);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, videoUrl, dorama?.id, user?.id, claimAllowed]);
+  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds, claimAllowed]);
 
   // ✅ TRACKING DO IFRAME (Bunny embed) — postMessage + fallback contador local
   useEffect(() => {
