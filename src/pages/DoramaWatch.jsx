@@ -600,6 +600,12 @@ export default function DoramaWatch() {
     const onPause = () => flush();
     const onEnded = () => flush();
 
+    const onEmptied = () => {
+      // browser descarregou o stream (saiu da aba, mobile matou processo, etc)
+      // reseta a trava pra applyResume rodar de novo quando o vídeo recarregar
+      hasAppliedResumeRef.current = false;
+    };
+
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         flush();
@@ -621,6 +627,7 @@ export default function DoramaWatch() {
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onEnded);
+    el.addEventListener("emptied", onEmptied);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("beforeunload", onBeforeUnload);
 
@@ -638,6 +645,7 @@ export default function DoramaWatch() {
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
+      el.removeEventListener("emptied", onEmptied);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
