@@ -604,6 +604,14 @@ export default function DoramaWatch() {
       if (document.visibilityState === "hidden") {
         flush();
         try { el.pause(); } catch {}
+      } else {
+        // aba voltou — se o browser resetou o currentTime, corrige posição sem dar play
+        const saved = latestTimeRef.current;
+        if (saved > 5 && el.currentTime < saved - 3) {
+          try {
+            el.currentTime = saved;
+          } catch {}
+        }
       }
     };
 
