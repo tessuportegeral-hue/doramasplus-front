@@ -601,7 +601,18 @@ export default function DoramaWatch() {
     const onEnded = () => flush();
 
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
+      if (document.visibilityState === "hidden") {
+        flush();
+      } else {
+        // aba voltou — corrige se o browser resetou o currentTime pro zero
+        const saved = latestTimeRef.current;
+        if (saved > 5 && el.currentTime < saved - 3) {
+          try {
+            el.currentTime = saved;
+            el.play().catch(() => {});
+          } catch {}
+        }
+      }
     };
 
     const onBeforeUnload = () => flush();
@@ -631,7 +642,7 @@ export default function DoramaWatch() {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, videoUrl, dorama?.id, user?.id, savedSeconds, claimAllowed]);
+  }, [allowContinue, videoUrl, dorama?.id, user?.id, claimAllowed]);
 
   // ✅ TRACKING DO IFRAME (Bunny embed) — postMessage + fallback contador local
   useEffect(() => {
