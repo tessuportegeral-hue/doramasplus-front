@@ -74,42 +74,6 @@ export default function DoramaWatch() {
   const WATCH_TABLE = "watch_history";
   const EPISODE_DEFAULT = 1;
 
-  // ===== localStorage watchdog: posição instantânea pra resume rápido =====
-  // Cobre 3 cenários onde watch_history (banco) não basta:
-  //   1. Browser/OS reseta o <video> durante background — quando volta,
-  //      currentTime fica em 0 e ninguém percebe.
-  //   2. Mobile mata a aba; ao reabrir, há GAP entre <video> autoplay
-  //      começando do 0 e o fetch async do banco retornar.
-  //   3. Cross-tab consistency (mesma conta abriu noutra aba do mesmo
-  //      device).
-  // watch_history continua source of truth pra multi-device + Continuar
-  // Assistindo da home. localStorage é só pra resume instantâneo aqui.
-  const LOCAL_POS_TTL_MS = 60 * 60 * 1000; // 1h
-  const localPosKey = (dId) => `dp_pos_${dId}`;
-
-  const persistLocalPos = (seconds) => {
-    const id = dorama?.id;
-    if (!id || !seconds || seconds < 10) return;
-    try {
-      localStorage.setItem(
-        localPosKey(id),
-        JSON.stringify({ t: Math.floor(seconds), ts: Date.now() })
-      );
-    } catch {}
-  };
-
-  const readLocalPos = (dId) => {
-    if (!dId) return 0;
-    try {
-      const raw = localStorage.getItem(localPosKey(dId));
-      if (!raw) return 0;
-      const parsed = JSON.parse(raw);
-      if (typeof parsed?.t !== "number" || typeof parsed?.ts !== "number") return 0;
-      if (Date.now() - parsed.ts > LOCAL_POS_TTL_MS) return 0;
-      return Math.floor(parsed.t);
-    } catch { return 0; }
-  };
-
   // ✅ TESTE GRÁTIS via IP (edge function)
   const FREE_TRIAL_URL = "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/free-trial";
 
@@ -517,7 +481,7 @@ export default function DoramaWatch() {
     };
   }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium]);
 
-  // ✅ Carrega tempo salvo — localStorage SYNC primeiro, banco ASYNC depois
+  // ✅ Carrega tempo salvo do banco
   useEffect(() => {
     if (!allowContinue) {
       setSavedSeconds(0);
@@ -529,23 +493,9 @@ export default function DoramaWatch() {
       return;
     }
 
-    // 1) Lê localStorage IMEDIATAMENTE (sync) — elimina o GAP entre o
-    //    <video> autoplay começando do 0 e o fetch do banco retornar.
-    //    Se tiver posição recente (<1h), aplica como savedSeconds já.
-    const localPos = readLocalPos(dorama.id);
-    if (localPos >= 10) {
-      setSavedSeconds(localPos);
-      lastSavedRef.current = localPos;
-      hasAppliedResumeRef.current = false;
-      iframeLocalCounterRef.current = localPos;
-      setIframeResumeT(localPos);
-    } else {
-      iframeLocalCounterRef.current = 0;
-      setIframeResumeT(0);
-    }
+    iframeLocalCounterRef.current = 0;
+    setIframeResumeT(0);
 
-    // 2) Fetch do banco em paralelo — source of truth pra multi-device.
-    //    Usa o MAX entre localStorage e banco (o mais avançado vence).
     (async () => {
       try {
         const { data, error: e } = await supabase
@@ -559,19 +509,23 @@ export default function DoramaWatch() {
         if (e) console.error("watch_history select error:", e);
 
         const t = data?.current_time;
-        const dbSaved = typeof t === "number" ? Math.floor(t) : 0;
-        const finalSaved = Math.max(dbSaved, localPos);
+        const saved = typeof t === "number" ? Math.floor(t) : 0;
 
-        setSavedSeconds(finalSaved);
+        setSavedSeconds(saved);
         setLiveSeconds(0);
 
-        lastSavedRef.current = finalSaved;
+        lastSavedRef.current = saved;
         hasAppliedResumeRef.current = false;
-        iframeLocalCounterRef.current = finalSaved;
-        setIframeResumeT(finalSaved);
+        iframeLocalCounterRef.current = saved;
+        setIframeResumeT(saved);
       } catch (err) {
         console.error("watch_history select fatal:", err);
-        // Se banco falhar, mantém o localPos que já aplicamos no passo 1
+        setSavedSeconds(0);
+        setLiveSeconds(0);
+        lastSavedRef.current = 0;
+        hasAppliedResumeRef.current = false;
+        iframeLocalCounterRef.current = 0;
+        setIframeResumeT(0);
       }
     })();
   }, [allowContinue, user?.id, dorama?.id]);
@@ -587,11 +541,6 @@ export default function DoramaWatch() {
 
     if (prev >= 30 && s < prev - 5) return;
     if (prev >= 30 && !hasAppliedResumeRef.current && s < 30) return;
-
-    // Persiste em localStorage IMEDIATAMENTE (sync, sem aguardar rede).
-    // Garante que se a página reload por OS/browser, a próxima montagem
-    // já tem a posição pronta antes do fetch do banco retornar.
-    persistLocalPos(s);
 
     const dur = Math.floor(durationMaybe || 0);
 
@@ -669,27 +618,7 @@ export default function DoramaWatch() {
     const onEnded = () => flush();
 
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        flush();
-        return;
-      }
-
-      // Quando a aba volta a ficar visível:
-      // O browser pode ter resetado el.currentTime durante o background
-      // (comum no Chrome desktop ao re-focar a aba — desconecta o stream
-      // e re-conecta com tempo 0). Comparamos o tempo rastreado em ref
-      // com o currentTime real. Se o real está MUITO atrás, força seek.
-      // Fallback: usa localStorage se o ref local foi zerado.
-      try {
-        const trackedRef = Math.floor(latestTimeRef.current || 0);
-        const trackedLocal = readLocalPos(dorama?.id);
-        const tracked = Math.max(trackedRef, trackedLocal);
-        const current = Math.floor(el.currentTime || 0);
-        if (tracked >= 10 && tracked > current + 5) {
-          el.currentTime = tracked;
-          el.play().catch(() => {});
-        }
-      } catch {}
+      if (document.visibilityState === "hidden") flush();
     };
 
     const onBeforeUnload = () => flush();
