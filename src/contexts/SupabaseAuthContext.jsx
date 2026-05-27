@@ -106,6 +106,47 @@ export const AuthProvider = ({ children }) => {
     }
   }, [stopPremiumPolling]);
 
+  // Variante silent: NÃO mexe em checkingPremium. Usada em revalidações de
+  // rotina (tab volta do background, token refresh) para evitar flickar
+  // checkingPremium=true, que cascateia destruindo o player de vídeo no
+  // DoramaWatch (perda de currentTime). Só atualiza isPremium se o estado
+  // mudar de verdade — false silencioso permanece, true silencioso é
+  // promovido (cobre paid-then-revalidate).
+  const checkPremiumSilent = useCallback(async (userId) => {
+    if (!userId) return;
+    try {
+      const { data: subscriptions, error } = await supabase
+        .from("subscriptions")
+        .select("status, end_at, current_period_end, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) return;
+      const subs = Array.isArray(subscriptions) ? subscriptions : [];
+      if (subs.length === 0) return;
+
+      const now = new Date();
+      const ACTIVE_STATUSES = new Set(["active", "trialing", "paid"]);
+      const hasActiveSub = subs.some((sub) => {
+        const status = String(sub?.status ?? "").trim().toLowerCase();
+        if (!ACTIVE_STATUSES.has(status)) return false;
+        const v = sub?.end_at || sub?.current_period_end;
+        if (!v) return true;
+        const d = new Date(v);
+        return !Number.isNaN(d.getTime()) && d > now;
+      });
+
+      if (hasActiveSub !== isPremiumRef.current) {
+        setIsPremium(hasActiveSub);
+        isPremiumRef.current = hasActiveSub;
+        if (hasActiveSub) stopPremiumPolling();
+      }
+    } catch {
+      // silent fail — polling cobre se algo der errado
+    }
+  }, [stopPremiumPolling]);
+
   const startPremiumPolling = useCallback(async (userId) => {
     if (!userId) return;
     if (isPremiumRef.current) { stopPremiumPolling(); return; }
@@ -359,6 +400,16 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
 
+      // TOKEN_REFRESHED é só rotação de access_token (a cada ~50min). Não
+      // dispara revalidação completa que setaria checkingPremium=true e
+      // cascataria destruindo o player no DoramaWatch. setUser(newRef)
+      // também é evitado pra não re-renderizar tudo que depende de `user`.
+      // Os pollings dedicados (premium/session) cobrem mudanças reais.
+      if (event === "TOKEN_REFRESHED") {
+        setSession(session ?? null);
+        return;
+      }
+
       const currentUser = session?.user ?? null;
       setSession(session ?? null);
       setUser(currentUser);
@@ -408,7 +459,9 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const onVisible = async () => {
       if (!activeUserIdRef.current) return;
-      await checkPremiumStatus(activeUserIdRef.current);
+      // Silent: não flicka checkingPremium pra não destruir o <video>/<iframe>
+      // do DoramaWatch quando o user volta da aba no meio do filme.
+      await checkPremiumSilent(activeUserIdRef.current);
       if (!isPremiumRef.current) startPremiumPolling(activeUserIdRef.current);
 
       if (ENABLE_SINGLE_SESSION) {
@@ -431,7 +484,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener("visibilitychange", onVisibility);
       } catch {}
     };
-  }, [checkPremiumStatus, startPremiumPolling, validateSession, forceSignOut]);
+  }, [checkPremiumSilent, startPremiumPolling, validateSession, forceSignOut]);
 
   const refreshPremiumStatus = useCallback(() => {
     if (user) {

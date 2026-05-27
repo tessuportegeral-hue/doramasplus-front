@@ -87,6 +87,13 @@ export default function DoramaWatch() {
   const [claimAllowed, setClaimAllowed] = useState(false);
   const [claimMessage, setClaimMessage] = useState("");
 
+  // Ref que espelha claimAllowed pra ser lida dentro do effect de
+  // claim-playback sem entrar nas deps. Permite skip do reset
+  // destrutivo (que desmontava o player do DOM) quando o effect
+  // re-roda durante revalidações de rotina.
+  const claimAllowedRef = useRef(false);
+  useEffect(() => { claimAllowedRef.current = claimAllowed; }, [claimAllowed]);
+
   const nextUrl = useMemo(() => {
     return location.pathname + location.search;
   }, [location.pathname, location.search]);
@@ -233,16 +240,18 @@ export default function DoramaWatch() {
 
     const resume = iframeResumeT >= 10 ? Math.floor(iframeResumeT) : 0;
 
+    // Sem cache-bust (_ts) — URL já é única via token+expires do Bunny.
+    // Cada recálculo do useMemo mudaria _ts e forçaria reload do iframe
+    // do começo, mesmo quando nada muda de verdade no signed URL.
     try {
       const u = new URL(base, window.location.origin);
       if (!u.searchParams.has("autoplay")) u.searchParams.set("autoplay", "true");
       if (resume > 0) u.searchParams.set("t", String(resume));
-      u.searchParams.set("_ts", String(Date.now()));
       return u.toString();
     } catch {
       const join = base.includes("?") ? "&" : "?";
       const tParam = resume > 0 ? `&t=${resume}` : "";
-      return `${base}${join}autoplay=true${tParam}&_ts=${Date.now()}`;
+      return `${base}${join}autoplay=true${tParam}`;
     }
   }, [videoUrl, playerType, iframeResumeT]);
 
@@ -383,9 +392,17 @@ export default function DoramaWatch() {
   useEffect(() => {
     if (!isAuthenticated || !isPremium || !dorama?.id || loading || checkingPremium) return;
 
-    setClaimChecked(false);
-    setClaimAllowed(false);
-    setClaimMessage("");
+    // Se já tinha sido validado e estava allowed, não reseta — só re-confirma
+    // em background. Resetar pra false aqui faria o player desmontar do DOM
+    // (linha 872 do JSX) e perder currentTime durante revalidações rotineiras
+    // (token refresh, tab voltar do background). Se o claim renovado disser
+    // NÃO, o setClaimAllowed(false) lá embaixo derruba normalmente (kick).
+    const wasAllowed = claimAllowedRef.current;
+    if (!wasAllowed) {
+      setClaimChecked(false);
+      setClaimAllowed(false);
+      setClaimMessage("");
+    }
 
     let heartbeatId;
     let active = true;
