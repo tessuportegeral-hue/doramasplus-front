@@ -18,6 +18,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import DoramasChat from '@/components/DoramasChat';
+import UpdateEmailGate from '@/components/UpdateEmailGate';
 import { supabase } from '@/lib/supabaseClient';
 
 // ✅ (NOVO) Gate obrigatório do WhatsApp/phone
@@ -349,6 +350,7 @@ function App() {
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
           <DoramasChat />
+          <UpdateEmailGate />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
