@@ -165,13 +165,17 @@ export default function DoramaWatch() {
   const [signedVideoUrl, setSignedVideoUrl] = useState("");
 
   useEffect(() => {
-    // Gate em user?.id: garante que o auth hidratou e o JWT está pronto
-    // antes de chamar a função. Sem isso, em link direto pra /watch o
-    // dorama pode carregar antes do auth, a chamada vai sem Authorization,
-    // a função retorna 401 e signedVideoUrl trava em "" pra sempre porque
-    // useStreamToken (com TEST_EMAIL=null) já é true desde o início e o
-    // effect não re-dispara quando user finalmente chega.
-    if (!useStreamToken || !dorama?.id || !user?.id) {
+    // Dois caminhos pra obter a URL assinada:
+    //   - Autenticado: gate em user?.id garante que o auth hidratou e o JWT
+    //     está pronto. Sem isso, em link direto pra /watch o dorama pode
+    //     carregar antes do auth, a chamada vai sem Authorization, a função
+    //     retorna 401 e signedVideoUrl trava em "" pra sempre.
+    //   - Teste grátis (não logado): dispara quando o trial por IP está
+    //     liberado (ipTrialAllowed) e ainda não expirou. Manda free_trial:true
+    //     pro edge validar o IP e assinar com TTL capado ao tempo restante.
+    const isTrial = !isAuthenticated && ipTrialAllowed && !ipTrialExpired;
+    const ready = useStreamToken && dorama?.id && (user?.id || isTrial);
+    if (!ready) {
       setSignedVideoUrl("");
       return;
     }
@@ -179,7 +183,13 @@ export default function DoramaWatch() {
     (async () => {
       const { data, error: fnErr } = await supabase.functions.invoke(
         "get-stream-url",
-        { body: { dorama_id: dorama.id, mode: isIphoneMode ? "iphone" : "normal" } }
+        {
+          body: {
+            dorama_id: dorama.id,
+            mode: isIphoneMode ? "iphone" : "normal",
+            free_trial: !user?.id,
+          },
+        }
       );
       if (cancelled) return;
       if (fnErr || !data?.url) {
@@ -190,7 +200,7 @@ export default function DoramaWatch() {
       setSignedVideoUrl(data.url);
     })();
     return () => { cancelled = true; };
-  }, [useStreamToken, dorama?.id, isIphoneMode, user?.id]);
+  }, [useStreamToken, dorama?.id, isIphoneMode, user?.id, isAuthenticated, ipTrialAllowed, ipTrialExpired]);
 
   // ✅ Escolhe URL (normal vs iphone)
   const videoUrl = useMemo(() => {
