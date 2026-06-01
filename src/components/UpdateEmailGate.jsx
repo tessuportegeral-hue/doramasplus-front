@@ -20,6 +20,16 @@ const isQuickAccountEmail = (email) =>
     .toLowerCase()
     .endsWith(QUICK_ACCOUNT_DOMAIN);
 
+const isDismissed = () => {
+  try {
+    if (window.localStorage.getItem(DISMISS_KEY) === "true") return true;
+  } catch {}
+  try {
+    if (window.sessionStorage.getItem(DISMISS_KEY) === "true") return true;
+  } catch {}
+  return false;
+};
+
 export default function UpdateEmailGate() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -30,17 +40,23 @@ export default function UpdateEmailGate() {
       return;
     }
 
-    let dismissed = false;
-    try {
-      dismissed = window.sessionStorage.getItem(DISMISS_KEY) === "1";
-    } catch {}
-
-    if (!dismissed) setOpen(true);
+    if (!isDismissed()) setOpen(true);
   }, [user]);
 
   const dismissForSession = () => {
     try {
-      window.sessionStorage.setItem(DISMISS_KEY, "1");
+      window.sessionStorage.setItem(DISMISS_KEY, "true");
+    } catch {}
+  };
+
+  const dismissPermanently = () => {
+    // Sucesso: dispensa de forma permanente, gravando em sessionStorage E
+    // localStorage para que o modal não reapareça em sessões futuras.
+    try {
+      window.sessionStorage.setItem(DISMISS_KEY, "true");
+    } catch {}
+    try {
+      window.localStorage.setItem(DISMISS_KEY, "true");
     } catch {}
   };
 
@@ -51,10 +67,11 @@ export default function UpdateEmailGate() {
   };
 
   const handleUpdated = () => {
-    // Sucesso: também não mostra de novo nesta sessão. O novo email só
-    // reflete em user.email depois do refresh do token, então o sessionStorage
-    // evita que o modal pisque novamente enquanto isso.
-    dismissForSession();
+    // Sucesso: não mostra de novo. O novo email só reflete em user.email
+    // depois do refresh do token; gravar em sessionStorage + localStorage
+    // garante que o modal não reapareça enquanto isso (nem em sessões futuras).
+    dismissPermanently();
+    setOpen(false);
   };
 
   return (
