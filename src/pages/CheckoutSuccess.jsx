@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Helmet } from "react-helmet";
-import { CheckCircle, Loader2, AlertTriangle } from "lucide-react";
+import { CheckCircle, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -9,144 +9,111 @@ import { supabase } from "@/lib/supabaseClient";
 
 const CheckoutSuccess = () => {
   const location = useLocation();
-  const navigate = useNavigate();
 
-  // ✅ Mantém estados pra UI, mas NÃO vai mais chamar verify-payment
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verified, setVerified] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  // status: "checking" | "active" | "pending"
+  // - checking: ainda consultando o banco
+  // - active:   assinatura confirmada (status ativo E não expirada)
+  // - pending:  pagamento ainda não refletiu no banco
+  const [status, setStatus] = useState("checking");
+  const [rechecking, setRechecking] = useState(false);
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const gateway = useMemo(() => (params.get("gateway") || "").toLowerCase(), [params]);
   const orderNsu = useMemo(() => params.get("order_nsu") || "", [params]);
-  const eventIdFromUrl = useMemo(() => params.get("event_id") || "", [params]);
 
-  const canVerify = useMemo(() => gateway === "infinitepay" && !!orderNsu, [gateway, orderNsu]);
-
-  // ✅ Pixel Purchase no front (dedup com o backend via event_id)
+  // ✅ Mantido como estava: Purchase fica SOMENTE no backend/CAPI.
+  // (helper preservado, mas não disparado no front)
   const purchaseSentRef = useRef(false);
+  void purchaseSentRef;
 
-  const parsePlanFromOrderNSU = useCallback((order) => {
-    const parts = String(order || "").split("|");
-    return parts.length >= 3 ? parts[2] : null; // monthly | quarterly
-  }, []);
-
-  const valueFromPlan = useCallback((plan) => {
-    if (plan === "quarterly") return 43.9;
-    if (plan === "monthly") return 15.9;
-    return null;
-  }, []);
-
-  const sendPurchasePixelOnce = useCallback(() => {
+  /**
+   * ✅ VERIFICAÇÃO REAL:
+   * Antes de mostrar "Assinatura Confirmada", consulta a tabela `subscriptions`
+   * do usuário logado e confirma que existe assinatura ativa e não expirada.
+   * Espelha a mesma regra do SupabaseAuthContext.checkPremiumStatus
+   * (status ∈ {active, trialing, paid} E (end_at || current_period_end) > now).
+   */
+  const checkSubscription = useCallback(async () => {
     try {
-      if (purchaseSentRef.current) return;
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
 
-      // só dispara se vier do infinitepay e tiver order_nsu
-      if (!canVerify) return;
-
-      const eventId = (eventIdFromUrl || orderNsu || "").trim();
-      if (!eventId) return;
-
-      // evita duplicar em refresh/voltar
-      const key = `dp_purchase_sent_${eventId}`;
-      if (localStorage.getItem(key) === "1") {
-        purchaseSentRef.current = true;
+      if (userErr || !user) {
+        setStatus("pending");
         return;
       }
 
-      const plan = parsePlanFromOrderNSU(orderNsu);
-      const value = valueFromPlan(plan);
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("status, end_at, current_period_end, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
 
-      if (typeof value !== "number") return;
-
-      if (typeof window !== "undefined" && typeof window.fbq === "function") {
-        window.fbq(
-          "track",
-          "Purchase",
-          {
-            value,
-            currency: "BRL",
-            content_name: plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrão",
-          },
-          { eventID: eventId } // ✅ dedup com CAPI
-        );
-
-        localStorage.setItem(key, "1");
-        purchaseSentRef.current = true;
+      if (error) {
+        console.error("Erro ao verificar assinatura:", error);
+        setStatus("pending");
+        return;
       }
+
+      const subs = Array.isArray(data) ? data : [];
+      const now = new Date();
+      const ACTIVE_STATUSES = new Set(["active", "trialing", "paid"]);
+
+      const hasActiveSub = subs.some((sub) => {
+        const st = String(sub?.status ?? "").trim().toLowerCase();
+        if (!ACTIVE_STATUSES.has(st)) return false;
+        const v = sub?.end_at || sub?.current_period_end;
+        if (!v) return true; // ativa sem data de fim => considera válida
+        const d = new Date(v);
+        return !Number.isNaN(d.getTime()) && d > now;
+      });
+
+      setStatus(hasActiveSub ? "active" : "pending");
     } catch (e) {
-      // não quebra a página
-      console.warn("purchase pixel error:", e);
+      console.error("Erro ao verificar assinatura (fatal):", e);
+      setStatus("pending");
     }
-  }, [canVerify, eventIdFromUrl, orderNsu, parsePlanFromOrderNSU, valueFromPlan]);
-
-  /**
-   * ✅ ALTERAÇÃO PRINCIPAL:
-   * NÃO chama mais infinitepay-verify-payment.
-   * Agora a liberação é feita via webhook/clever-worker.
-   * Essa função só controla UX: mostra “confirmando” por alguns segundos e manda pro Dashboard.
-   */
-  const verifyPayment = useCallback(async () => {
-    if (!canVerify) return;
-
-    setIsVerifying(true);
-    setErrorMsg("");
-
-    try {
-      // 🔒 Não chamar verify-payment (evita somar meses / duplicar liberação)
-      // await supabase.functions.invoke("infinitepay-verify-payment", { body: { order_nsu: orderNsu } });
-
-      // ⏳ Dá um tempinho pra webhook/clever-worker processar
-      await new Promise((r) => setTimeout(r, 2500));
-
-      setIsVerifying(false);
-
-      // ✅ Em vez de tentar “verificar”, manda pro Dashboard (onde o status vai refletir quando liberar)
-      navigate("/dashboard", { replace: true });
-    } catch (e) {
-      console.error("verify (disabled) exception:", e);
-      setIsVerifying(false);
-      setErrorMsg(
-        "Pagamento recebido! Se sua conta ainda não liberou, aguarde 1 minuto e atualize o Dashboard."
-      );
-    }
-  }, [canVerify, navigate]);
+  }, []);
 
   useEffect(() => {
-    // ✅ NÃO dispara Purchase no front (Purchase fica SOMENTE no BACKEND/CAPI)
-    if (canVerify) {
-      verifyPayment();
-    }
-  }, [canVerify, verifyPayment]);
+    checkSubscription();
+  }, [checkSubscription]);
+
+  const handleRecheck = useCallback(async () => {
+    if (rechecking) return;
+    setRechecking(true);
+    setStatus("checking");
+    await checkSubscription();
+    setRechecking(false);
+  }, [rechecking, checkSubscription]);
+
+  const isChecking = status === "checking";
+  const isActive = status === "active";
+  const isPending = status === "pending";
 
   const titleText = useMemo(() => {
-    if (verified) return "Assinatura Confirmada!";
-    if (canVerify && isVerifying) return "Confirmando pagamento...";
-    if (canVerify && errorMsg) return "Quase lá...";
-    return "Assinatura Confirmada!";
-  }, [verified, canVerify, isVerifying, errorMsg]);
+    if (isActive) return "Assinatura Confirmada!";
+    if (isPending) return "Processando pagamento...";
+    return "Verificando pagamento...";
+  }, [isActive, isPending]);
 
   const descText = useMemo(() => {
-    if (verified) {
+    if (isActive) {
       return "Obrigado por assinar. Sua conta foi atualizada e você já tem acesso ilimitado a todos os doramas.";
     }
-
-    if (canVerify && isVerifying) {
-      return "Estamos aguardando a confirmação do Pix. Normalmente libera em instantes...";
+    if (isPending) {
+      return "Seu pagamento ainda está sendo processado e pode levar alguns instantes para liberar. Clique em recarregar para verificar novamente.";
     }
-
-    if (canVerify && errorMsg) {
-      return errorMsg;
-    }
-
-    // fallback (ex.: veio do Stripe ou entrou nessa página sem params)
-    return "Obrigado por assinar. Se sua conta ainda não liberou, volte ao Dashboard e atualize a página.";
-  }, [verified, canVerify, isVerifying, errorMsg]);
+    return "Estamos confirmando sua assinatura. Só um instante...";
+  }, [isActive, isPending]);
 
   return (
     <>
       <Helmet>
-        <title>Assinatura Confirmada - DoramaStream</title>
+        <title>Status da Assinatura - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950">
@@ -159,17 +126,17 @@ const CheckoutSuccess = () => {
             className="bg-slate-900 border border-slate-800 p-8 rounded-2xl max-w-md w-full text-center shadow-2xl"
           >
             <div className="flex justify-center mb-6">
-              {canVerify && isVerifying ? (
-                <div className="bg-purple-600/20 p-4 rounded-full">
-                  <Loader2 className="w-16 h-16 text-purple-400 animate-spin" />
+              {isActive ? (
+                <div className="bg-green-500/20 p-4 rounded-full">
+                  <CheckCircle className="w-16 h-16 text-green-500" />
                 </div>
-              ) : canVerify && errorMsg ? (
+              ) : isPending ? (
                 <div className="bg-yellow-500/20 p-4 rounded-full">
                   <AlertTriangle className="w-16 h-16 text-yellow-400" />
                 </div>
               ) : (
-                <div className="bg-green-500/20 p-4 rounded-full">
-                  <CheckCircle className="w-16 h-16 text-green-500" />
+                <div className="bg-purple-600/20 p-4 rounded-full">
+                  <Loader2 className="w-16 h-16 text-purple-400 animate-spin" />
                 </div>
               )}
             </div>
@@ -178,15 +145,27 @@ const CheckoutSuccess = () => {
 
             <p className="text-slate-400 mb-8">{descText}</p>
 
-            {/* ✅ Agora não faz sentido "tentar verificar" no backend.
-                Se deu algum atraso, só manda pro Dashboard pra atualizar. */}
-            {canVerify && !verified && !!errorMsg ? (
+            {isActive ? (
+              <Link to="/dashboard">
+                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-lg">
+                  Voltar para o Dashboard
+                </Button>
+              </Link>
+            ) : isPending ? (
               <div className="space-y-3">
                 <Button
-                  onClick={() => navigate("/dashboard")}
+                  onClick={handleRecheck}
+                  disabled={rechecking}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-lg"
                 >
-                  Ir para o Dashboard
+                  {rechecking ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2" />
+                      Recarregar
+                    </>
+                  )}
                 </Button>
 
                 <Link to="/dashboard">
@@ -194,22 +173,23 @@ const CheckoutSuccess = () => {
                     variant="secondary"
                     className="w-full bg-slate-800 hover:bg-slate-700 text-white h-12 text-lg"
                   >
-                    Atualizar depois
+                    Ir para o Dashboard
                   </Button>
                 </Link>
               </div>
             ) : (
-              <Link to="/dashboard">
-                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-lg">
-                  Voltar para o Dashboard
-                </Button>
-              </Link>
+              <Button
+                disabled
+                className="w-full bg-purple-600/60 text-white h-12 text-lg cursor-not-allowed"
+              >
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </Button>
             )}
 
             {/* Debug leve (não mostra tokens) */}
-            {canVerify ? (
+            {gateway || orderNsu ? (
               <p className="text-xs text-slate-600 mt-5 break-all">
-                Gateway: {gateway} • order_nsu: {orderNsu}
+                Gateway: {gateway || "—"} • order_nsu: {orderNsu || "—"}
               </p>
             ) : null}
           </motion.div>
