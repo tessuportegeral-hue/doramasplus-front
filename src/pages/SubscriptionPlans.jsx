@@ -114,7 +114,7 @@ const SubscriptionPlans = () => {
       // ✅ dispara InitiateCheckout no clique do Cartão também
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
-      const value = planType === 'quarterly' ? 43.9 : 15.9;
+      const value = planType === 'quarterly' ? 47.9 : 16.9;
 
       fireInitiateCheckout({ planType, planName, value });
 
@@ -231,7 +231,7 @@ const SubscriptionPlans = () => {
       // ✅ dispara InitiateCheckout no clique do Pix
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
-      const value = planType === 'quarterly' ? 43.9 : 15.9;
+      const value = planType === 'quarterly' ? 47.9 : 16.9;
 
       const event_id = `ic_${planType}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       fireInitiateCheckout({ planType, planName, value, eventId: event_id });
@@ -362,7 +362,7 @@ const SubscriptionPlans = () => {
 
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-bold text-purple-400">
-                  R$ 15,90
+                  R$ 16,90
                 </span>
                 <span className="text-slate-400">/mês</span>
               </div>
@@ -393,7 +393,19 @@ const SubscriptionPlans = () => {
                 {loadingPlan === 'pix_monthly' ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  'Pagar no Pix ou Cartão – R$ 15,90'
+                  'Pagar no Pix'
+                )}
+              </Button>
+
+              <Button
+                onClick={() => handleSubscribe('monthly')}
+                disabled={isLoading}
+                className="w-full mt-3 bg-slate-800 hover:bg-slate-700 text-white py-6 text-lg font-medium border border-slate-700"
+              >
+                {loadingPlan === 'monthly' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  'Cartão de débito ou crédito'
                 )}
               </Button>
             </motion.div>
@@ -416,7 +428,7 @@ const SubscriptionPlans = () => {
 
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-bold text-purple-400">
-                  R$ 43,90
+                  R$ 47,90
                 </span>
                 <span className="text-slate-400">/3 meses</span>
               </div>
@@ -448,7 +460,19 @@ const SubscriptionPlans = () => {
                 {loadingPlan === 'pix_quarterly' ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  'Pagar no Pix ou Cartão – R$ 43,90'
+                  'Pagar no Pix'
+                )}
+              </Button>
+
+              <Button
+                onClick={() => handleSubscribe('quarterly')}
+                disabled={isLoading}
+                className="w-full mt-3 bg-slate-800 hover:bg-slate-700 text-white py-6 text-lg font-medium border border-slate-700"
+              >
+                {loadingPlan === 'quarterly' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  'Cartão de débito ou crédito'
                 )}
               </Button>
             </motion.div>
