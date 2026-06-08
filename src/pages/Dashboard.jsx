@@ -28,7 +28,6 @@ import {
   Moon,
   Tv,
   Flag,
-  Megaphone,
   ExternalLink,
 } from "lucide-react";
 
@@ -982,41 +981,42 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           </div>
         )}
 
-        {!normalizedQuery && (
-          <HeroSection
-            featuredDoramas={doramas.featured}
-            loading={loading.featured}
-          />
-        )}
-
+        {/* ✅ Banner da comunidade (grupo VIP) — logo abaixo da busca, acima do banner principal */}
         {!normalizedQuery && (
           <div className="mb-4 md:mb-6">
             <button
               type="button"
               onClick={goCommunity}
-              className="w-full text-left bg-slate-900/60 border border-slate-800 hover:border-emerald-500/40 rounded-lg px-4 py-3 md:px-5 md:py-4 transition"
+              className="group relative block w-full text-left rounded-xl focus:outline-none focus:ring-2 focus:ring-fuchsia-400/60"
             >
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 text-emerald-400">
-                  <Megaphone className="w-5 h-5" />
-                </div>
+              {/* brilho pulsante atrás do banner */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 opacity-70 blur-lg animate-pulse"
+              />
 
-                <div className="flex-1">
-                  <p className="font-semibold text-emerald-200">
-                    Entre na Comunidade Oficial do DoramasPlus
-                  </p>
-                  <p className="text-sm text-slate-300 mt-0.5">
-                    Avisos, novidades e atualizações importantes da plataforma.
-                    Clique para entrar agora.
-                  </p>
-                </div>
+              {/* conteúdo */}
+              <span className="relative flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 md:px-5 md:py-4 ring-1 ring-white/20 shadow-lg shadow-fuchsia-500/30">
+                <span className="flex-1 min-w-0">
+                  <span className="block font-bold text-white text-base md:text-lg">
+                    💬 Entre no grupo VIP
+                  </span>
+                  <span className="block text-sm text-white/90 mt-0.5">
+                    Séries em alta, novidades e promoções exclusivas
+                  </span>
+                </span>
 
-                <div className="text-slate-400">
-                  <ExternalLink className="w-4 h-4" />
-                </div>
-              </div>
+                <ExternalLink className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
+              </span>
             </button>
           </div>
+        )}
+
+        {!normalizedQuery && (
+          <HeroSection
+            featuredDoramas={doramas.featured}
+            loading={loading.featured}
+          />
         )}
 
         {/* ✅ BUSCA (agora é do BANCO, não das categorias) */}
