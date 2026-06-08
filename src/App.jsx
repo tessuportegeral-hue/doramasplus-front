@@ -306,6 +306,15 @@ function TrafficSourceTracker() {
         localStorage.setItem(tsKey, String(Date.now()));
       }
 
+      // ===== ref (indicação) — captura global de fallback =====
+      // Garante que o ?ref= seja salvo mesmo que a pessoa caia primeiro em
+      // outra rota antes de chegar no /cadastro. O Signup também captura,
+      // então aqui é só um seguro. Last-touch (sobrescreve), igual ao Signup.
+      const ref = (params.get('ref') || '').trim();
+      if (ref) {
+        localStorage.setItem('doramasplus_ref', ref);
+      }
+
       // ===== fbclid (first-touch, cookie com 7 dias + localStorage como fallback) =====
       const fbclid = (params.get('fbclid') || '').trim();
       if (fbclid) {
