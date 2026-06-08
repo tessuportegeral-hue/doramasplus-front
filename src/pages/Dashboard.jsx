@@ -999,7 +999,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
               <span className="relative flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 md:px-5 md:py-4 ring-1 ring-white/20 shadow-lg shadow-fuchsia-500/30">
                 <span className="flex-1 min-w-0">
                   <span className="block font-bold text-white text-base md:text-lg">
-                    💬 Entre no grupo VIP
+                    💬 Entre no Grupo VIP do Whatsapp
                   </span>
                   <span className="block text-sm text-white/90 mt-0.5">
                     Séries em alta, novidades e promoções exclusivas
