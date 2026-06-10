@@ -35,6 +35,14 @@ export default function DoramasChat() {
     if (open && inputRef.current) inputRef.current.focus();
   }, [open]);
 
+  // Permite abrir o chat de qualquer lugar do site (ex: banner da home)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const openChat = () => setOpen(true);
+    window.addEventListener("open-dora-chat", openChat);
+    return () => window.removeEventListener("open-dora-chat", openChat);
+  }, []);
+
   // Dora proativa em /plans: abre o chat após 15s parado na página
   useEffect(() => {
     if (typeof window === "undefined") return;

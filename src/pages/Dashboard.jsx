@@ -29,6 +29,8 @@ import {
   Tv,
   Flag,
   ExternalLink,
+  Gift,
+  Bot,
 } from "lucide-react";
 
 const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
@@ -911,6 +913,39 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     window.open(communityLink, "_blank", "noopener,noreferrer");
   };
 
+  // Carrossel de banners no topo da home (alterna a cada 5s)
+  const homeBanners = [
+    {
+      icon: ExternalLink,
+      title: "💬 Entre no Grupo VIP do Whatsapp",
+      subtitle: "Séries em alta, novidades e promoções exclusivas",
+      onClick: goCommunity,
+    },
+    {
+      icon: Gift,
+      title: "🎁 Indique e ganhe 15 dias grátis",
+      subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
+      onClick: () =>
+        navigate(user ? "/indicar" : "/login?redirect=/indicar"),
+    },
+    {
+      icon: Bot,
+      title: "🤖 Dúvidas? Fale com a Dora",
+      subtitle: "Nossa assistente virtual responde na hora, qualquer horário",
+      onClick: () => window.dispatchEvent(new Event("open-dora-chat")),
+    },
+  ];
+
+  const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    if (normalizedQuery) return; // banner some durante a busca
+    const id = setInterval(() => {
+      setBannerIndex((i) => (i + 1) % homeBanners.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [normalizedQuery]);
+
   return (
     <>
       <Helmet>
@@ -981,34 +1016,66 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           </div>
         )}
 
-        {/* ✅ Banner da comunidade (grupo VIP) — logo abaixo da busca, acima do banner principal */}
+        {/* ✅ Carrossel de banners — logo abaixo da busca, acima do banner principal */}
         {!normalizedQuery && (
           <div className="mb-4 md:mb-6">
-            <button
-              type="button"
-              onClick={goCommunity}
-              className="group relative block w-full text-left rounded-xl focus:outline-none focus:ring-2 focus:ring-fuchsia-400/60"
-            >
+            <div className="group relative w-full rounded-xl">
               {/* brilho pulsante atrás do banner */}
               <span
                 aria-hidden="true"
                 className="pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 opacity-70 blur-lg animate-pulse"
               />
 
-              {/* conteúdo */}
-              <span className="relative flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 md:px-5 md:py-4 ring-1 ring-white/20 shadow-lg shadow-fuchsia-500/30">
-                <span className="flex-1 min-w-0">
-                  <span className="block font-bold text-white text-base md:text-lg">
-                    💬 Entre no Grupo VIP do Whatsapp
-                  </span>
-                  <span className="block text-sm text-white/90 mt-0.5">
-                    Séries em alta, novidades e promoções exclusivas
-                  </span>
-                </span>
+              {/* conteúdo (alterna entre os banners) */}
+              <div className="relative h-[68px] md:h-[80px] overflow-hidden rounded-xl">
+                <AnimatePresence mode="wait">
+                  {(() => {
+                    const banner = homeBanners[bannerIndex];
+                    const Icon = banner.icon;
+                    return (
+                      <motion.button
+                        key={bannerIndex}
+                        type="button"
+                        onClick={banner.onClick}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -12 }}
+                        transition={{ duration: 0.4, ease: "easeInOut" }}
+                        className="absolute inset-0 flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 md:px-5 md:py-4 text-left ring-1 ring-white/20 shadow-lg shadow-fuchsia-500/30 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/60"
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-bold text-white text-base md:text-lg truncate">
+                            {banner.title}
+                          </span>
+                          <span className="block text-sm text-white/90 mt-0.5 truncate">
+                            {banner.subtitle}
+                          </span>
+                        </span>
 
-                <ExternalLink className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </button>
+                        <Icon className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
+                      </motion.button>
+                    );
+                  })()}
+                </AnimatePresence>
+              </div>
+
+              {/* indicadores de paginação (bolinhas) */}
+              <div className="relative flex items-center justify-center gap-2 mt-2.5">
+                {homeBanners.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-label={`Ir para o banner ${i + 1}`}
+                    onClick={() => setBannerIndex(i)}
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      i === bannerIndex
+                        ? "w-5 bg-fuchsia-500"
+                        : "w-2 bg-white/30 hover:bg-white/50"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
