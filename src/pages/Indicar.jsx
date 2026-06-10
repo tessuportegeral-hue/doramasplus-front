@@ -174,6 +174,9 @@ const Indicar = () => {
               <p className="text-xs text-slate-500 pt-2">
                 * O crédito vale apenas para contas novas. Auto-indicação não é permitida.
               </p>
+              <p className="text-xs text-slate-500">
+                * Válido para assinantes ativos ou que já assinaram pelo menos uma vez.
+              </p>
             </div>
           </motion.div>
         </div>

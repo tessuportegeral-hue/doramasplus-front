@@ -925,6 +925,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       icon: Gift,
       title: "🎁 Indique e ganhe 15 dias grátis",
       subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
+      note: "Válido para assinantes ativos ou que já assinaram pelo menos uma vez.",
       onClick: () =>
         navigate(user ? "/indicar" : "/login?redirect=/indicar"),
     },
@@ -1027,7 +1028,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
               />
 
               {/* conteúdo (alterna entre os banners) */}
-              <div className="relative h-[68px] md:h-[80px] overflow-hidden rounded-xl">
+              <div className="relative h-[84px] md:h-[96px] overflow-hidden rounded-xl">
                 <AnimatePresence mode="wait">
                   {(() => {
                     const banner = homeBanners[bannerIndex];
@@ -1050,6 +1051,11 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                           <span className="block text-sm text-white/90 mt-0.5 truncate">
                             {banner.subtitle}
                           </span>
+                          {banner.note && (
+                            <span className="block text-[11px] md:text-xs text-white/70 mt-0.5 truncate">
+                              {banner.note}
+                            </span>
+                          )}
                         </span>
 
                         <Icon className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
