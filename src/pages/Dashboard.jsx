@@ -925,7 +925,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       icon: Gift,
       title: "🎁 Indique e ganhe 15 dias grátis",
       subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
-      note: "Válido para Assinantes Ativos e Inativos",
+      note: "Necessário ter assinado pelo menos uma vez",
       onClick: () =>
         navigate(user ? "/indicar" : "/login?redirect=/indicar"),
     },
