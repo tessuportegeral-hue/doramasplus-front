@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "br.com.doramasplus.twa",
+    "sha256_cert_fingerprints": ["A7:06:84:B3:A0:F7:C2:F4:CC:B7:51:41:C0:BF:CA:54:4C:55:BA:8D:BD:F6:44:B7:E5:B3:1D:E4:D6:14:A0:3E"]
+  }
+}]
