@@ -943,7 +943,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     if (normalizedQuery) return; // banner some durante a busca
     const id = setInterval(() => {
       setBannerIndex((i) => (i + 1) % homeBanners.length);
-    }, 5000);
+    }, 10000);
     return () => clearInterval(id);
   }, [normalizedQuery]);
 
