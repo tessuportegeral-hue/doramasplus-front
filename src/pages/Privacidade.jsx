@@ -141,6 +141,21 @@ export default function Privacidade() {
           </p>
         </Section>
 
+        <Section title="9. Exclusão de Conta e Dados">
+          <p>
+            Para solicitar a exclusão da sua conta e de todos os seus dados pessoais do DoramasPlus,
+            acesse o site, clique no seu nome no canto superior direito e selecione "Excluir conta".
+            A exclusão é imediata e remove todos os dados associados à sua conta, incluindo histórico
+            de visualização e informações de pagamento.
+          </p>
+          <p>
+            Também é possível solicitar a exclusão por e-mail:{" "}
+            <a href="mailto:tessuportegeral@gmail.com" className="text-purple-400 hover:underline">
+              tessuportegeral@gmail.com
+            </a>
+          </p>
+        </Section>
+
         <p className="text-slate-500 text-sm mt-12 pt-8 border-t border-slate-800">
           Esta política pode ser atualizada periodicamente. A data de vigência no topo desta página
           indica a versão mais recente.
