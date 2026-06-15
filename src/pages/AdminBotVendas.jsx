@@ -47,6 +47,10 @@ export default function AdminBotVendas() {
   const [hasNewMsgs, setHasNewMsgs] = useState(false);
   const [paidOrderNsus, setPaidOrderNsus] = useState(() => new Set()); // order_nsu pagos
 
+  // ✅ envio manual (humano) pelo número 1499
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
   // ✅ scroll
   const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -350,7 +354,62 @@ export default function AdminBotVendas() {
   function openChat(s) {
     setSelected(s);
     setHasNewMsgs(false);
+    setText("");
     loadMessages(s.phone, { scroll: true, behavior: "auto" });
+  }
+
+  // ✅ envia mensagem manual pelo bot de vendas (número 1499)
+  // Usa o endpoint /send-manual da edge function whatsapp-sales-bot,
+  // que reaproveita as credenciais do WhatsApp e salva como direction "out".
+  async function sendMessage() {
+    if (!selected) return;
+    const msg = text.trim();
+    if (!msg) return;
+
+    try {
+      setSending(true);
+      setError("");
+
+      const { data, error } = await supabase.functions.invoke(
+        "whatsapp-sales-bot/send-manual",
+        { body: { phone: selected.phone, text: msg } }
+      );
+
+      if (error) {
+        console.error("[BotVendas] sendMessage invoke error:", error);
+        setError(error.message || "Erro ao enviar mensagem");
+        return;
+      }
+      if (!data?.ok) {
+        setError(data?.error || "Falha ao enviar mensagem");
+        return;
+      }
+
+      setText("");
+
+      // otimista: já mostra no chat (o realtime também vai trazer o insert)
+      const optimistic = {
+        id: `local-${selected.phone}-${messages.length}`,
+        phone: selected.phone,
+        direction: "out",
+        message: msg,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => (prev ? [...prev, optimistic] : [optimistic]));
+      setPreviews((prev) => ({
+        ...prev,
+        [selected.phone]: { message: msg, direction: "out", created_at: optimistic.created_at },
+      }));
+      scrollToBottom("smooth");
+
+      // sincroniza com o banco logo em seguida
+      loadMessages(selected.phone, { scroll: true, behavior: "smooth" });
+    } catch (e) {
+      console.error("[BotVendas] sendMessage exception:", e);
+      setError(String(e?.message || e));
+    } finally {
+      setSending(false);
+    }
   }
 
   // ---------- efeitos ----------
@@ -642,6 +701,24 @@ export default function AdminBotVendas() {
     },
     detailRow: { fontSize: 12, opacity: 0.85, marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" },
     link: { color: "#93c5fd", wordBreak: "break-all" },
+    composer: {
+      padding: 12,
+      borderTop: "1px solid #2a2a2a",
+      display: "flex",
+      gap: 8,
+      background: "rgba(0,0,0,0.35)",
+      alignItems: "center",
+    },
+    btnPrimary: {
+      padding: "10px 14px",
+      borderRadius: 12,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(70,130,255,0.18)",
+      color: "rgba(255,255,255,0.95)",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    },
+    btnDisabled: { opacity: 0.55, cursor: "not-allowed" },
   };
 
   // ---------- derivações ----------
@@ -958,6 +1035,31 @@ export default function AdminBotVendas() {
           </>
         )}
       </div>
+
+      {selected ? (
+        <div style={S.composer}>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Responder como humano (pelo número 1499)…"
+            style={S.input}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            disabled={sending}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={sending || !text.trim()}
+            style={{ ...S.btnPrimary, ...(sending || !text.trim() ? S.btnDisabled : null) }}
+          >
+            {sending ? "Enviando…" : "Enviar"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 
