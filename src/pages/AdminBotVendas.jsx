@@ -375,7 +375,7 @@ export default function AdminBotVendas() {
 
       const { data, error } = await supabase.functions.invoke(
         "whatsapp-sales-bot/send-manual",
-        { body: { phone: selected.phone, text: msg } }
+        { body: { phone: selected.phone, text: msg, message: msg } }
       );
 
       if (error) {

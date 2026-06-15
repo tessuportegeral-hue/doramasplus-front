@@ -376,8 +376,9 @@ serve(async (req) => {
 
       const body = await req.json().catch(()=>({}));
       const phone = String(body?.phone||"");
-      const text = String(body?.text||"").trim();
-      if (!phone || !text) return jsonRes(400, { ok: false, error: "phone and text required" });
+      // aceita tanto "text" quanto "message" pra evitar mismatch frontend/backend
+      const text = String(body?.text || body?.message || "").trim();
+      if (!phone || !text) return jsonRes(400, { ok: false, error: "phone and text/message required" });
 
       const toE164 = normalizeToE164BR(phone);
       await sendText(toE164, text); // sendText já salva como direction "out"
