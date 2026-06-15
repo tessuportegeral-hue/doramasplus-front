@@ -506,6 +506,18 @@ export default function AdminAnalytics() {
             >
               Suporte
             </button>
+
+            {/* ✅ NOVA ABA: BOT DE VENDAS (AdminBotVendas) */}
+            <button
+              onClick={() => goTab("/admin/bot-vendas")}
+              className={`px-3 py-2 rounded-lg text-sm border ${
+                isActiveRoute("/admin/bot-vendas")
+                  ? "bg-purple-500/20 border-purple-400/30"
+                  : "bg-white/5 border-white/10"
+              }`}
+            >
+              Bot Vendas
+            </button>
           </div>
         </div>
 

@@ -64,6 +64,9 @@ import AdminRoute from '@/components/AdminRoute';
 // ✅ (NOVO) Painel de atendimento
 import AdminSupport from '@/pages/AdminSupport';
 
+// ✅ (NOVO) Painel de monitoramento do Bot de Vendas (1499)
+import AdminBotVendas from '@/pages/AdminBotVendas';
+
 // Landing
 import Landing from '@/pages/Landing';
 import Privacidade from '@/pages/Privacidade';
@@ -526,6 +529,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminSupport />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ (NOVO) ADMIN BOT DE VENDAS (1499) */}
+                <Route
+                  path="/admin/bot-vendas"
+                  element={
+                    <AdminRoute>
+                      <AdminBotVendas />
                     </AdminRoute>
                   }
                 />
