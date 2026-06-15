@@ -232,6 +232,25 @@ async function finalizarCadastro(fromE164: string, name: string, email: string, 
   await updateSession(fromE164, "waiting_payment", { ...sessionData, email: account.email, name, plan, order_nsu: pix.externalReference });
 }
 
+// ✅ Ajuda de acesso (fallback humano só se não resolver).
+// Manda o link que cai DIRETO no login e, em mensagens SEPARADAS, o email e a
+// senha — clientes no celular não conseguem copiar se vier tudo junto.
+async function sendAccessHelp(toE164: string, email: string) {
+  await sendText(toE164,
+    `Vou te ajudar a entrar na sua conta! 😊\n\n` +
+    `1️⃣ Acesse este link — ele já abre direto na tela de login:\n👉 ${PUBLIC_BASE_URL}/login\n\n` +
+    `Nas próximas 2 mensagens vou te mandar seu *email* e sua *senha* separados. ` +
+    `É só tocar e segurar em cada mensagem, escolher *Copiar* e colar no campo certo do site 👇`
+  );
+  await sendText(toE164, email);
+  await sendText(toE164, DEFAULT_PASSWORD);
+  await sendText(toE164,
+    `Pronto! Cole o *email* (1ª mensagem acima) no campo de email e a *senha* (2ª mensagem) no campo de senha, e toque em *Entrar* ✅\n\n` +
+    `Se você já trocou sua senha, use a que você criou. ` +
+    `E se mesmo assim não conseguir, é só me chamar aqui que eu resolvo pra você: https://wa.me/5518996796654`
+  );
+}
+
 async function processMessage(fromE164: string, messageText: string, displayName: string | null) {
   // Salva mensagem recebida
   await saveMessage(fromE164, "in", messageText);
@@ -245,11 +264,15 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const complaint = detectComplaint(msg);
     const email = String(sessionData.email || "");
     if (complaint === "nome") {
-      await sendText(fromE164, `Sem problema nenhum! 😊 O nome é apenas uma forma de identificar seu cadastro internamente — não interfere no seu acesso.\n\nO que importa é o seu *email* e *senha* de acesso:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\n👉 Acesse em: ${PUBLIC_BASE_URL}\n\nQualquer outra dúvida estou aqui! 😊`);
+      await sendText(fromE164, `Sem problema nenhum! 😊 O nome é só uma forma de identificar seu cadastro internamente — não interfere no seu acesso. O que importa é o seu *email* e *senha* 👇`);
+      if (email) await sendAccessHelp(fromE164, email);
+      else await sendText(fromE164, `Me confirma o *email* que você usou no cadastro que eu te reenvio os dados? Ou me chama aqui: https://wa.me/5518996796654`);
       return;
     }
     if (complaint === "email") {
-      await sendText(fromE164, `Sem estresse! 😊 O email cadastrado funciona normalmente pra acessar a plataforma, pode usar ele tranquilo.\n\nSeus dados de acesso são esses:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\n👉 Acesse em: ${PUBLIC_BASE_URL}\n\nSó clicar em *Entrar* no topo e usar esses dados — vai funcionar! ✅`);
+      await sendText(fromE164, `Sem estresse! 😊 O email cadastrado funciona normalmente pra acessar a plataforma, pode usar ele tranquilo 👇`);
+      if (email) await sendAccessHelp(fromE164, email);
+      else await sendText(fromE164, `Me confirma o *email* que você usou no cadastro que eu te reenvio os dados? Ou me chama aqui: https://wa.me/5518996796654`);
       return;
     }
   }
@@ -259,7 +282,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if (existing?.subscription) {
       const name = existing.profile.name || displayName || "";
       await sendText(fromE164, `Oi${name ? " "+name : ""}! 😊 Você já tem uma assinatura ativa no DoramasPlus!\n\nAcesse agora em: ${PUBLIC_BASE_URL}\n\nPrecisa de ajuda com alguma coisa?`);
-      await updateSession(fromE164, "support", { ...sessionData, existing: true });
+      await updateSession(fromE164, "support", { ...sessionData, existing: true, email: existing.profile.email });
       return;
     }
     if (existing && !existing.subscription) {
@@ -307,8 +330,13 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if (step === "access_sent") {
-    const email = String(sessionData.email || "");
-    await sendText(fromE164, `Seu acesso já foi liberado! 😊\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\n👉 Acesse em: ${PUBLIC_BASE_URL}\n\nQualquer dúvida estou aqui!`);
+    const email = String(sessionData.email || "") || (await checkExistingUser(fromE164))?.profile?.email || "";
+    if (email) {
+      await sendText(fromE164, `Seu acesso já está liberado! 😊 Vou te passar tudo certinho pra você entrar 👇`);
+      await sendAccessHelp(fromE164, email);
+    } else {
+      await sendText(fromE164, `Pra te reenviar seus dados de acesso, me confirma o *email* que você usou no cadastro? 😊\n\nSe preferir, me chama aqui: https://wa.me/5518996796654`);
+    }
     return;
   }
 
@@ -319,12 +347,27 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if (step === "support_detail") {
-    if (msg.includes("senha")||msg.includes("esqueci")) {
-      await sendText(fromE164, `A senha padrão é *${DEFAULT_PASSWORD}*\n\nAcesse em: ${PUBLIC_BASE_URL}\n\nSe precisar de mais ajuda: https://wa.me/5518996796654`);
-    } else if (msg.includes("acesso")||msg.includes("entrar")||msg.includes("login")||msg.includes("nao consigo")) {
-      await sendText(fromE164, `Para acessar: ${PUBLIC_BASE_URL}\n\nClique em *Entrar* no topo e use seu email e senha *${DEFAULT_PASSWORD}*.\n\nAinda com problema? https://wa.me/5518996796654`);
+    const isAccessIssue =
+      msg.includes("acesso")||msg.includes("acessar")||msg.includes("entrar")||msg.includes("entra")||
+      msg.includes("login")||msg.includes("logar")||msg.includes("senha")||msg.includes("esqueci")||
+      msg.includes("nao consigo")||msg.includes("nao consego")||msg.includes("conta");
+    const isCatalog =
+      msg.includes("catalogo")||msg.includes("dorama")||msg.includes("serie")||msg.includes("filme")||
+      msg.includes("assistir")||msg.includes("episodio");
+
+    if (isAccessIssue) {
+      // tenta resolver: reenvia acesso (link /login + email e senha separados)
+      const email = String(sessionData.email || "") || (await checkExistingUser(fromE164))?.profile?.email || "";
+      if (email) {
+        await sendAccessHelp(fromE164, email);
+      } else {
+        await sendText(fromE164, `Pra te ajudar a entrar, me confirma o *email* que você usou no cadastro? Aí eu te reenvio seus dados de acesso 😊\n\nSe preferir falar comigo direto: https://wa.me/5518996796654`);
+      }
+    } else if (isCatalog) {
+      await sendText(fromE164, `Temos um catálogo enorme de doramas, com lançamentos toda semana! 🎬\n\nÉ só acessar ${PUBLIC_BASE_URL} e buscar pelo nome.\n\nSe não achar algum título, me chama aqui que eu verifico pra você: https://wa.me/5518996796654`);
     } else {
-      await sendText(fromE164, `Para atendimento personalizado:\nhttps://wa.me/5518996796654 😊`);
+      // fallback humano — só depois de tentar entender
+      await sendText(fromE164, `Pode deixar que eu te ajudo! 😊 Me explica rapidinho o que está acontecendo que eu tento resolver aqui mesmo.\n\nSe preferir um atendimento mais detalhado, me chama neste link: https://wa.me/5518996796654`);
     }
     await updateSession(fromE164, "start", {});
     return;
