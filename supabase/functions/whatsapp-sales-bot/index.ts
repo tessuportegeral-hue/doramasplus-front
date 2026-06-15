@@ -13,6 +13,14 @@ const VIP_GROUP = "https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k";
 // ✅ admin autorizado a enviar mensagens manuais (mesmo email do painel /admin)
 const ADMIN_EMAIL = "tessuportegeral@gmail.com";
 
+// ✅ CORS — precisa estar em TODAS as respostas (não só no OPTIONS),
+// senão o browser bloqueia a leitura e o supabase-js dá "Failed to send a request".
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
+
 function getAsaasKey() { return Deno.env.get("ASAAS_API_KEY") || ""; }
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -25,7 +33,7 @@ function normalizeToE164BR(raw: string) {
   return d;
 }
 function jsonRes(status: number, obj: unknown) {
-  return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 function generateFakeEmail(phone: string): string {
   return `${digitsOnly(phone)}@doramasplus.com`.toLowerCase();
@@ -328,6 +336,10 @@ async function processMessage(fromE164: string, messageText: string, displayName
 
 serve(async (req) => {
   const url = new URL(req.url);
+  // ✅ Preflight CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");

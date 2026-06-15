@@ -51,6 +51,9 @@ export default function AdminBotVendas() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
+  // ✅ realtime só assina depois que o JWT do admin estiver setado (RLS exige)
+  const [realtimeReady, setRealtimeReady] = useState(false);
+
   // ✅ scroll
   const chatBodyRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -433,8 +436,39 @@ export default function AdminBotVendas() {
     lastMessageIdRef.current = messages?.[messages.length - 1]?.id || null;
   }, [messages]);
 
+  // ✅ Como as tabelas têm RLS, o Realtime precisa do JWT do admin no socket.
+  // Setamos o token antes de assinar e mantemos atualizado em refresh de sessão.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        if (token) supabase.realtime.setAuth(token);
+      } catch {}
+      if (active) setRealtimeReady(true);
+    })();
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        try {
+          supabase.realtime.setAuth(session.access_token);
+        } catch {}
+      }
+    });
+
+    return () => {
+      active = false;
+      try {
+        authSub?.subscription?.unsubscribe?.();
+      } catch {}
+    };
+  }, []);
+
   // ✅ Realtime: novas mensagens (qualquer phone) — atualiza preview/chat aberto
   useEffect(() => {
+    if (!realtimeReady) return;
+
     if (msgChannelRef.current) {
       try {
         supabase.removeChannel(msgChannelRef.current);
@@ -501,10 +535,13 @@ export default function AdminBotVendas() {
         msgChannelRef.current = null;
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtimeReady]);
 
   // ✅ Realtime: mudanças nas sessões (step/data) — recarrega a lista
   useEffect(() => {
+    if (!realtimeReady) return;
+
     if (sessionChannelRef.current) {
       try {
         supabase.removeChannel(sessionChannelRef.current);
@@ -534,7 +571,8 @@ export default function AdminBotVendas() {
         sessionChannelRef.current = null;
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtimeReady]);
 
   // ===== Estilos (só UI) =====
   const S = {
