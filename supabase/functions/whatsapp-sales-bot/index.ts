@@ -97,32 +97,46 @@ async function saveMessage(phone: string, direction: "in"|"out", message: string
 
 async function resolveSeriesFromReferral(adId: string | null | undefined, campaignId: string | null | undefined): Promise<string | null> {
   try {
-    if (adId) {
-      const { data: adRow } = await supabase.from("ad_series_map").select("series_name").eq("ad_id", adId).maybeSingle();
-      if (adRow?.series_name) { console.log("[series] ad_series_map hit", adId, adRow.series_name); return adRow.series_name; }
+    const adIdStr = adId ? String(adId).trim() : null;
+    console.log("[series] resolveSeriesFromReferral called adId=", JSON.stringify(adIdStr), "type=", typeof adId, "campaignId=", JSON.stringify(campaignId));
+    if (adIdStr) {
+      const { data: adRow, error: adErr } = await supabase.from("ad_series_map").select("series_name").eq("ad_id", adIdStr).maybeSingle();
+      console.log("[series] ad_series_map result", JSON.stringify(adRow), "error=", adErr ? String(adErr.message) : null);
+      if (adRow?.series_name) { console.log("[series] ad_series_map hit", adIdStr, adRow.series_name); return adRow.series_name; }
     }
-    let resolvedCampaignId = campaignId || null;
-    if (adId && !resolvedCampaignId) {
-      const { data: cacheRow } = await supabase.from("ad_campaign_cache").select("campaign_id").eq("ad_id", adId).maybeSingle();
+    let resolvedCampaignId = campaignId ? String(campaignId).trim() : null;
+    if (adIdStr && !resolvedCampaignId) {
+      const { data: cacheRow, error: cacheErr } = await supabase.from("ad_campaign_cache").select("campaign_id").eq("ad_id", adIdStr).maybeSingle();
+      console.log("[series] ad_campaign_cache result", JSON.stringify(cacheRow), "error=", cacheErr ? String(cacheErr.message) : null);
       if (cacheRow?.campaign_id) {
         resolvedCampaignId = cacheRow.campaign_id;
-        console.log("[series] ad_campaign_cache hit", adId, resolvedCampaignId);
+        console.log("[series] ad_campaign_cache hit", adIdStr, resolvedCampaignId);
       } else if (META_ACCESS_TOKEN) {
+        const graphUrl = `https://graph.facebook.com/v20.0/${adIdStr}?fields=campaign_id&access_token=***`;
+        console.log("[series] calling Graph API", graphUrl);
         try {
-          const r = await fetch(`https://graph.facebook.com/v20.0/${adId}?fields=campaign_id&access_token=${META_ACCESS_TOKEN}`);
-          const d = await r.json().catch(() => ({}));
+          const r = await fetch(`https://graph.facebook.com/v20.0/${adIdStr}?fields=campaign_id&access_token=${META_ACCESS_TOKEN}`);
+          const rawText = await r.text();
+          console.log("[series] graph api status=", r.status, "body=", rawText.slice(0, 300));
+          const d = (() => { try { return JSON.parse(rawText); } catch { return {}; } })();
           if (d?.campaign_id) {
-            resolvedCampaignId = d.campaign_id;
-            await supabase.from("ad_campaign_cache").upsert({ ad_id: adId, campaign_id: resolvedCampaignId, cached_at: new Date().toISOString() });
-            console.log("[series] graph api campaign_id", adId, resolvedCampaignId);
+            resolvedCampaignId = String(d.campaign_id).trim();
+            await supabase.from("ad_campaign_cache").upsert({ ad_id: adIdStr, campaign_id: resolvedCampaignId, cached_at: new Date().toISOString() });
+            console.log("[series] graph api campaign_id saved", adIdStr, resolvedCampaignId);
+          } else {
+            console.log("[series] graph api no campaign_id in response", JSON.stringify(d));
           }
-        } catch(e) { console.error("[series] graph api error", String(e)); }
+        } catch(e) { console.error("[series] graph api fetch error", String(e)); }
+      } else {
+        console.log("[series] no META_ACCESS_TOKEN set, skipping graph api");
       }
     }
     if (resolvedCampaignId) {
-      const { data: campRow } = await supabase.from("campaign_series_map").select("series_name").eq("campaign_id", resolvedCampaignId).maybeSingle();
+      const { data: campRow, error: campErr } = await supabase.from("campaign_series_map").select("series_name").eq("campaign_id", resolvedCampaignId).maybeSingle();
+      console.log("[series] campaign_series_map result", JSON.stringify(campRow), "error=", campErr ? String(campErr.message) : null);
       if (campRow?.series_name) { console.log("[series] campaign_series_map hit", resolvedCampaignId, campRow.series_name); return campRow.series_name; }
     }
+    console.log("[series] no series found for adId=", adIdStr, "campaignId=", resolvedCampaignId);
   } catch(e) { console.error("[series] resolveSeriesFromReferral error", String(e)); }
   return null;
 }
@@ -378,10 +392,17 @@ async function processMessage(fromE164: string, messageText: string, displayName
   const msg=messageText.trim().toLowerCase();
 
   if (referral?.ctwa_clid && !sessionData.ctwa_clid) {
-    const identifiedSeries = await resolveSeriesFromReferral(referral.source_id || null, null);
-    sessionData = { ...sessionData, ctwa_clid: referral.ctwa_clid, ad_source_id: referral.source_id || null, identified_series: identifiedSeries };
-    console.log("[ctwa_clid capturado]", fromE164, referral.ctwa_clid, "ad_source_id:", referral.source_id, "identified_series:", identifiedSeries);
+    sessionData = { ...sessionData, ctwa_clid: referral.ctwa_clid, ad_source_id: referral.source_id || null };
     await updateSession(fromE164, step, sessionData);
+  }
+  // re-tenta resolver serie se tem ad_source_id mas ainda nao identificou
+  if (sessionData.ad_source_id && !sessionData.identified_series) {
+    const identifiedSeries = await resolveSeriesFromReferral(sessionData.ad_source_id, null);
+    console.log("[serie re-resolve]", fromE164, "ad_source_id=", sessionData.ad_source_id, "result=", identifiedSeries);
+    if (identifiedSeries) {
+      sessionData = { ...sessionData, identified_series: identifiedSeries };
+      await updateSession(fromE164, step, sessionData);
+    }
   }
 
   if (asksIfWhatsapp(msg) && (step==="waiting_payment"||step==="choose_plan"||step==="collect_info"||step==="collect_email"||step==="access_sent"||step==="series_sent"||step==="series_upsell_sent")) {
@@ -561,7 +582,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v35"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v36"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
