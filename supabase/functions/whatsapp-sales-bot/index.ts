@@ -178,6 +178,22 @@ function wantsChangeplan(msg: string): "series"|"monthly"|"quarterly"|null {
   const opt = detectOption(m);
   return opt;
 }
+function askingAboutPlan(msg: string): "monthly"|"quarterly"|"any"|null {
+  const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const isQuestion = m.includes("?") || m.includes("como") || m.includes("o que") || m.includes("oque") ||
+    m.includes("o que e") || m.includes("me fala") || m.includes("me conta") || m.includes("explica") ||
+    m.includes("funciona") || m.includes("como funciona") || m.includes("tem acesso") || m.includes("da acesso") ||
+    m.includes("posso") || m.includes("consigo") || m.includes("assistir") || m.includes("ver") ||
+    m.includes("quais") || m.includes("qual") || m.includes("que series") || m.includes("que tem") || m.includes("o que tem");
+  if (!isQuestion) return null;
+  const mentionsMonthly = m.includes("mensal") || m.includes("1 mes") || m.includes("um mes") || m.includes("30 dia") || m.includes("16");
+  const mentionsQuarterly = m.includes("trimes") || m.includes("3 mes") || m.includes("tres mes") || m.includes("90 dia") || m.includes("47");
+  const mentionsPlan = m.includes("plano") || m.includes("assinatura") || m.includes("pacote") || m.includes("acesso");
+  if (mentionsMonthly && !mentionsQuarterly) return "monthly";
+  if (mentionsQuarterly && !mentionsMonthly) return "quarterly";
+  if (mentionsPlan || mentionsMonthly || mentionsQuarterly) return "any";
+  return null;
+}
 function asksIfWhatsapp(msg: string): boolean {
   const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
   const mentionsWhatsapp = m.includes("whatsapp") || m.includes("whats") || m.includes("zap") || m.includes("aqui mesmo") || m.includes("aqui no zap");
@@ -405,6 +421,18 @@ async function processMessage(fromE164: string, messageText: string, displayName
     }
   }
 
+  const planQuestion = askingAboutPlan(msg);
+  if (planQuestion && (step==="choose_plan"||step==="start"||step==="menu"||step==="collect_info"||step==="collect_email"||step==="waiting_payment")) {
+    if (planQuestion === "monthly") {
+      await sendText(fromE164, `\u{1F4FA} O *Plano Mensal* (R$16,90) da acesso completo ao nosso site por 30 dias:\n\n\u{1F449} *${SITE}*\n\nVoce entra com login e senha e pode assistir *mais de 2000 series* — quando quiser, quantas quiser! \u{1F60A}\n\n\u{1F504} Atualizamos o catalogo *todo dia* com series novas.\n\nQuer garantir agora?`);
+    } else if (planQuestion === "quarterly") {
+      await sendText(fromE164, `\u{1F4FA} O *Plano Trimestral* (R$47,90) da acesso completo ao nosso site por 90 dias:\n\n\u{1F449} *${SITE}*\n\nVoce entra com login e senha e pode assistir *mais de 2000 series* — quando quiser, quantas quiser! \u{1F60A}\n\n\u{1F504} Atualizamos o catalogo *todo dia* com series novas.\n\n\u{1F4B0} Melhor custo-beneficio: sai em conta R$15,97/mes!\n\nQuer garantir agora?`);
+    } else {
+      await sendText(fromE164, `\u{1F4FA} Os planos dao acesso completo ao nosso site:\n\n\u{1F449} *${SITE}*\n\nVoce entra com login e senha e pode assistir *mais de 2000 series* — quando quiser, quantas quiser! \u{1F60A}\n\n\u{1F504} Atualizamos o catalogo *todo dia* com series novas.\n\nTemos duas opcoes:\n\n2\u{FE0F}\u{20E3} *Mensal* — R$16,90 (30 dias)\n3\u{FE0F}\u{20E3} *Trimestral* — R$47,90 (90 dias, melhor custo!)\n\nResponda *2* ou *3* pra garantir agora! \u{1F60A}`);
+    }
+    return;
+  }
+
   if (asksIfWhatsapp(msg) && (step==="waiting_payment"||step==="choose_plan"||step==="collect_info"||step==="collect_email"||step==="access_sent"||step==="series_sent"||step==="series_upsell_sent")) {
     const plan = String(sessionData.plan || "");
     if (plan) { await responderOndeFica(fromE164, plan); return; }
@@ -582,7 +610,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v36"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v37"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
