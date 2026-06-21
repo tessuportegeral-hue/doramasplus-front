@@ -500,6 +500,8 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if(step==="collect_info"){
+    if(msg==="__media__naosuportado"){await sendText(fromE164,`Opa! \u{1F605} Nao consigo ler audio ou figurinha.\n\nMe manda seu *nome* e *email* em texto mesmo:\n\nExemplo: _Joao Silva / joao@gmail.com_`);return;}
+    if(msg==="__media__comprovante"){await sendText(fromE164,`Ainda preciso do seu *nome* e *email* antes de liberar o acesso! \u{1F60A}\n\nMe manda assim: _Joao Silva / joao@gmail.com_`);return;}
     const switchedPlan = detectOption(msg);
     if (switchedPlan) {
       if (switchedPlan === "series") { await gerarPixSeries(fromE164, sessionData); return; }
@@ -527,6 +529,8 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if(step==="collect_email"){
+    if(msg==="__media__naosuportado"){await sendText(fromE164,`Opa! \u{1F605} Nao consigo ler audio ou figurinha.\n\nMe manda seu *email* em texto:\n\nExemplo: _joao@gmail.com_`);return;}
+    if(msg==="__media__comprovante"){await sendText(fromE164,`Ainda preciso do seu *email* antes de liberar o acesso! \u{1F60A}\n\nMe manda assim: _seuemail@gmail.com_`);return;}
     const switchedPlan = detectOption(msg);
     if (switchedPlan) {
       if (switchedPlan === "series") { await gerarPixSeries(fromE164, sessionData); return; }
@@ -764,6 +768,7 @@ serve(async (req) => {
             if(msgType==="text")text=String(msg?.text?.body||"");
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
             else if(msgType==="image"||msgType==="document"||msgType==="video")text="__media__comprovante";
+            else if(msgType==="audio"||msgType==="sticker")text="__media__naosuportado";
             else text=msgType;
             if(!text)continue;
             const referral=extractReferral(msg);
