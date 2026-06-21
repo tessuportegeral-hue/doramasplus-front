@@ -240,7 +240,7 @@ async function sendText(to: string, body: string) {
 }
 async function responderOndeFica(to: string, plan: string) {
   if (plan === "series") {
-    await sendText(to, `Sim! \u{1F44D} A serie voce recebe *aqui mesmo pelo WhatsApp*, pelo Google Drive. \u{1F60A}\n\nVoce paga o PIX e eu te mando o link direto aqui no chat. Simples assim!`);
+    await sendText(to, `Sim! \u{1F44D} A serie voce recebe *aqui mesmo pelo WhatsApp*. \u{1F60A}\n\nVoce paga o PIX e eu te mando o link direto aqui no chat. Simples assim!`);
   } else {
     await sendText(to, `O atendimento e feito aqui pelo WhatsApp, mas as series voce assiste pelo nosso *site*! \u{1F4FA}\n\n\u{1F449} *${SITE}*\n\nDepois que voce pagar o PIX, eu te mando o *login e senha aqui no chat* pra voce acessar e assistir mais de 2000 series quando quiser! \u{1F60A}`);
   }
@@ -440,7 +440,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if (asksIfWhatsapp(msg) && (step==="start"||step==="menu"||step==="waiting_payment"||step==="choose_plan"||step==="collect_info"||step==="collect_email"||step==="access_sent"||step==="series_sent"||step==="series_upsell_sent")) {
     const plan = String(sessionData.plan || "");
     if (plan) { await responderOndeFica(fromE164, plan); return; }
-    else { await sendText(fromE164, `Depende do pacote! \u{1F60A}\n\n1\u{FE0F}\u{20E3} *1 Serie* — voce recebe *aqui no WhatsApp*, pelo Google Drive\n2\u{FE0F}\u{20E3} *Mensal / Trimestral* — voce assiste pelo nosso *site* (${SITE}), eu te mando o login aqui no chat\n\nQual voce prefere?`); return; }
+    else { await sendText(fromE164, `Depende do pacote! \u{1F60A}\n\n1\u{FE0F}\u{20E3} *1 Serie* — voce recebe *aqui no WhatsApp*\n2\u{FE0F}\u{20E3} *Mensal / Trimestral* — voce assiste pelo nosso *site* (${SITE}), eu te mando o login aqui no chat\n\nQual voce prefere?`); return; }
   }
 
   if (detectRefusal(msg) && (step==="collect_info"||step==="collect_email"||step==="choose_plan"||step==="waiting_payment")) {
@@ -628,7 +628,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v37"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v41"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
