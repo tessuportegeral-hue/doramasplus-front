@@ -196,12 +196,16 @@ function askingAboutPlan(msg: string): "monthly"|"quarterly"|"any"|null {
 }
 function asksIfWhatsapp(msg: string): boolean {
   const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
-  const mentionsWhatsapp = m.includes("whatsapp") || m.includes("whats") || m.includes("zap") || m.includes("aqui mesmo") || m.includes("aqui no zap");
+  const mentionsWhatsapp = m.includes("whatsapp") || m.includes("whats") || m.includes("zap") ||
+    m.includes("aqui mesmo") || m.includes("aqui no zap") || m.includes("pelo zap") ||
+    m.includes("pelo whats") || m.includes("no zap") || m.includes("por aqui") ||
+    m.includes("nesse zap") || m.includes("nesse whats") || m.includes("aqui no whats");
   const mentionsSite = m.includes("site") || m.includes("app") || m.includes("aplicativo") || m.includes("plataforma");
   const isQuestion = m.includes("e no") || m.includes("e aqui") || m.includes("e pelo") || m.includes("vai ser no") ||
     m.includes("vai ser pelo") || m.includes("manda aqui") || m.includes("recebo aqui") || m.includes("e tudo aqui") ||
     m.includes("e por aqui") || m.includes("onde assisto") || m.includes("onde fica") || m.includes("onde vejo") ||
-    m.includes("?");
+    m.includes("como funciona") || m.includes("como e") || m.includes("como fica") || m.includes("como recebo") ||
+    m.includes("como assisto") || m.includes("?");
   return (mentionsWhatsapp || mentionsSite) && isQuestion;
 }
 function detectRefusal(msg: string): boolean {
@@ -236,9 +240,9 @@ async function sendText(to: string, body: string) {
 }
 async function responderOndeFica(to: string, plan: string) {
   if (plan === "series") {
-    await sendText(to, `Sim! \u{1F44D} Sua serie e enviada *aqui mesmo no WhatsApp*, direto pelo Google Drive. Bem mais facil! \u{1F60A}`);
+    await sendText(to, `Sim! \u{1F44D} E tudo *aqui mesmo pelo WhatsApp*! \u{1F60A}\n\nVoce paga o PIX e eu te mando a serie aqui no chat, pelo Google Drive. Simples assim!`);
   } else {
-    await sendText(to, `O acesso e pelo *nosso site*: ${SITE} \u{1F4BB}\n\nVoce entra com o login e senha que eu te mando aqui no WhatsApp depois do pagamento, e assiste tudo direto no site! \u{1F60A}`);
+    await sendText(to, `Sim! \u{1F44D} Todo o atendimento e *aqui pelo WhatsApp* mesmo! \u{1F60A}\n\nDepois que voce pagar o PIX, eu te mando o *login e senha aqui no chat* pra voce acessar nosso site:\n\n\u{1F449} *${SITE}*\n\nLa voce assiste +2000 series quando quiser! \u{1F4FA}`);
   }
 }
 async function getOrCreateSession(phone: string) {
@@ -433,10 +437,10 @@ async function processMessage(fromE164: string, messageText: string, displayName
     return;
   }
 
-  if (asksIfWhatsapp(msg) && (step==="waiting_payment"||step==="choose_plan"||step==="collect_info"||step==="collect_email"||step==="access_sent"||step==="series_sent"||step==="series_upsell_sent")) {
+  if (asksIfWhatsapp(msg) && (step==="start"||step==="menu"||step==="waiting_payment"||step==="choose_plan"||step==="collect_info"||step==="collect_email"||step==="access_sent"||step==="series_sent"||step==="series_upsell_sent")) {
     const plan = String(sessionData.plan || "");
     if (plan) { await responderOndeFica(fromE164, plan); return; }
-    else { await sendText(fromE164, `Depende do pacote! \u{1F60A}\n\n1\u{FE0F}\u{20E3} A *serie por R$10* e enviada *aqui mesmo no WhatsApp*.\n\n2\u{FE0F}\u{20E3} e 3\u{FE0F}\u{20E3} O *mensal* e *trimestral* dao acesso pelo *site*: ${SITE}\n\nQual voce prefere?`); return; }
+    else { await sendText(fromE164, `Sim! \u{1F44D} Todo o atendimento e *aqui pelo WhatsApp* mesmo! \u{1F60A}\n\nVoce escolhe o pacote, paga o PIX e eu te mando tudo aqui no chat.\n\nQuer ver as opcoes?`); return; }
   }
 
   if (detectRefusal(msg) && (step==="collect_info"||step==="collect_email"||step==="choose_plan"||step==="waiting_payment")) {
