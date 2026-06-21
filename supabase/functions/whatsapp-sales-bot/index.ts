@@ -614,8 +614,16 @@ async function processMessage(fromE164: string, messageText: string, displayName
       // imagem/documento mandado (comprovante de pagamento ou qualquer midia)
       mn === "__media__comprovante";
     if(asksForSeries){
-      await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
       const identifiedSeries = String(sessionData.identified_series || "");
+      if(identifiedSeries && SERIES_DRIVE_LINKS[identifiedSeries]){
+        await sendText(fromE164,
+          `\u{1F4E2} *AQUI ESTA A SERIE DO ANUNCIO:*\n\n` +
+          `\u{2B50}\u{2B50}\u{2B50} *${identifiedSeries}* \u{2B50}\u{2B50}\u{2B50}\n\n` +
+          `\u{1F449} ${SERIES_DRIVE_LINKS[identifiedSeries]}\n\n` +
+          `\u{2B06}\u{FE0F} Clique nesse link acima!`
+        );
+      }
+      await sendText(fromE164, `\u{1F60A} E de bonus, aqui estao todas as series:\u{1F447}`);
       const seriesMsg = buildSeriesMsg(identifiedSeries || null);
       await sendText(fromE164, seriesMsg);
       return;
@@ -678,7 +686,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v45"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v46"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
