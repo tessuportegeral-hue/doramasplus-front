@@ -557,12 +557,26 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="series_sent"||step==="series_upsell_sent"){
     const mn=msg.normalize("NFD").replace(/[̀-ͯ]/g,"");
     // verifica series PRIMEIRO — evita tratar "quero a serie do anuncio" como pedido de assinatura
+    const cantOpen = mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
+      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
+      mn.includes("nao to conseguindo") || mn.includes("nao estou conseguindo") || mn.includes("nao sei abrir") ||
+      mn.includes("como abro") || mn.includes("como abre") || mn.includes("como acesso") || mn.includes("como entro") ||
+      mn.includes("nao sei") || mn.includes("nao abro") || mn.includes("erro") || mn.includes("problema");
+    if(cantOpen){
+      await sendText(fromE164,
+        `E bem simples! \u{1F60A} Siga os passos:\n\n` +
+        `1\u{FE0F}\u{20E3} Clique no *link* que eu te mandei\n` +
+        `2\u{FE0F}\u{20E3} Vai abrir uma tela do Google Drive — aperte em *Login* (ou *Fazer login*)\n` +
+        `3\u{FE0F}\u{20E3} Coloque o *email* e a *senha* da sua conta Google\n` +
+        `4\u{FE0F}\u{20E3} Pronto! A serie vai aparecer pra voce \u{2705}\n\n` +
+        `Qualquer duvida e so falar! \u{1F64F}`
+      );
+      return;
+    }
     const asksForSeries = mn.includes("serie") || mn.includes("link") || mn.includes("drive") ||
       mn.includes("anuncio") || mn.includes("nao achei") || mn.includes("nao encontrei") ||
       mn.includes("cade") || mn.includes("nao recebi") || mn.includes("nao vi") || mn.includes("onde") ||
-      mn.includes("manda") || mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
-      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
-      mn.includes("qual") || mn.includes("titulo") || mn.includes("assistir");
+      mn.includes("manda") || mn.includes("qual") || mn.includes("titulo") || mn.includes("assistir");
     if(asksForSeries){
       await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
       const identifiedSeries = String(sessionData.identified_series || "");
