@@ -371,7 +371,7 @@ async function gerarPixSeries(fromE164: string, sessionData: any) {
     return;
   }
   await sendText(fromE164,
-    `\u{1F44C} Otima escolha! Uma serie incrivel por apenas *R$10,00*!\n\n` +
+    `\u{1F44C} Otima escolha! A serie do anuncio por apenas *R$10,00*!\n\n` +
     `\u{2B07}\u{FE0F} Na *proxima mensagem* esta o codigo PIX.\n\n` +
     `Segure e toque em *Copiar* — cole no *PIX Copia e Cola* do seu banco.\n\n` +
     `\u{23F3} Assim que confirmar, mando sua serie automaticamente! \u{2705}`
@@ -628,7 +628,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v41"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v42"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
