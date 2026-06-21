@@ -737,7 +737,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v49"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v50"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -760,7 +760,7 @@ serve(async (req) => {
         }
         const seriesMsg = buildSeriesMsg(identifiedSeries);
         await sendText(toE164, seriesMsg);
-        await updateSession(toE164,"series_sent",{email,name,plan});
+        await updateSession(toE164,"series_sent",{email,name,plan,identified_series:identifiedSeries||null});
       } else {
         await sendText(toE164,buildAccessMsg(email));
         // se vier de anuncio com serie identificada, manda a serie como bonus
