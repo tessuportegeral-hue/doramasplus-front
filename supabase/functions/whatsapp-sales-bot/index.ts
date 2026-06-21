@@ -547,6 +547,10 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if(step==="waiting_payment"){
+    if(msg==="__media__comprovante"){
+      await sendText(fromE164,`Recebi seu comprovante! \u{1F44D}\n\nVou verificar e liberar seu acesso em instantes. Aguarda so um momento! \u{23F3}\u{2705}`);
+      return;
+    }
     const plan=String(sessionData.plan||"");
     await sendText(fromE164,plan==="series"
       ?`Aguardando seu pagamento! \u{23F3}\n\nAssim que o PIX confirmar, mando sua serie automaticamente! \u{1F389}\n\nSe quiser mudar de plano, so me falar! \u{1F60A}`
@@ -573,10 +577,42 @@ async function processMessage(fromE164: string, messageText: string, displayName
       );
       return;
     }
-    const asksForSeries = mn.includes("serie") || mn.includes("link") || mn.includes("drive") ||
-      mn.includes("anuncio") || mn.includes("nao achei") || mn.includes("nao encontrei") ||
-      mn.includes("cade") || mn.includes("nao recebi") || mn.includes("nao vi") || mn.includes("onde") ||
-      mn.includes("manda") || mn.includes("qual") || mn.includes("titulo") || mn.includes("assistir");
+    const asksForSeries =
+      // palavras diretas sobre serie/conteudo
+      mn.includes("serie") || mn.includes("link") || mn.includes("drive") || mn.includes("video") ||
+      mn.includes("filme") || mn.includes("dorama") || mn.includes("episodio") || mn.includes("ep ") ||
+      mn.includes("anuncio") || mn.includes("titulo") || mn.includes("conteudo") || mn.includes("acesso") ||
+      // perguntas de localizacao
+      mn.includes("nao achei") || mn.includes("nao encontrei") || mn.includes("nao encontro") ||
+      mn.includes("cade") || mn.includes("cadê") || mn.includes("onde") || mn.includes("kd") ||
+      mn.includes("nao vi") || mn.includes("nao vejo") || mn.includes("sumiu") || mn.includes("desapareceu") ||
+      // nao recebeu
+      mn.includes("nao recebi") || mn.includes("nao chegou") || mn.includes("nao caiu") ||
+      mn.includes("nao apareceu") || mn.includes("nao aparece") || mn.includes("nao mandou") ||
+      mn.includes("mandou nao") || mn.includes("cadê minha") || mn.includes("cade minha") ||
+      // pedindo para mandar
+      mn.includes("manda") || mn.includes("mande") || mn.includes("envia") || mn.includes("me passa") ||
+      mn.includes("me manda") || mn.includes("me envia") || mn.includes("pode mandar") || mn.includes("pode enviar") ||
+      mn.includes("me da") || mn.includes("me manda") || mn.includes("quero ver") || mn.includes("quero assistir") ||
+      // assistir / ver
+      mn.includes("assistir") || mn.includes("assistindo") || mn.includes("ver a") || mn.includes("ver o") ||
+      mn.includes("como vejo") || mn.includes("como assisto") || mn.includes("como vo assistir") ||
+      mn.includes("como vo ver") || mn.includes("posso assistir") || mn.includes("posso ver") ||
+      // comprovante / pagamento
+      mn.includes("paguei") || mn.includes("ja paguei") || mn.includes("fiz o pix") || mn.includes("fiz pix") ||
+      mn.includes("pix feito") || mn.includes("pix foi") || mn.includes("transferi") || mn.includes("transferencia") ||
+      mn.includes("comprovante") || mn.includes("ja paguei") || mn.includes("efetuei") ||
+      mn.includes("realizei") || mn.includes("confirmado") || mn.includes("confirmei") ||
+      mn.includes("ja fiz") || mn.includes("paguei agora") || mn.includes("acabei de pagar") ||
+      mn.includes("ta pago") || mn.includes("esta pago") || mn.includes("foi pago") ||
+      // perguntas simples / impaciencia
+      mn.includes("qual") || mn.includes("e ai") || mn.includes("e aí") || mn.includes("oi") ||
+      mn.includes("ola") || mn === "?" || mn === "oi" || mn === "ola" || mn === "ola!" ||
+      mn.includes("e isso") || mn.includes("to aqui") || mn.includes("to esperando") ||
+      mn.includes("quando") || mn.includes("ja") || mn === "ja" || mn === "ok" || mn === "ok!" ||
+      mn.includes("recebi nao") || mn.includes("n recebi") || mn.includes("nao to vendo") ||
+      // imagem/documento mandado (comprovante de pagamento ou qualquer midia)
+      mn === "__media__comprovante";
     if(asksForSeries){
       await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
       const identifiedSeries = String(sessionData.identified_series || "");
@@ -642,7 +678,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v43"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v45"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -719,6 +755,7 @@ serve(async (req) => {
             let text="";
             if(msgType==="text")text=String(msg?.text?.body||"");
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
+            else if(msgType==="image"||msgType==="document"||msgType==="video")text="__media__comprovante";
             else text=msgType;
             if(!text)continue;
             const referral=extractReferral(msg);
