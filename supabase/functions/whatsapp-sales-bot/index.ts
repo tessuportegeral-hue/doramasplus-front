@@ -354,12 +354,10 @@ async function createAsaasPix(userEmail: string, userName: string, plan: "monthl
   return{copyPaste,externalReference,paymentId};
 }
 function buildAccessMsg(email: string): string {
-  return `\u{1F389} Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo \u{2705}\n\u{23F3} Acesso valido por 30 dias\n\n\u{1F4F1} Acesse agora:\n\u{1F449} ${PUBLIC_BASE_URL}\n\n\u{27A1} Depois clique no botao *Entrar* (no topo da tela) e use os dados abaixo:\n\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\n\u{1F514} Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\nQualquer duvida e so me chamar \u{1F60A}\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
+  return `\u{1F389} Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo \u{2705}\n\u{23F3} Acesso valido por 30 dias\n\n\u{1F4F1} Acesse agora:\n\u{1F449} ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! \u{1F513}\n\n\u{1F514} Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\nQualquer duvida e so me chamar \u{1F60A}\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
 }
 async function sendAccessHelp(to: string, email: string) {
-  await sendText(to,`Vou te ajudar a entrar! \u{1F60A}\n\n\u{1F449} ${PUBLIC_BASE_URL}/login\n\nCole o email e a senha que vou te mandar nas proximas mensagens:`);
-  await sendText(to,email);
-  await sendText(to,DEFAULT_PASSWORD);
+  await sendText(to,`Vou te ajudar a entrar! \u{1F60A}\n\n\u{1F449} ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! \u{1F513}`);
 }
 async function explicarPix(to: string, plan: string) {
   const valor = plan==="series" ? "R$10,00" : plan==="quarterly" ? "R$47,90" : "R$16,90";
@@ -703,11 +701,11 @@ async function processMessage(fromE164: string, messageText: string, displayName
           `\u{1F4FA} A serie do anuncio que voce viu e:\n\n` +
           `\u{2B50}\u{2B50}\u{2B50} *${identifiedSeries}* \u{2B50}\u{2B50}\u{2B50}\n\n` +
           `Voce pode assistir ela (e mais de 2000 outras!) pelo nosso site com seu login:\n\n` +
-          `\u{1F449} *${PUBLIC_BASE_URL}*\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\n` +
+          `\u{1F449} *${PUBLIC_BASE_URL}*\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! \u{1F513}\n\n` +
           `Qualquer duvida e so falar! \u{1F60A}`
         );
       } else {
-        await sendText(fromE164,`Voce tem acesso completo a *mais de 2000 series* no nosso site! \u{1F4FA}\n\n\u{1F449} *${PUBLIC_BASE_URL}*\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nQualquer duvida e so falar! \u{1F60A}`);
+        await sendText(fromE164,`Voce tem acesso completo a *mais de 2000 series* no nosso site! \u{1F4FA}\n\n\u{1F449} *${PUBLIC_BASE_URL}*\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! \u{1F513}\n\nQualquer duvida e so falar! \u{1F60A}`);
       }
       return;
     }
@@ -754,7 +752,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v51"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v52"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
