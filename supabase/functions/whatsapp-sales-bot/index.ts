@@ -568,6 +568,20 @@ async function processMessage(fromE164: string, messageText: string, displayName
       }
       return;
     }
+    const asksForSeries = mn.includes("serie") || mn.includes("link") || mn.includes("drive") ||
+      mn.includes("nao achei") || mn.includes("nao encontrei") || mn.includes("cadê") || mn.includes("cade") ||
+      mn.includes("nao recebi") || mn.includes("nao vi") || mn.includes("onde") || mn.includes("manda") ||
+      mn.includes("manda de novo") || mn.includes("manda novamente") || mn.includes("manda outra") ||
+      mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
+      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
+      mn.includes("qual") || mn.includes("nome") || mn.includes("titulo") || mn.includes("assistir");
+    if(asksForSeries){
+      await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
+      const identifiedSeries = String(sessionData.identified_series || "");
+      const seriesMsg = buildSeriesMsg(identifiedSeries || null);
+      await sendText(fromE164, seriesMsg);
+      return;
+    }
     await sendText(fromE164,`Sua serie ja foi enviada! \u{1F60A} Se quiser assistir +2000 series no site, e so me falar!\n\n\u{1F449} www.doramasplus.com.br`);
     return;
   }
