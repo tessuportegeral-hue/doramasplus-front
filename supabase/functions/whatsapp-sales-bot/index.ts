@@ -648,7 +648,34 @@ async function processMessage(fromE164: string, messageText: string, displayName
     return;
   }
 
-  if(step==="access_sent"){ const email=String(sessionData.email||""); await sendText(fromE164,`Seu acesso ja esta liberado! \u{1F60A}`); if(email)await sendAccessHelp(fromE164,email); return; }
+  if(step==="access_sent"){
+    const email=String(sessionData.email||"");
+    const mn=msg.normalize("NFD").replace(/[̀-ͯ]/g,"");
+    const asksForSeries =
+      mn.includes("serie") || mn.includes("dorama") || mn.includes("anuncio") || mn.includes("filme") ||
+      mn.includes("ver a") || mn.includes("ver o") || mn.includes("assistir") || mn.includes("link") ||
+      mn.includes("drive") || mn.includes("cade") || mn.includes("onde") || mn.includes("qual") ||
+      mn.includes("nao encontrei") || mn.includes("nao achei") || mn.includes("nao encontro") ||
+      mn.includes("nao vi") || mn.includes("titulo") || mn.includes("nome") || mn.includes("qual era") ||
+      mn.includes("qual e") || mn.includes("qual serie") || mn.includes("que serie") ||
+      mn === "__media__comprovante" || mn === "__media__naosuportado";
+    if(asksForSeries){
+      const identifiedSeries = String(sessionData.identified_series||"");
+      if(identifiedSeries && SERIES_DRIVE_LINKS[identifiedSeries]){
+        await sendText(fromE164,
+          `\u{1F4FA} A serie do anuncio que voce viu e:\n\n` +
+          `\u{2B50}\u{2B50}\u{2B50} *${identifiedSeries}* \u{2B50}\u{2B50}\u{2B50}\n\n` +
+          `Voce pode assistir ela (e mais de 2000 outras!) pelo nosso site com seu login:\n\n` +
+          `\u{1F449} *${PUBLIC_BASE_URL}*\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\n` +
+          `Qualquer duvida e so falar! \u{1F60A}`
+        );
+      } else {
+        await sendText(fromE164,`Voce tem acesso completo a *mais de 2000 series* no nosso site! \u{1F4FA}\n\n\u{1F449} *${PUBLIC_BASE_URL}*\n\u{1F464} Login: ${email}\n\u{1F511} Senha: ${DEFAULT_PASSWORD}\n\nQualquer duvida e so falar! \u{1F60A}`);
+      }
+      return;
+    }
+    await sendText(fromE164,`Seu acesso ja esta liberado! \u{1F60A}`); if(email)await sendAccessHelp(fromE164,email); return;
+  }
 
   if(step==="support"){
     await sendText(fromE164,`Pode falar! \u{1F60A} Em que posso te ajudar?\n\n\u{2022} Problema para acessar\n\u{2022} Esqueceu a senha\n\u{2022} Duvidas sobre o catalogo\n\u{2022} Outro assunto\n\nOu fale direto: ${SUPORTE_HUMANO}`);
@@ -690,7 +717,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v46"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v48"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -728,7 +755,7 @@ serve(async (req) => {
         if (identifiedSeriesBonus && SERIES_DRIVE_LINKS[identifiedSeriesBonus]) {
           await sendText(toE164, `\u{1F381} De presente especial, aqui esta a serie que voce viu no anuncio:\n\n\u{1F449} *${identifiedSeriesBonus}*\n${SERIES_DRIVE_LINKS[identifiedSeriesBonus]}\n\nAproveite! \u{1F60A}`);
         }
-        await updateSession(toE164,"access_sent",{email,name,plan});
+        await updateSession(toE164,"access_sent",{email,name,plan,identified_series:identifiedSeriesBonus||null});
       }
       return jsonRes(200,{ok:true});
     }catch(e){return jsonRes(500,{ok:false,error:String(e)});}
@@ -769,6 +796,7 @@ serve(async (req) => {
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
             else if(msgType==="image"||msgType==="document"||msgType==="video")text="__media__comprovante";
             else if(msgType==="audio"||msgType==="sticker")text="__media__naosuportado";
+            else if(msgType==="reaction"||msgType==="unsupported")continue;
             else text=msgType;
             if(!text)continue;
             const referral=extractReferral(msg);
