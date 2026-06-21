@@ -91,8 +91,28 @@ function generateFakeCpf(): string {
   let d2 = 11-(s%11); if(d2>=10)d2=0; d.push(d2);
   return d.join("");
 }
-async function saveMessage(phone: string, direction: "in"|"out", message: string) {
-  try { await supabase.from("sales_bot_messages").insert({ phone, direction, message }); } catch {}
+async function saveMessage(phone: string, direction: "in"|"out", message: string, mediaUrl?: string|null) {
+  try { await supabase.from("sales_bot_messages").insert({ phone, direction, message, ...(mediaUrl ? { media_url: mediaUrl } : {}) }); } catch {}
+}
+
+async function saveMediaToStorage(mediaId: string, mimeType: string, phone: string): Promise<string|null> {
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` }
+    });
+    const metaData = await metaRes.json();
+    const downloadUrl = metaData?.url;
+    if (!downloadUrl) { console.error("[saveMedia] no url in meta response", JSON.stringify(metaData).slice(0,200)); return null; }
+    const mediaRes = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
+    if (!mediaRes.ok) { console.error("[saveMedia] download failed", mediaRes.status); return null; }
+    const buffer = await mediaRes.arrayBuffer();
+    const ext = mimeType.split("/")[1]?.split(";")[0]?.replace("mpeg","mp3").replace("ogg","ogg").replace("aac","aac") || "bin";
+    const filename = `${phone}/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("whatsapp-media").upload(filename, buffer, { contentType: mimeType, upsert: false });
+    if (error) { console.error("[saveMedia] upload error", String(error.message)); return null; }
+    const { data: { publicUrl } } = supabase.storage.from("whatsapp-media").getPublicUrl(filename);
+    return publicUrl;
+  } catch(e) { console.error("[saveMedia]", String(e)); return null; }
 }
 
 async function resolveSeriesFromReferral(adId: string | null | undefined, campaignId: string | null | undefined): Promise<string | null> {
@@ -404,8 +424,8 @@ function extractReferral(msg: any): { ctwa_clid?: string; source_id?: string; so
     headline: ref.headline || undefined,
   };
 }
-async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any) {
-  await saveMessage(fromE164,"in",messageText);
+async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, inMediaUrl?: string|null) {
+  await saveMessage(fromE164,"in",messageText, inMediaUrl);
   const session=await getOrCreateSession(fromE164);
   const step=session.step||"start";
   let sessionData=session.data||{};
@@ -717,7 +737,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v48"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v49"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -792,16 +812,31 @@ serve(async (req) => {
             const displayName=value?.contacts?.[0]?.profile?.name||null;
             const msgType=String(msg?.type||"").toLowerCase();
             let text="";
+            let incomingMediaId:string|null=null;
+            let incomingMimeType:string|null=null;
             if(msgType==="text")text=String(msg?.text?.body||"");
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
-            else if(msgType==="image"||msgType==="document"||msgType==="video")text="__media__comprovante";
-            else if(msgType==="audio"||msgType==="sticker")text="__media__naosuportado";
-            else if(msgType==="reaction"||msgType==="unsupported")continue;
+            else if(msgType==="image"||msgType==="document"||msgType==="video"){
+              text="__media__comprovante";
+              incomingMediaId=String(msg?.[msgType]?.id||"");
+              incomingMimeType=String(msg?.[msgType]?.mime_type||"image/jpeg");
+            }else if(msgType==="audio"||msgType==="sticker"){
+              text="__media__naosuportado";
+              incomingMediaId=String(msg?.[msgType]?.id||"");
+              incomingMimeType=String(msg?.[msgType]?.mime_type||(msgType==="audio"?"audio/ogg":"image/webp"));
+            }else if(msgType==="reaction"||msgType==="unsupported")continue;
             else text=msgType;
             if(!text)continue;
             const referral=extractReferral(msg);
             if(referral) console.log("[referral recebido]",fromE164,JSON.stringify(referral));
-            processMessage(fromE164,text,displayName,referral).catch(e=>console.error("[processMessage]",String(e)));
+            if(incomingMediaId){
+              const capturedId=incomingMediaId,capturedMime=incomingMimeType||"application/octet-stream",capturedPhone=fromE164,capturedText=text,capturedName=displayName,capturedRef=referral;
+              saveMediaToStorage(capturedId,capturedMime,capturedPhone).then(url=>{
+                processMessage(capturedPhone,capturedText,capturedName,capturedRef,url).catch(e=>console.error("[processMessage]",String(e)));
+              }).catch(()=>processMessage(capturedPhone,capturedText,capturedName,capturedRef,null).catch(e=>console.error("[processMessage]",String(e))));
+            } else {
+              processMessage(fromE164,text,displayName,referral).catch(e=>console.error("[processMessage]",String(e)));
+            }
           }
         }
       }
