@@ -190,13 +190,22 @@ function cantDoPix(msg: string): boolean {
 function wantsChangeplan(msg: string): "series"|"monthly"|"quarterly"|null {
   const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
   const wantsChange = m.includes("mudar") || m.includes("muda") || m.includes("trocar") || m.includes("troca") ||
-    m.includes("quero o") || m.includes("quero a") || m.includes("prefiro") || m.includes("na verdade") ||
+    m.includes("quero o") || m.includes("quero a") || m.includes("quero uma") || m.includes("prefiro") || m.includes("na verdade") ||
     m.includes("quero mudar") || m.includes("posso mudar") || m.includes("quero outro") || m.includes("quero outra") ||
     m.includes("quero o mensal") || m.includes("quero mensal") || m.includes("quero trimestral") || m.includes("quero a serie") ||
-    m.includes("errei") || m.includes("foi engano") || m.includes("cliquei errado") || m.includes("escolhi errado");
+    m.includes("errei") || m.includes("foi engano") || m.includes("cliquei errado") || m.includes("escolhi errado") ||
+    m.includes("coloquei errado") || m.includes("errado") || m.includes("era ") || m.includes("quero mudar de plano");
   if (!wantsChange) return null;
   const opt = detectOption(m);
   return opt;
+}
+function wantsChangePlanIntent(msg: string): boolean {
+  const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  return m.includes("mudar de plano") || m.includes("trocar de plano") || m.includes("muda de plano") ||
+    m.includes("mudar o plano") || m.includes("trocar o plano") || m.includes("outro plano") ||
+    m.includes("outra opcao") || m.includes("outra op") || m.includes("coloquei errado") ||
+    m.includes("errei o plano") || m.includes("escolhi errado") || m.includes("cliquei errado") ||
+    m.includes("foi engano") || m.includes("quero mudar");
 }
 function askingAboutPlan(msg: string): "monthly"|"quarterly"|"any"|null {
   const m = msg.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
@@ -470,9 +479,17 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if (step==="waiting_payment") {
-    const novoPlano = wantsChangeplan(msg);
     const planoAtual = String(sessionData.plan || "");
+    const novoPlano = wantsChangeplan(msg);
     if (novoPlano && novoPlano !== planoAtual) { await trocarPlano(fromE164, novoPlano, sessionData); return; }
+    // detecta intenção de mudar mas sem plano especificado → pergunta qual
+    if (!novoPlano && wantsChangePlanIntent(msg)) {
+      await sendText(fromE164, `Sem problema! \u{1F60A} Pra qual plano quer mudar?\n\n1\u{FE0F}\u{20E3} 1 Serie — R$10,00\n2\u{FE0F}\u{20E3} Mensal — R$16,90\n3\u{FE0F}\u{20E3} Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+      return;
+    }
+    // número direto diferente do plano atual → muda plano
+    const planoDireto = detectOption(msg);
+    if (planoDireto && planoDireto !== planoAtual) { await trocarPlano(fromE164, planoDireto, sessionData); return; }
   }
 
   if (step==="waiting_payment" && cantDoPix(msg)) {
@@ -737,7 +754,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v50"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v51"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
