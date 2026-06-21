@@ -47,21 +47,17 @@ serve(async () => {
         const sessionData = sess.data || {};
         const email = String(sessionData.email || "");
 
-        let msg =
+        const emailLine = email ? `\nEntra com esse email: *${email}*\n` : `\nÉ só entrar com seu login e senha que eu te mandei.\n`;
+
+        const msg =
           `Oi! \u{1F60A} Tudo bem?\n\n` +
           `Queria saber se você já conseguiu acessar a plataforma e curtir as séries! \u{1F4FA}\n\n` +
-          `\u{1F449} *${SITE}*\n\n` +
-          `É só entrar com seu login e senha que eu te mandei.\n\n` +
-          `Tá tendo alguma dificuldade pra acessar? Me fala aqui que eu te ajudo na hora! \u{1F60A}`;
-
-        if (email) {
-          msg =
-            `Oi! \u{1F60A} Tudo bem?\n\n` +
-            `Queria saber se você já conseguiu acessar a plataforma e curtir as séries! \u{1F4FA}\n\n` +
-            `\u{1F449} *${SITE}*\n\n` +
-            `Entra com esse email: *${email}*\n\n` +
-            `Tá tendo alguma dificuldade pra acessar? Me fala aqui que eu te ajudo na hora! \u{1F60A}`;
-        }
+          `\u{1F449} *${SITE}*\n` +
+          emailLine +
+          `\nTá tendo dificuldade pra acessar? Fala com nosso suporte oficial:\n` +
+          `\u{1F4AC} *+55 18 99679-6654*\n\n` +
+          `E entra na nossa comunidade pra ficar por dentro de tudo! \u{1F447}\n` +
+          `https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k`;
 
         await sendText(phone, msg);
 
