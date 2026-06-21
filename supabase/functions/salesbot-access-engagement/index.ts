@@ -47,13 +47,16 @@ serve(async () => {
         const sessionData = sess.data || {};
         const email = String(sessionData.email || "");
 
-        const emailLine = email ? `\nEntra com esse email: *${email}*\n` : `\nÉ só entrar com seu login e senha que eu te mandei.\n`;
+        const credentialsLine = email
+          ? `\nEntra com esse email: *${email}*\nSenha: *123456*\n\nDepois é só apertar em *Entrar*! \u{1F513}\n`
+          : `\nÉ só entrar com seu login e senha que eu te mandei e apertar em *Entrar*! \u{1F513}\n`;
 
         const msg =
           `Oi! \u{1F60A} Tudo bem?\n\n` +
           `Queria saber se você já conseguiu acessar a plataforma e curtir as séries! \u{1F4FA}\n\n` +
           `\u{1F449} *${SITE}*\n` +
-          emailLine +
+          `Aperta em *Entrar* (no topo da tela).\n` +
+          credentialsLine +
           `\nTá tendo dificuldade pra acessar? Fala com nosso suporte oficial:\n` +
           `\u{1F4AC} *+55 18 99679-6654*\n\n` +
           `E entra na nossa comunidade pra ficar por dentro de tudo! \u{1F447}\n` +
