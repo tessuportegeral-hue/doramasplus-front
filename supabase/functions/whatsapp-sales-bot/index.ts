@@ -556,6 +556,20 @@ async function processMessage(fromE164: string, messageText: string, displayName
 
   if(step==="series_sent"||step==="series_upsell_sent"){
     const mn=msg.normalize("NFD").replace(/[̀-ͯ]/g,"");
+    // verifica series PRIMEIRO — evita tratar "quero a serie do anuncio" como pedido de assinatura
+    const asksForSeries = mn.includes("serie") || mn.includes("link") || mn.includes("drive") ||
+      mn.includes("anuncio") || mn.includes("nao achei") || mn.includes("nao encontrei") ||
+      mn.includes("cade") || mn.includes("nao recebi") || mn.includes("nao vi") || mn.includes("onde") ||
+      mn.includes("manda") || mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
+      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
+      mn.includes("qual") || mn.includes("titulo") || mn.includes("assistir");
+    if(asksForSeries){
+      await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
+      const identifiedSeries = String(sessionData.identified_series || "");
+      const seriesMsg = buildSeriesMsg(identifiedSeries || null);
+      await sendText(fromE164, seriesMsg);
+      return;
+    }
     const wantsSub=mn==="2"||mn==="3"||mn.includes("quero")||mn.includes("sim")||mn.includes("quanto")||mn.includes("assinar")||mn.includes("mensal")||mn.includes("trimestral")||mn.includes("plano")||mn.includes("acesso")||mn.includes("vou")||mn.includes("bora")||mn.includes("gostei")||mn.includes("amei")||mn.includes("adorei")||mn.includes("interesse")||mn.includes("top")||mn.includes("como faco")||mn.includes("como assino");
     if(wantsSub){
       const dp=detectOption(msg);
@@ -566,20 +580,6 @@ async function processMessage(fromE164: string, messageText: string, displayName
         await sendText(fromE164,`Que bom que curtiu! \u{1F525}\n\nTemos dois planos pra voce:\n\n2\u{FE0F}\u{20E3} *Mensal* — R$16,90 (30 dias de acesso completo)\n3\u{FE0F}\u{20E3} *Trimestral* — R$47,90 (melhor custo-beneficio!)\n\nResponda *2* ou *3*! \u{1F60A}`);
         await updateSession(fromE164,"choose_plan",sessionData);
       }
-      return;
-    }
-    const asksForSeries = mn.includes("serie") || mn.includes("link") || mn.includes("drive") ||
-      mn.includes("nao achei") || mn.includes("nao encontrei") || mn.includes("cadê") || mn.includes("cade") ||
-      mn.includes("nao recebi") || mn.includes("nao vi") || mn.includes("onde") || mn.includes("manda") ||
-      mn.includes("manda de novo") || mn.includes("manda novamente") || mn.includes("manda outra") ||
-      mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
-      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
-      mn.includes("qual") || mn.includes("nome") || mn.includes("titulo") || mn.includes("assistir");
-    if(asksForSeries){
-      await sendText(fromE164, `Claro! Aqui estao as series novamente \u{1F60A}\u{1F447}`);
-      const identifiedSeries = String(sessionData.identified_series || "");
-      const seriesMsg = buildSeriesMsg(identifiedSeries || null);
-      await sendText(fromE164, seriesMsg);
       return;
     }
     await sendText(fromE164,`Sua serie ja foi enviada! \u{1F60A} Se quiser assistir +2000 series no site, e so me falar!\n\n\u{1F449} www.doramasplus.com.br`);
@@ -628,7 +628,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v42"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v43"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
