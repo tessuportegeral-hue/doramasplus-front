@@ -31,6 +31,18 @@ function stepMeta(step) {
 const PAID_SOURCE = "whatsapp_sales_bot";
 const POLL_MS = 15000; // ✅ polling de segurança (caso o realtime caia)
 
+// ✅ Multi-número: separa as conversas por número de vendas.
+// O 8218 tem Phone Number ID conhecido; qualquer outro valor (inclusive null
+// das sessões legadas) cai no balde do 1499.
+const PHONE_ID_8218 = "1253472567838504";
+const NUMBERS = [
+  { key: "1499", label: "📞 1499", desc: "+55 18 99659-1499" },
+  { key: "8218", label: "📞 8218", desc: "+55 18 99632-8218" },
+];
+function numberBucket(s) {
+  return String(s?.receiving_phone_number_id || "") === PHONE_ID_8218 ? "8218" : "1499";
+}
+
 export default function AdminBotVendas() {
   const [sessions, setSessions] = useState([]);
   const [selected, setSelected] = useState(null); // sessão selecionada
@@ -41,6 +53,7 @@ export default function AdminBotVendas() {
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
+  const [numberFilter, setNumberFilter] = useState("1499"); // ✅ 1499 | 8218
   const [activeFilter, setActiveFilter] = useState("all"); // all | green | yellow | blue | paid
   const [previews, setPreviews] = useState({}); // { [phone]: { message, direction, created_at } }
   const [unread, setUnread] = useState({}); // { [phone]: number }
@@ -670,6 +683,18 @@ export default function AdminBotVendas() {
       fontSize: 12,
       fontWeight: active ? 700 : 400,
     }),
+    numberTabsRow: { display: "flex", gap: 6, marginTop: 4 },
+    numberTab: (active) => ({
+      flex: 1,
+      padding: "8px 10px",
+      borderRadius: 10,
+      border: active ? "1px solid rgba(34,197,94,0.5)" : "1px solid #2a2a2a",
+      background: active ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
+      color: active ? "#86efac" : "rgba(255,255,255,0.65)",
+      cursor: "pointer",
+      fontSize: 13,
+      fontWeight: active ? 800 : 500,
+    }),
     meta: { fontSize: 12, opacity: 0.75 },
     avatar: {
       width: 34,
@@ -776,6 +801,7 @@ export default function AdminBotVendas() {
     return sessions
       .filter((s) => {
         const d = sessionData(s);
+        if (numberBucket(s) !== numberFilter) return false; // ✅ separa por número
         if (q) {
           const hay = [s.phone, d.name, d.email, d.order_nsu, d.plan]
             .filter(Boolean)
@@ -795,7 +821,14 @@ export default function AdminBotVendas() {
         return bU - aU; // não lidos sobem ao topo; mantém ordem do DB nos demais
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, search, activeFilter, unread, paidOrderNsus]);
+  }, [sessions, search, numberFilter, activeFilter, unread, paidOrderNsus]);
+
+  // ✅ contagem de sessões por número (para os rótulos do seletor)
+  const countsByNumber = useMemo(() => {
+    const c = { "1499": 0, "8218": 0 };
+    for (const s of sessions) c[numberBucket(s)]++;
+    return c;
+  }, [sessions]);
 
   function renderMessageBody(m) {
     const text = String(m?.message || "");
@@ -828,14 +861,33 @@ export default function AdminBotVendas() {
       <div style={S.panelHeader}>
         <div style={S.headerTitleRow}>
           <div>
-            <div style={S.title}>Bot de Vendas (1499)</div>
-            <div style={S.subtitle}>/admin/bot-vendas</div>
+            <div style={S.title}>Bot de Vendas ({numberFilter})</div>
+            <div style={S.subtitle}>
+              {NUMBERS.find((n) => n.key === numberFilter)?.desc} • /admin/bot-vendas
+            </div>
           </div>
           {isMobile && selected ? (
             <button onClick={() => setSelected(null)} style={S.btn} title="Voltar">
               ←
             </button>
           ) : null}
+        </div>
+
+        {/* ✅ Seletor de número (1499 / 8218) */}
+        <div style={S.numberTabsRow}>
+          {NUMBERS.map((n) => (
+            <button
+              key={n.key}
+              onClick={() => {
+                setNumberFilter(n.key);
+                setSelected(null);
+              }}
+              style={S.numberTab(numberFilter === n.key)}
+              title={n.desc}
+            >
+              {n.label} ({countsByNumber[n.key] || 0})
+            </button>
+          ))}
         </div>
 
         <div style={S.actionsRow}>
@@ -1079,7 +1131,7 @@ export default function AdminBotVendas() {
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Responder como humano (pelo número 1499)…"
+            placeholder={`Responder como humano (pelo número ${selected ? numberBucket(selected) : numberFilter})…`}
             style={S.input}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

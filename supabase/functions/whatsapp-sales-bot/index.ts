@@ -5,6 +5,11 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") || "";
 const WHATSAPP_PHONE_NUMBER_ID_1499 = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID_1499") || "";
+// ✅ Segundo numero de vendas (+55 18 99632-8218), mesma WABA. O phone_number_id
+// nao e sigiloso, entao tem fallback hardcoded caso a env var nao esteja setada.
+const WHATSAPP_PHONE_NUMBER_ID_8218 = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID_8218") || "1253472567838504";
+// Numero padrao quando a sessao nao tem receiving_phone_number_id (legado = 1499)
+const DEFAULT_PHONE_NUMBER_ID = WHATSAPP_PHONE_NUMBER_ID_1499;
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "doramasplus_sales_verify";
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
 const DEFAULT_PASSWORD = "123456";
@@ -135,9 +140,22 @@ function looksLikeName(text: string): boolean {
   if (words.length<1||words.length>4) return false;
   return words.every(w=>/^[a-zA-ZÀ-ÿ]+$/.test(w));
 }
-async function sendText(to: string, body: string) {
-  if (!WHATSAPP_TOKEN||!WHATSAPP_PHONE_NUMBER_ID_1499) throw new Error("WA credentials ausentes");
-  const res = await fetch(`https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_NUMBER_ID_1499}/messages`,{
+// ✅ Multi-numero: descobre de qual Phone Number ID enviar.
+// Prioridade: fromId explicito -> receiving_phone_number_id da sessao do
+// destinatario -> DEFAULT (1499). Assim toda resposta sai pelo mesmo numero
+// que o cliente usou, sem precisar threadar o id em cada chamada.
+async function resolveSendId(to: string, fromId?: string|null): Promise<string> {
+  if (fromId) return fromId;
+  try {
+    const { data } = await supabase.from("sales_bot_sessions").select("receiving_phone_number_id").eq("phone", to).maybeSingle();
+    if (data?.receiving_phone_number_id) return String(data.receiving_phone_number_id);
+  } catch {}
+  return DEFAULT_PHONE_NUMBER_ID;
+}
+async function sendText(to: string, body: string, fromId?: string|null) {
+  const phoneId = await resolveSendId(to, fromId);
+  if (!WHATSAPP_TOKEN||!phoneId) throw new Error("WA credentials ausentes");
+  const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`,{
     method:"POST",
     headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"},
     body:JSON.stringify({messaging_product:"whatsapp",to,type:"text",text:{body}}),
@@ -145,11 +163,18 @@ async function sendText(to: string, body: string) {
   if (!res.ok){const t=await res.text().catch(()=>"");throw new Error(`WA send failed ${res.status}: ${t}`);}
   await saveMessage(to,"out",body);
 }
-async function getOrCreateSession(phone: string) {
+async function getOrCreateSession(phone: string, receivingId?: string|null) {
   const {data,error}=await supabase.from("sales_bot_sessions").select("*").eq("phone",phone).maybeSingle();
   if(error)throw error;
-  if(data)return data;
-  const {data:c,error:e2}=await supabase.from("sales_bot_sessions").insert({phone,step:"start",data:{}}).select("*").single();
+  if(data){
+    // backfill: grava de qual numero a sessao veio, se ainda nao tinha
+    if(receivingId && !data.receiving_phone_number_id){
+      try{ await supabase.from("sales_bot_sessions").update({receiving_phone_number_id:receivingId}).eq("phone",phone); }catch{}
+      data.receiving_phone_number_id = receivingId;
+    }
+    return data;
+  }
+  const {data:c,error:e2}=await supabase.from("sales_bot_sessions").insert({phone,step:"start",data:{},receiving_phone_number_id:receivingId||null}).select("*").single();
   if(e2)throw e2;
   return c;
 }
@@ -267,9 +292,9 @@ async function gerarPixSeries(fromE164: string, sessionData: any) {
   await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference });
 }
 
-async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any) {
+async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null) {
   await saveMessage(fromE164,"in",messageText);
-  const session=await getOrCreateSession(fromE164);
+  const session=await getOrCreateSession(fromE164, receivingId);
   const step=session.step||"start";
   let sessionData=session.data||{};
 
@@ -441,7 +466,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v25"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v26 (multi-numero)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -491,6 +516,8 @@ serve(async (req) => {
       for(const entry of entries){
         for(const change of(Array.isArray(entry?.changes)?entry.changes:[])){
           const value=change?.value||{};
+          // ✅ Multi-numero: de qual numero (Phone Number ID) a mensagem chegou
+          const receivingId=value?.metadata?.phone_number_id?String(value.metadata.phone_number_id):null;
           if(Array.isArray(value?.statuses)&&value.statuses.length&&!Array.isArray(value?.messages))continue;
           for(const msg of(Array.isArray(value?.messages)?value.messages:[])){
             const fromRaw=String(msg?.from||"");
@@ -504,7 +531,7 @@ serve(async (req) => {
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
             else text=msgType;
             if(!text)continue;
-            processMessage(fromE164,text,displayName,referral).catch(e=>console.error("[processMessage]",String(e)));
+            processMessage(fromE164,text,displayName,referral,receivingId).catch(e=>console.error("[processMessage]",String(e)));
           }
         }
       }
