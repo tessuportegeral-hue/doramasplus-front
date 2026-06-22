@@ -18,13 +18,13 @@ const EMPRESA_NOME = "Stefano Servicos de Streaming";
 const SITE = "www.doramasplus.com.br";
 
 const SERIES_DRIVE_LINKS: Record<string, string> = {
-  "O Amor que Deixei Escapar": "https://drive.google.com/file/d/143-NNJ9V2knE7rlzXWuyGEUdxxYLvo_C/view?usp=drive_link",
+  "O Amor que Deixei Escapar": "https://player.mediadelivery.net/play/624586/bc001156-66d6-49d2-8373-b3a25153949d",
   "Chefe, Ela disse nao de Novo": "https://drive.google.com/file/d/199tW_4UVLbFCT5TMnSA6t4vkt9oSN6c7/view?usp=drive_link",
-  "Viciada no Melhor amigo do meu Irmao": "https://drive.google.com/file/d/1DsAbMuGZ79wONw11OsqyCNSAzgnmj2op/view?usp=drive_link",
-  "Jogo do Destino": "https://drive.google.com/file/d/1-4D1G_nElwZti6UA3VbynjZH5xLEV_24/view?usp=drive_link",
-  "Sai da minha vida meu Primeiro amor Acabou": "https://drive.google.com/file/d/1tX3SroPYV7On1OLZ4PKIS1g5YMMms-tM/view?usp=drive_link",
+  "Viciada no Melhor amigo do meu Irmao": "https://player.mediadelivery.net/play/688480/879155f0-d1b3-41da-9ec0-f15b7f230f82",
+  "Jogo do Destino": "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035",
+  "Sai da minha vida meu Primeiro amor Acabou": "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040",
   "Prefiro Morrer a te Amar de Novo": "https://drive.google.com/file/d/1J6KrS7CCB1AsWpajthR7jTvVUe0CSl-R/view?usp=drive_link",
-  "Quando o Destino assinou por Mim": "https://drive.google.com/file/d/1bfVqApq0fwo-m3xzc4viqEgcpMIooC0z/view?usp=drive_link",
+  "Quando o Destino assinou por Mim": "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745",
 };
 
 const SERIES_ORDER = [
@@ -640,12 +640,12 @@ async function processMessage(fromE164: string, messageText: string, displayName
       mn.includes("audio nao") || mn.includes("legenda nao");
     if(cantOpen){
       await sendText(fromE164,
-        `E bem simples! \u{1F60A} Siga os passos:\n\n` +
+        `Vou te ajudar! \u{1F60A}\n\n` +
         `1\u{FE0F}\u{20E3} Clique no *link* que eu te mandei\n` +
-        `2\u{FE0F}\u{20E3} Vai abrir uma tela do Google Drive — aperte em *Login* (ou *Fazer login*)\n` +
-        `3\u{FE0F}\u{20E3} Coloque o *email* e a *senha* da sua conta Google\n` +
-        `4\u{FE0F}\u{20E3} Pronto! A serie vai aparecer pra voce \u{2705}\n\n` +
-        `Qualquer duvida e so falar! \u{1F64F}`
+        `2\u{FE0F}\u{20E3} O video vai abrir direto no navegador — aperta o *play* \u{25B6}\u{FE0F}\n` +
+        `3\u{FE0F}\u{20E3} Se pedir pra abrir no navegador, aperta em *Abrir*\n` +
+        `4\u{FE0F}\u{20E3} Pronto! A serie vai carregar pra voce assistir \u{2705}\n\n` +
+        `Se continuar com problema, fala comigo que resolvo! \u{1F64F}`
       );
       return;
     }
@@ -815,7 +815,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v53"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v54"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
