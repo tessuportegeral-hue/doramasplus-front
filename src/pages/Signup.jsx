@@ -134,26 +134,17 @@ const Signup = () => {
       }
 
       // ✅ salva referred_by (programa de indicação)
+      // Usa a RPC SECURITY DEFINER set_referred_by: o frontend NÃO consegue
+      // ler o perfil do indicador por ref_code (a RLS de profiles é
+      // "auth.uid() = id"), então a resolução ref_code -> referrer e o
+      // anti auto-indicação acontecem no servidor. A RPC grava referred_by
+      // no próprio usuário (first-touch, idempotente).
       try {
-        const userId = data?.user?.id || data?.session?.user?.id || null;
         const refCode = (localStorage.getItem('doramasplus_ref') || '').trim();
-        if (userId && refCode) {
-          // busca o referrer pelo ref_code
-          const { data: referrer } = await supabase
-            .from('profiles')
-            .select('id, ref_code')
-            .eq('ref_code', refCode)
-            .maybeSingle();
-
-          // só salva se: encontrou referrer E não é o próprio usuário (anti auto-indicação)
-          if (referrer?.id && referrer.id !== userId) {
-            await supabase
-              .from('profiles')
-              .update({ referred_by: referrer.id })
-              .eq('id', userId);
-          }
-          localStorage.removeItem('doramasplus_ref');
+        if (refCode) {
+          await supabase.rpc('set_referred_by', { p_ref_code: refCode });
         }
+        localStorage.removeItem('doramasplus_ref');
       } catch {
         // silencioso: não deixa isso atrapalhar criação da conta
       }
