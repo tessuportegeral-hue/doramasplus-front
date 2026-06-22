@@ -600,11 +600,44 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="series_sent"||step==="series_upsell_sent"){
     const mn=msg.normalize("NFD").replace(/[̀-ͯ]/g,"");
     // verifica series PRIMEIRO — evita tratar "quero a serie do anuncio" como pedido de assinatura
-    const cantOpen = mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao funciona") ||
-      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao consigo") ||
-      mn.includes("nao to conseguindo") || mn.includes("nao estou conseguindo") || mn.includes("nao sei abrir") ||
+    const cantOpen =
+      // nao abre / nao abriu
+      mn.includes("nao abriu") || mn.includes("nao abre") || mn.includes("nao ta abrindo") || mn.includes("nao esta abrindo") ||
+      mn.includes("nao abro") || mn.includes("nao abri") || mn.includes("nao consigo abrir") ||
+      // nao funciona / erro
+      mn.includes("nao funciona") || mn.includes("nao funcionou") || mn.includes("nao funcionando") ||
+      mn.includes("deu erro") || mn.includes("dando erro") || mn.includes("erro") || mn.includes("problema") ||
+      mn.includes("travou") || mn.includes("travado") || mn.includes("bugou") || mn.includes("bugado") ||
+      // nao carrega
+      mn.includes("nao carregou") || mn.includes("nao carrega") || mn.includes("nao ta carregando") || mn.includes("nao esta carregando") ||
+      mn.includes("nao carregando") || mn.includes("demora") || mn.includes("demorando") || mn.includes("demorou") ||
+      // nao consigo / nao to conseguindo
+      mn.includes("nao consigo") || mn.includes("nao to conseguindo") || mn.includes("nao estou conseguindo") ||
+      mn.includes("nao consegui") || mn.includes("nao consigo acessar") || mn.includes("nao consigo ver") ||
+      mn.includes("nao consigo assistir") || mn.includes("nao consigo entrar") || mn.includes("nao consigo logar") ||
+      // nao sei
+      mn.includes("nao sei abrir") || mn.includes("nao sei como") || mn.includes("nao sei usar") ||
+      mn.includes("nao sei entrar") || mn.includes("nao sei acessar") ||
+      // como abro / como acesso
       mn.includes("como abro") || mn.includes("como abre") || mn.includes("como acesso") || mn.includes("como entro") ||
-      mn.includes("nao sei") || mn.includes("nao abro") || mn.includes("erro") || mn.includes("problema");
+      mn.includes("como faco pra abrir") || mn.includes("como faco pra entrar") || mn.includes("como faco pra acessar") ||
+      mn.includes("como faz pra abrir") || mn.includes("como faz pra entrar") ||
+      // pedidos de ajuda
+      mn.includes("me ajuda") || mn.includes("me ajude") || mn.includes("socorro") || mn.includes("ajuda ai") ||
+      mn.includes("preciso de ajuda") || mn.includes("nao ta dando") || mn.includes("nao esta dando") ||
+      // invalido / nao aceita / nao reconhece
+      mn.includes("invalido") || mn.includes("nao aceita") || mn.includes("nao reconhece") || mn.includes("nao reconheceu") ||
+      mn.includes("nao deixa") || mn.includes("nao ta deixando") || mn.includes("nao esta deixando") ||
+      // senha / login errado
+      mn.includes("senha errada") || mn.includes("senha incorreta") || mn.includes("senha invalida") ||
+      mn.includes("login errado") || mn.includes("email errado") || mn.includes("nao lembro") ||
+      mn.includes("esqueci a senha") || mn.includes("esqueci o email") || mn.includes("esqueci minha senha") ||
+      // link quebrado / pagina
+      mn.includes("link nao") || mn.includes("link quebrado") || mn.includes("pagina nao") || mn.includes("pagina deu") ||
+      mn.includes("site nao") || mn.includes("site ta") || mn.includes("site esta") ||
+      // audio/legenda (quem comprou série)
+      mn.includes("sem audio") || mn.includes("sem legenda") || mn.includes("nao tem audio") || mn.includes("nao tem legenda") ||
+      mn.includes("audio nao") || mn.includes("legenda nao");
     if(cantOpen){
       await sendText(fromE164,
         `E bem simples! \u{1F60A} Siga os passos:\n\n` +
@@ -686,6 +719,36 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="access_sent"){
     const email=String(sessionData.email||"");
     const mn=msg.normalize("NFD").replace(/[̀-ͯ]/g,"");
+    const cantAccess =
+      // nao abre / nao acessa
+      mn.includes("nao abre") || mn.includes("nao abriu") || mn.includes("nao ta abrindo") || mn.includes("nao esta abrindo") ||
+      mn.includes("nao consigo acessar") || mn.includes("nao consigo entrar") || mn.includes("nao consigo logar") ||
+      mn.includes("nao consigo") || mn.includes("nao consegui entrar") || mn.includes("nao consegui acessar") ||
+      // nao funciona
+      mn.includes("nao funciona") || mn.includes("nao funcionou") || mn.includes("deu erro") || mn.includes("dando erro") ||
+      mn.includes("travou") || mn.includes("bugou") || mn.includes("nao carrega") || mn.includes("nao carregou") ||
+      mn.includes("nao ta carregando") || mn.includes("nao esta carregando") ||
+      // nao sei / como entro
+      mn.includes("nao sei entrar") || mn.includes("nao sei acessar") || mn.includes("nao sei como") ||
+      mn.includes("como entro") || mn.includes("como acesso") || mn.includes("como faco pra entrar") ||
+      mn.includes("como faz pra entrar") || mn.includes("como faco pra acessar") ||
+      // senha / login
+      mn.includes("senha errada") || mn.includes("senha incorreta") || mn.includes("senha invalida") ||
+      mn.includes("esqueci a senha") || mn.includes("esqueci minha senha") || mn.includes("esqueci o email") ||
+      mn.includes("nao lembro") || mn.includes("nao reconhece") || mn.includes("nao reconheceu") ||
+      mn.includes("nao aceita") || mn.includes("invalido") || mn.includes("login errado") || mn.includes("email errado") ||
+      // site / pagina
+      mn.includes("site nao") || mn.includes("pagina nao") || mn.includes("link nao") || mn.includes("link quebrado") ||
+      mn.includes("nao deixa") || mn.includes("nao ta deixando") || mn.includes("nao esta deixando") ||
+      // pedido de ajuda
+      mn.includes("me ajuda") || mn.includes("me ajude") || mn.includes("socorro") || mn.includes("ajuda ai") ||
+      mn.includes("nao to conseguindo") || mn.includes("nao estou conseguindo") ||
+      mn.includes("nao ta dando") || mn.includes("nao esta dando") || mn.includes("problema");
+    if(cantAccess){
+      if(email) await sendAccessHelp(fromE164, email);
+      else await sendText(fromE164, `Vou te ajudar! \u{1F60A} Fala com nosso suporte:\n\u{1F4AC} *+55 18 99679-6654*`);
+      return;
+    }
     const asksForSeries =
       mn.includes("serie") || mn.includes("dorama") || mn.includes("anuncio") || mn.includes("filme") ||
       mn.includes("ver a") || mn.includes("ver o") || mn.includes("assistir") || mn.includes("link") ||
@@ -752,7 +815,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v52"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v53"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
