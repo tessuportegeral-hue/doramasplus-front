@@ -23,17 +23,20 @@ const SERIES: { name: string; link: string }[] = [
   { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
 ];
 
-// Mapa anuncio (referral.source_id) -> serie, reconstruido do historico de vendas
+// Mapa anuncio (ad_id) -> serie
 const AD_SERIES_MAP: Record<string, string> = {
+  "23859058018740792": "Jogo do Destino",
+  "23859058018750792": "O Amor que Deixei Escapar",
+  "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
+};
+// Mapa campanha (source_id) -> serie
+const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
   "23858872800400792": "Quando o Destino assinou por Mim",
   "23858872800410792": "Quando o Destino assinou por Mim",
   "23858925078670792": "Quando o Destino assinou por Mim",
   "23858925078680792": "Quando o Destino assinou por Mim",
   "23858925078690792": "Quando o Destino assinou por Mim",
-  "23859058018740792": "Jogo do Destino",
-  "23859058018750792": "O Amor que Deixei Escapar",
-  "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
 };
 
 function norm(s: string) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim(); }
@@ -44,8 +47,14 @@ function findSeries(name: string) {
 // Identifica a serie do anuncio a partir do referral do clique (CTWA)
 function identifySeriesFromReferral(ref: any): string | null {
   if (!ref || typeof ref !== "object") return null;
-  const sid = String(ref.source_id || ref.ad_id || "");
-  if (sid && AD_SERIES_MAP[sid]) return AD_SERIES_MAP[sid];
+  // 1. Nivel de anuncio (ad_id)
+  const adId = String(ref.ad_id || "");
+  if (adId && AD_SERIES_MAP[adId]) return AD_SERIES_MAP[adId];
+  // 2. Fallback nivel de campanha (source_id)
+  const sourceId = String(ref.source_id || "");
+  if (sourceId && AD_SERIES_MAP[sourceId]) return AD_SERIES_MAP[sourceId];
+  if (sourceId && CAMPAIGN_SERIES_MAP[sourceId]) return CAMPAIGN_SERIES_MAP[sourceId];
+  // 3. Fallback texto
   const txt = norm(`${ref.headline || ""} ${ref.body || ""} ${ref.source_url || ""}`);
   if (txt) { for (const s of SERIES) { if (txt.includes(norm(s.name))) return s.name; } }
   return null;
@@ -164,7 +173,16 @@ async function createUserAccount(name: string, phone: string, email?: string) {
   const {data:created,error}=await supabase.auth.admin.createUser({email:finalEmail,password:DEFAULT_PASSWORD,email_confirm:true,user_metadata:{name,phone:digits}});
   if(error){
     const m=String(error.message||"").toLowerCase();
-    if(m.includes("already")||m.includes("exists"))return{exists:true,email:finalEmail};
+    if(m.includes("already")||m.includes("exists")||m.includes("registered")){
+      const {data:prof}=await supabase.from("profiles").select("id").eq("email",finalEmail).maybeSingle();
+      const existingId=prof?.id||null;
+      if(existingId){
+        try{await supabase.from("profiles").update({phone:digits}).eq("id",existingId);}catch{}
+        try{await supabase.auth.admin.updateUserById(existingId,{password:DEFAULT_PASSWORD});}catch{}
+        return{exists:true,userId:existingId,email:finalEmail};
+      }
+      return{exists:true,email:finalEmail};
+    }
     throw error;
   }
   const userId=created?.user?.id;
@@ -382,9 +400,10 @@ async function processMessage(fromE164: string, messageText: string, displayName
 async function finalizarCadastro(fromE164: string, name: string, email: string, sessionData: any) {
   const plan=(sessionData.plan as "monthly"|"quarterly")||"monthly";
   const planLabel=plan==="quarterly"?"Trimestral — R$47,90":"Mensal — R$16,90";
-  await createUserAccount(name,fromE164,email);
+  const acc=await createUserAccount(name,fromE164,email);
   let pix:any=null;
   try{pix=await createAsaasPix(email,name,plan,fromE164,{
+    user_id: (acc as any)?.userId || null,
     identified_series: sessionData.identified_series || null,
     ctwa_clid: sessionData.ctwa_clid || null,
     ad_source_id: sessionData.ad_source_id || null,
@@ -422,7 +441,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v23"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v25"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
