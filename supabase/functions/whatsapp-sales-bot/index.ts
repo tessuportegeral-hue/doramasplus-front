@@ -250,6 +250,9 @@ async function createAsaasPix(userEmail: string, userName: string, plan: "monthl
     customerId=d?.id||null;
   }
   if(!customerId)throw new Error("Nao foi possivel criar cliente no Asaas");
+  // ✅ Garante que o cliente NAO recebe email/notificacao do Asaas (Asaas cobra por envio).
+  // Cobre tambem o caso de cliente JA existente (reaproveitado), que pode ter notificacao ligada.
+  try{await fetch(`https://api.asaas.com/v3/customers/${customerId}`,{method:"POST",headers:{"access_token":key,"Content-Type":"application/json"},body:JSON.stringify({notificationDisabled:true})});}catch{}
   const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
   const dueDate=tomorrow.toISOString().split("T")[0];
   const r2=await fetch("https://api.asaas.com/v3/payments",{method:"POST",headers:{"access_token":key,"Content-Type":"application/json"},body:JSON.stringify({customer:customerId,billingType:"PIX",value:amount,dueDate,description,externalReference})});
@@ -518,7 +521,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v27 (multi-numero + troca/reenvio)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v28 (asaas sem email)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
