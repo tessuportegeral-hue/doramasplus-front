@@ -140,6 +140,21 @@ function looksLikeName(text: string): boolean {
   if (words.length<1||words.length>4) return false;
   return words.every(w=>/^[a-zA-ZÀ-ÿ]+$/.test(w));
 }
+// Detecta quando a pessoa quer TROCAR de opcao / cancelar a que escolheu.
+// So dispara em palavras explicitas (plano/serie/cancelar), nunca em nome/email comum.
+function detectPlanChange(msg: string): "series"|"monthly"|"quarterly"|"menu"|null {
+  const m = norm(msg);
+  if (m==="1"||m==="10"||m.includes("serie")||m.includes("avuls")||m.includes("opcao 1")||m.includes("a de 10")) return "series";
+  if (m==="3"||m.includes("trimes")||m.includes("opcao 3")||m.includes("tres mes")||m.includes("3 mes")||m.includes("anual")) return "quarterly";
+  if (m==="2"||m.includes("mensal")||m.includes("opcao 2")||m.includes("um mes")||m.includes("1 mes")) return "monthly";
+  if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")) return "menu";
+  return null;
+}
+// Detecta quando a pessoa esta pedindo a serie de novo (pos-venda) — ela some na conversa.
+function wantsSeriesAgain(msg: string): boolean {
+  const m = norm(msg);
+  return m.includes("serie")||m.includes("dorama")||m.includes("anuncio")||m.includes("novela")||m.includes("qual o nome")||m.includes("que serie")||m.includes("qual serie");
+}
 // ✅ Multi-numero: descobre de qual Phone Number ID enviar.
 // Prioridade: fromId explicito -> receiving_phone_number_id da sessao do
 // destinatario -> DEFAULT (1499). Assim toda resposta sai pelo mesmo numero
@@ -317,6 +332,43 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if(complaint==="email"){await sendText(fromE164,`Sem estresse! 😊 O email funciona normalmente.`);if(email)await sendAccessHelp(fromE164,email);return;}
   }
 
+  // ✅ Reenvio da serie do anuncio quando o cliente pede de novo (pos-venda).
+  // A serie "some" pra cima na conversa; aqui o bot reentrega em destaque.
+  if((step==="access_sent"||step==="series_sent"||step==="support"||step==="support_detail")&&wantsSeriesAgain(msg)){
+    const idSeries=await resolveIdentifiedSeries(fromE164,session);
+    if(idSeries&&findSeries(idSeries)){
+      const star=buildAnuncioStarMsg(idSeries);
+      if(star)await sendText(fromE164,star);
+      await sendText(fromE164,buildHighlightedSeriesMsg(idSeries));
+    } else {
+      await sendText(fromE164,buildGenericSeriesMsg());
+    }
+    return;
+  }
+
+  // ✅ Deixa o cliente trocar de opcao / cancelar mesmo depois de ja ter escolhido.
+  if(step==="collect_info"||step==="collect_email"||step==="waiting_payment"){
+    const change=detectPlanChange(msg);
+    if(change==="series"){await gerarPixSeries(fromE164,sessionData);return;}
+    if(change==="menu"){
+      await sendText(fromE164,`Sem problema! 😊 Qual voce prefere?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$16,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+      await updateSession(fromE164,"choose_plan",sessionData);
+      return;
+    }
+    if((change==="monthly"||change==="quarterly")&&change!==String(sessionData.plan||"")){
+      const email=String(sessionData.email||"");
+      const name=String(sessionData.name||"");
+      if(email&&name){
+        await finalizarCadastro(fromE164,name,email,{...sessionData,plan:change});
+      } else {
+        const lbl=change==="quarterly"?"Trimestral (R$47,90)":"Mensal (R$16,90)";
+        await sendText(fromE164,`Perfeito, vamos de ${lbl}! 😊\n\nMe passa seu *nome* e *email* pra eu criar sua conta:\n\nExemplo: _Joao Silva / joao@gmail.com_`);
+        await updateSession(fromE164,"collect_info",{...sessionData,plan:change});
+      }
+      return;
+    }
+  }
+
   if(step==="start"||step==="menu"){
     const existing=await checkExistingUser(fromE164);
     if(existing?.subscription){
@@ -466,7 +518,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v26 (multi-numero)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v27 (multi-numero + troca/reenvio)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
