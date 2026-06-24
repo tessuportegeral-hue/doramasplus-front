@@ -39,9 +39,9 @@ const RECOMMENDED_LIMIT = 100; // antes: 400
 // ✅ Seletores em fallback (pra NUNCA quebrar por coluna inexistente)
 const SELECT_LEVELS = [
   // Mais completo (se existir tudo)
-  "id,slug,title,original_title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
+  "id,slug,title,description,created_at,banner_url,cover_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
   // Médio (remove campos que costumam não existir em alguns schemas)
-  "id,slug,title,description,created_at,banner_url,cover_url,thumbnail_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
+  "id,slug,title,description,created_at,banner_url,cover_url,language,is_featured,is_new,is_recommended,is_baby_pregnancy,is_taboo_relationship,is_hidden_identity,is_bl_gl,is_lobos_vampiros,is_anime,is_brasileiro",
   // Mínimo (quase impossível falhar)
   "id,slug,title,description,created_at,cover_url,language,is_featured,is_new",
 ];
@@ -459,7 +459,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     try {
       const { data } = await supabase
         .from("doramas")
-        .select("id,slug,title,description,created_at,cover_url,thumbnail_url,language,is_featured,is_new")
+        .select("id,slug,title,description,created_at,cover_url,language,is_featured,is_new")
         .order("title");
       if (data) doramaIndexRef.current = data;
     } finally {
