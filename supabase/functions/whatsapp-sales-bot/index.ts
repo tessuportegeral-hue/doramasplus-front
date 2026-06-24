@@ -544,16 +544,27 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="waiting_payment"){
     // Reclamacao de PIX invalido/nao funciona: explica como usar e reenviar o codigo
     if(detectPixProblem(msg)){
-      await sendText(fromE164,
-        `Sem problema! 😊 O codigo e valido sim! Veja como usar:\n\n` +
-        `1️⃣ Segure o codigo que mandei e toque em *Copiar*\n` +
-        `2️⃣ Abra o *app do seu banco*\n` +
-        `3️⃣ Va em *PIX* → *PIX Copia e Cola* (ou *Pagar com codigo*)\n` +
-        `4️⃣ Cole o codigo e confirme o pagamento\n\n` +
-        `⏳ Assim que confirmar, libero automaticamente! ✅\n\nAqui esta o codigo novamente:`
-      );
-      const pixPayload = String(sessionData.pix_payload || "");
-      if(pixPayload) await sendText(fromE164, pixPayload);
+      if(sessionData.pix_help_sent){
+        // Ja explicou uma vez e a pessoa continua sem conseguir: manda chave CNPJ + suporte
+        await sendText(fromE164,
+          `Sem estresse! 😊 Te passo outra forma de pagar:\n\n` +
+          `💳 *Chave PIX (CNPJ):*\n66108496000120\n\n` +
+          `Apos fazer o pagamento, envia o comprovante pra gente confirmar e liberar seu acesso:\n\n` +
+          `📲 *WhatsApp Suporte:* (18) 99679-6654`
+        );
+      } else {
+        await sendText(fromE164,
+          `Sem problema! 😊 O codigo e valido sim! Veja como usar:\n\n` +
+          `1️⃣ Segure o codigo que mandei e toque em *Copiar*\n` +
+          `2️⃣ Abra o *app do seu banco*\n` +
+          `3️⃣ Va em *PIX* → *PIX Copia e Cola* (ou *Pagar com codigo*)\n` +
+          `4️⃣ Cole o codigo e confirme o pagamento\n\n` +
+          `⏳ Assim que confirmar, libero automaticamente! ✅\n\nAqui esta o codigo novamente:`
+        );
+        const pixPayload = String(sessionData.pix_payload || "");
+        if(pixPayload) await sendText(fromE164, pixPayload);
+        await updateSession(fromE164, "waiting_payment", { ...sessionData, pix_help_sent: true });
+      }
       return;
     }
     const plan=String(sessionData.plan||"");
