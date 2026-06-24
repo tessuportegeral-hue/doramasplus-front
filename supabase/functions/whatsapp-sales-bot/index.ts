@@ -5,10 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") || "";
 const WHATSAPP_PHONE_NUMBER_ID_1499 = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID_1499") || "";
-// ✅ Segundo numero de vendas (+55 18 99632-8218), mesma WABA. O phone_number_id
-// nao e sigiloso, entao tem fallback hardcoded caso a env var nao esteja setada.
 const WHATSAPP_PHONE_NUMBER_ID_8218 = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID_8218") || "1253472567838504";
-// Numero padrao quando a sessao nao tem receiving_phone_number_id (legado = 1499)
 const DEFAULT_PHONE_NUMBER_ID = WHATSAPP_PHONE_NUMBER_ID_1499;
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "doramasplus_sales_verify";
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
@@ -17,24 +14,43 @@ const VIP_GROUP = "https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k";
 const ADMIN_EMAIL = "tessuportegeral@gmail.com";
 const SUPORTE_HUMANO = "https://wa.me/5518996796654";
 
-// ===== Catalogo de series (ordem canonica) =====
+// ---- Rate limit / disjuntor (anti-spam + anti-abuso Asaas) ----
+const ALERT_PHONE = "5518991504207";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
+const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
+const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
+const SELFTEST_KEY = "dp_alert_selftest_7gk29";
+const RL_MSG_PER_MIN = 7;
+const RL_BLOCK_MIN = 15;
+const RL_PIX_PER_DAY = 4;
+const RL_PIX_BLOCK_HOURS = 24;
+const CB_MSG_PER_MIN = 80;
+const CB_PIX_PER_HOUR = 100;
+const CB_PAUSE_MIN = 60;
+
 const SERIES: { name: string; link: string }[] = [
   { name: "O Amor que Deixei Escapar", link: "https://player.mediadelivery.net/play/624586/bc001156-66d6-49d2-8373-b3a25153949d" },
-  { name: "Chefe, Ela disse nao de Novo", link: "https://drive.google.com/file/d/199tW_4UVLbFCT5TMnSA6t4vkt9oSN6c7/view?usp=drive_link" },
-  { name: "Viciada no Melhor amigo do meu Irmao", link: "https://player.mediadelivery.net/play/688480/879155f0-d1b3-41da-9ec0-f15b7f230f82" },
   { name: "Jogo do Destino", link: "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035" },
   { name: "Sai da minha vida meu Primeiro amor Acabou", link: "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040" },
-  { name: "Prefiro Morrer a te Amar de Novo", link: "https://player.mediadelivery.net/play/688480/9c52b33b-1b80-46a0-b98f-3f040fe9db69" },
+  { name: "Fiquei com o bebe e o coracao do bilionario", link: "https://player.mediadelivery.net/play/688480/e6532d6c-5c61-428d-be0a-a27a1ca781b1" },
+  { name: "Ossos marcados pela dor", link: "https://player.mediadelivery.net/play/688480/15ca6b01-6ba5-4206-b9bf-fb28544227c0" },
+  { name: "Seu marido e o rei da Tecnologia", link: "https://player.mediadelivery.net/play/688480/4548ae95-90fb-4a96-b047-3860ffb94ff6" },
   { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
 ];
 
-// Mapa anuncio (ad_id) -> serie
 const AD_SERIES_MAP: Record<string, string> = {
+  // Conta 1499
   "23859058018740792": "Jogo do Destino",
   "23859058018750792": "O Amor que Deixei Escapar",
   "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
+  "23859254996260792": "Fiquei com o bebe e o coracao do bilionario",
+  "23859254996240792": "Ossos marcados pela dor",
+  "23859254996250792": "Seu marido e o rei da Tecnologia",
+  // Conta 8218
+  "120247300716450786": "Ossos marcados pela dor",
+  "120247300716460786": "Seu marido e o rei da Tecnologia",
+  "120247300716470786": "Fiquei com o bebe e o coracao do bilionario",
 };
-// Mapa campanha (source_id) -> serie
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
   "23858872800400792": "Quando o Destino assinou por Mim",
@@ -49,17 +65,13 @@ function findSeries(name: string) {
   const n = norm(name);
   return SERIES.find(s => norm(s.name) === n) || SERIES.find(s => n && (norm(s.name).includes(n) || n.includes(norm(s.name)))) || null;
 }
-// Identifica a serie do anuncio a partir do referral do clique (CTWA)
 function identifySeriesFromReferral(ref: any): string | null {
   if (!ref || typeof ref !== "object") return null;
-  // 1. Nivel de anuncio (ad_id)
   const adId = String(ref.ad_id || "");
   if (adId && AD_SERIES_MAP[adId]) return AD_SERIES_MAP[adId];
-  // 2. Fallback nivel de campanha (source_id)
   const sourceId = String(ref.source_id || "");
   if (sourceId && AD_SERIES_MAP[sourceId]) return AD_SERIES_MAP[sourceId];
   if (sourceId && CAMPAIGN_SERIES_MAP[sourceId]) return CAMPAIGN_SERIES_MAP[sourceId];
-  // 3. Fallback texto
   const txt = norm(`${ref.headline || ""} ${ref.body || ""} ${ref.source_url || ""}`);
   if (txt) { for (const s of SERIES) { if (txt.includes(norm(s.name))) return s.name; } }
   return null;
@@ -121,6 +133,112 @@ function generateFakeCpf(): string {
 async function saveMessage(phone: string, direction: "in"|"out", message: string) {
   try { await supabase.from("sales_bot_messages").insert({ phone, direction, message }); } catch {}
 }
+
+// ====================== RATE LIMIT / DISJUNTOR ======================
+async function sendRaw(to: string, body: string, phoneId: string) {
+  if (!WHATSAPP_TOKEN||!phoneId) throw new Error("WA credentials ausentes");
+  const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`,{
+    method:"POST",
+    headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"},
+    body:JSON.stringify({messaging_product:"whatsapp",to,type:"text",text:{body}}),
+  });
+  if (!res.ok){const t=await res.text().catch(()=>"");throw new Error(`WA send failed ${res.status}: ${t}`);}
+}
+async function tripAlert(reason: string) {
+  const text = `DISJUNTOR ACIONADO no bot DoramasPlus.\n\n${reason}\n\nBot pausado por ${CB_PAUSE_MIN} min.`;
+  try {
+    if (RESEND_API_KEY && ALERT_EMAIL) {
+      await fetch("https://api.resend.com/emails", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${RESEND_API_KEY}` },
+        body: JSON.stringify({ from: FROM_EMAIL, to: [ALERT_EMAIL], subject: "🚨 DoramasPlus — DISJUNTOR ACIONADO", html: `<pre style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">${text}</pre>` }),
+      });
+    }
+  } catch (e) { console.error("[alert email fail]", String(e)); }
+  const ids = [WHATSAPP_PHONE_NUMBER_ID_1499, WHATSAPP_PHONE_NUMBER_ID_8218].filter(Boolean) as string[];
+  for (const id of ids) {
+    try { await sendRaw(ALERT_PHONE, `🚨 ${text}`, id); break; } catch (e) { console.error("[alert wa fail]", id, String(e)); }
+  }
+}
+async function isNumberBlocked(phone: string): Promise<boolean> {
+  try {
+    const { data } = await supabase.from("salesbot_rate_limit").select("blocked_until,win_start,msg_count").eq("phone",phone).maybeSingle();
+    if (!data) return false;
+    if (data.blocked_until && new Date(data.blocked_until).getTime() > Date.now()) return true;
+    if (data.win_start && (Date.now()-new Date(data.win_start).getTime() < 60000) && (data.msg_count||0) >= RL_MSG_PER_MIN) {
+      await supabase.from("salesbot_rate_limit").upsert({ phone, blocked_until: new Date(Date.now()+RL_BLOCK_MIN*60000).toISOString() }, { onConflict:"phone" });
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+async function bumpOutbound(phone: string) {
+  try {
+    const now = Date.now();
+    const { data } = await supabase.from("salesbot_rate_limit").select("win_start,msg_count").eq("phone",phone).maybeSingle();
+    let start = data?.win_start ? new Date(data.win_start).getTime() : 0;
+    let count = data?.msg_count || 0;
+    if (!start || now-start >= 60000) { start = now; count = 0; }
+    count += 1;
+    await supabase.from("salesbot_rate_limit").upsert({ phone, win_start: new Date(start).toISOString(), msg_count: count }, { onConflict:"phone" });
+  } catch {}
+}
+async function cbAllowMsg(): Promise<boolean> {
+  try {
+    const now = Date.now();
+    const { data } = await supabase.from("salesbot_circuit").select("*").eq("id",1).maybeSingle();
+    const row:any = data || { id:1 };
+    if (row.paused_until && new Date(row.paused_until).getTime() > now) return false;
+    let start = row.min_start ? new Date(row.min_start).getTime() : 0;
+    let count = row.min_count || 0;
+    if (!start || now-start >= 60000) { start = now; count = 0; }
+    count += 1;
+    if (count > CB_MSG_PER_MIN) {
+      await supabase.from("salesbot_circuit").upsert({ id:1, min_start:new Date(start).toISOString(), min_count:count, paused_until:new Date(now+CB_PAUSE_MIN*60000).toISOString(), last_alert_at:new Date(now).toISOString() }, { onConflict:"id" });
+      await tripAlert(`Volume anormal: ${count} mensagens em 1 min (limite ${CB_MSG_PER_MIN}).`);
+      return false;
+    }
+    await supabase.from("salesbot_circuit").upsert({ id:1, min_start:new Date(start).toISOString(), min_count:count }, { onConflict:"id" });
+    return true;
+  } catch { return true; }
+}
+async function cbAllowPix(): Promise<boolean> {
+  try {
+    const now = Date.now();
+    const { data } = await supabase.from("salesbot_circuit").select("*").eq("id",1).maybeSingle();
+    const row:any = data || { id:1 };
+    if (row.paused_until && new Date(row.paused_until).getTime() > now) return false;
+    let start = row.hour_start ? new Date(row.hour_start).getTime() : 0;
+    let count = row.pix_hour_count || 0;
+    if (!start || now-start >= 3600000) { start = now; count = 0; }
+    count += 1;
+    if (count > CB_PIX_PER_HOUR) {
+      await supabase.from("salesbot_circuit").upsert({ id:1, hour_start:new Date(start).toISOString(), pix_hour_count:count, paused_until:new Date(now+CB_PAUSE_MIN*60000).toISOString(), last_alert_at:new Date(now).toISOString() }, { onConflict:"id" });
+      await tripAlert(`Volume anormal de PIX: ${count} em 1 hora (limite ${CB_PIX_PER_HOUR}).`);
+      return false;
+    }
+    await supabase.from("salesbot_circuit").upsert({ id:1, hour_start:new Date(start).toISOString(), pix_hour_count:count }, { onConflict:"id" });
+    return true;
+  } catch { return true; }
+}
+async function pixDayAllow(phone: string): Promise<boolean> {
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const { data } = await supabase.from("salesbot_rate_limit").select("pix_day,pix_count").eq("phone",phone).maybeSingle();
+    let day = data?.pix_day || null;
+    let count = data?.pix_count || 0;
+    if (day !== today) { day = today; count = 0; }
+    if (count >= RL_PIX_PER_DAY) {
+      await supabase.from("salesbot_rate_limit").upsert({ phone, blocked_until: new Date(Date.now()+RL_PIX_BLOCK_HOURS*3600000).toISOString() }, { onConflict:"phone" });
+      return false;
+    }
+    count += 1;
+    await supabase.from("salesbot_rate_limit").upsert({ phone, pix_day:day, pix_count:count }, { onConflict:"phone" });
+    return true;
+  } catch { return true; }
+}
+// ====================================================================
+
 function detectOption(msg: string): "series"|"monthly"|"quarterly"|null {
   const m = norm(msg);
   if (m==="1"||m.includes("serie")||m.includes("drive")||m.includes("10")||m.includes("avuls")) return "series";
@@ -134,14 +252,18 @@ function detectComplaint(msg: string): "nome"|"email"|null {
   if (m.includes("email")&&(m.includes("errado")||m.includes("errou")||m.includes("incorreto")||m.includes("diferente")||m.includes("nao e")||m.includes("nao ta")||m.includes("nao esta")||m.includes("nao reconhec")||m.includes("nao achei"))) return "email";
   return null;
 }
+function detectPixProblem(msg: string): boolean {
+  const m = norm(msg);
+  const temPalavraChave = m.includes("pix") || m.includes("codigo") || m.includes("codig") || m.includes("qr") || m.includes("pagamento") || m.includes("pagar");
+  const temProblema = m.includes("invalido") || m.includes("invalida") || m.includes("nao funciona") || m.includes("nao ta") || m.includes("nao esta") || m.includes("nao funcionou") || m.includes("erro") || m.includes("expirou") || m.includes("venceu") || m.includes("nao aceita") || m.includes("nao consigo") || m.includes("deu erro") || m.includes("recusado") || m.includes("nao passou") || m.includes("nao reconhec") || m.includes("nao acho") || m.includes("nao aparece") || m.includes("onde colo") || m.includes("como uso") || m.includes("como pago") || m.includes("como faco") || m.includes("nao sei") || m.includes("como colo");
+  return temPalavraChave && temProblema;
+}
 function looksLikeName(text: string): boolean {
   if (/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(text)) return false;
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length<1||words.length>4) return false;
   return words.every(w=>/^[a-zA-ZÀ-ÿ]+$/.test(w));
 }
-// Detecta quando a pessoa quer TROCAR de opcao / cancelar a que escolheu.
-// So dispara em palavras explicitas (plano/serie/cancelar), nunca em nome/email comum.
 function detectPlanChange(msg: string): "series"|"monthly"|"quarterly"|"menu"|null {
   const m = norm(msg);
   if (m==="1"||m==="10"||m.includes("serie")||m.includes("avuls")||m.includes("opcao 1")||m.includes("a de 10")) return "series";
@@ -150,15 +272,10 @@ function detectPlanChange(msg: string): "series"|"monthly"|"quarterly"|"menu"|nu
   if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")) return "menu";
   return null;
 }
-// Detecta quando a pessoa esta pedindo a serie de novo (pos-venda) — ela some na conversa.
 function wantsSeriesAgain(msg: string): boolean {
   const m = norm(msg);
   return m.includes("serie")||m.includes("dorama")||m.includes("anuncio")||m.includes("novela")||m.includes("qual o nome")||m.includes("que serie")||m.includes("qual serie");
 }
-// ✅ Multi-numero: descobre de qual Phone Number ID enviar.
-// Prioridade: fromId explicito -> receiving_phone_number_id da sessao do
-// destinatario -> DEFAULT (1499). Assim toda resposta sai pelo mesmo numero
-// que o cliente usou, sem precisar threadar o id em cada chamada.
 async function resolveSendId(to: string, fromId?: string|null): Promise<string> {
   if (fromId) return fromId;
   try {
@@ -170,19 +287,15 @@ async function resolveSendId(to: string, fromId?: string|null): Promise<string> 
 async function sendText(to: string, body: string, fromId?: string|null) {
   const phoneId = await resolveSendId(to, fromId);
   if (!WHATSAPP_TOKEN||!phoneId) throw new Error("WA credentials ausentes");
-  const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`,{
-    method:"POST",
-    headers:{Authorization:`Bearer ${WHATSAPP_TOKEN}`,"Content-Type":"application/json"},
-    body:JSON.stringify({messaging_product:"whatsapp",to,type:"text",text:{body}}),
-  });
-  if (!res.ok){const t=await res.text().catch(()=>"");throw new Error(`WA send failed ${res.status}: ${t}`);}
+  if (!(await cbAllowMsg())) return;
+  await bumpOutbound(to);
+  await sendRaw(to, body, phoneId);
   await saveMessage(to,"out",body);
 }
 async function getOrCreateSession(phone: string, receivingId?: string|null) {
   const {data,error}=await supabase.from("sales_bot_sessions").select("*").eq("phone",phone).maybeSingle();
   if(error)throw error;
   if(data){
-    // backfill: grava de qual numero a sessao veio, se ainda nao tinha
     if(receivingId && !data.receiving_phone_number_id){
       try{ await supabase.from("sales_bot_sessions").update({receiving_phone_number_id:receivingId}).eq("phone",phone); }catch{}
       data.receiving_phone_number_id = receivingId;
@@ -250,9 +363,7 @@ async function createAsaasPix(userEmail: string, userName: string, plan: "monthl
     customerId=d?.id||null;
   }
   if(!customerId)throw new Error("Nao foi possivel criar cliente no Asaas");
-  // ✅ Garante que o cliente NAO recebe email/notificacao do Asaas (Asaas cobra por envio).
-  // Cobre tambem o caso de cliente JA existente (reaproveitado), que pode ter notificacao ligada.
-  try{await fetch(`https://api.asaas.com/v3/customers/${customerId}`,{method:"POST",headers:{"access_token":key,"Content-Type":"application/json"},body:JSON.stringify({notificationDisabled:true})});}catch{}
+  try{await fetch(`https://api.asaas.com/v3/customers/${customerId}`,{method:"PUT",headers:{"access_token":key,"Content-Type":"application/json"},body:JSON.stringify({notificationDisabled:true})});}catch{}
   const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
   const dueDate=tomorrow.toISOString().split("T")[0];
   const r2=await fetch("https://api.asaas.com/v3/payments",{method:"POST",headers:{"access_token":key,"Content-Type":"application/json"},body:JSON.stringify({customer:customerId,billingType:"PIX",value:amount,dueDate,description,externalReference})});
@@ -281,8 +392,9 @@ async function sendAccessHelp(to: string, email: string) {
   await sendText(to,DEFAULT_PASSWORD);
 }
 
-// Gera PIX de series direto, sem pedir nada
-async function gerarPixSeries(fromE164: string, sessionData: any) {
+async function gerarPixSeries(fromE164: string, sessionData: any, receivingPhoneNumberId?: string|null) {
+  if (!(await cbAllowPix())) return;
+  if (!(await pixDayAllow(fromE164))) return;
   const fakeEmail = generateFakeEmail(fromE164);
   const idSeries = String(sessionData.identified_series || "");
   let pix: any = null;
@@ -291,6 +403,7 @@ async function gerarPixSeries(fromE164: string, sessionData: any) {
       identified_series: idSeries || null,
       ctwa_clid: sessionData.ctwa_clid || null,
       ad_source_id: sessionData.ad_source_id || null,
+      receiving_phone_number_id: receivingPhoneNumberId || null,
     });
   } catch(e) {
     console.error("[asaas pix series]", String(e));
@@ -307,16 +420,16 @@ async function gerarPixSeries(fromE164: string, sessionData: any) {
     `⏳ Assim que confirmar, mando sua serie automaticamente! ✅`
   );
   await sendText(fromE164, pix.copyPaste);
-  await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference });
+  await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference, pix_payload: pix.copyPaste });
 }
 
 async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null) {
+  if (await isNumberBlocked(fromE164)) return;
   await saveMessage(fromE164,"in",messageText);
   const session=await getOrCreateSession(fromE164, receivingId);
   const step=session.step||"start";
   let sessionData=session.data||{};
 
-  // Captura o anuncio do clique (CTWA): so completa o que ainda nao tem
   if (referral && typeof referral === "object") {
     const sid = identifySeriesFromReferral(referral);
     const patch: Record<string,unknown> = {};
@@ -327,6 +440,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   const msg=messageText.trim().toLowerCase();
+  const receivingPhoneNumberId: string|null = session.receiving_phone_number_id || null;
 
   if(step==="waiting_payment"||step==="access_sent"){
     const complaint=detectComplaint(msg);
@@ -335,8 +449,6 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if(complaint==="email"){await sendText(fromE164,`Sem estresse! 😊 O email funciona normalmente.`);if(email)await sendAccessHelp(fromE164,email);return;}
   }
 
-  // ✅ Reenvio da serie do anuncio quando o cliente pede de novo (pos-venda).
-  // A serie "some" pra cima na conversa; aqui o bot reentrega em destaque.
   if((step==="access_sent"||step==="series_sent"||step==="support"||step==="support_detail")&&wantsSeriesAgain(msg)){
     const idSeries=await resolveIdentifiedSeries(fromE164,session);
     if(idSeries&&findSeries(idSeries)){
@@ -349,10 +461,9 @@ async function processMessage(fromE164: string, messageText: string, displayName
     return;
   }
 
-  // ✅ Deixa o cliente trocar de opcao / cancelar mesmo depois de ja ter escolhido.
   if(step==="collect_info"||step==="collect_email"||step==="waiting_payment"){
     const change=detectPlanChange(msg);
-    if(change==="series"){await gerarPixSeries(fromE164,sessionData);return;}
+    if(change==="series"){await gerarPixSeries(fromE164,sessionData,receivingPhoneNumberId);return;}
     if(change==="menu"){
       await sendText(fromE164,`Sem problema! 😊 Qual voce prefere?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$16,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
       await updateSession(fromE164,"choose_plan",sessionData);
@@ -362,7 +473,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       const email=String(sessionData.email||"");
       const name=String(sessionData.name||"");
       if(email&&name){
-        await finalizarCadastro(fromE164,name,email,{...sessionData,plan:change});
+        await finalizarCadastro(fromE164,name,email,{...sessionData,plan:change},receivingPhoneNumberId);
       } else {
         const lbl=change==="quarterly"?"Trimestral (R$47,90)":"Mensal (R$16,90)";
         await sendText(fromE164,`Perfeito, vamos de ${lbl}! 😊\n\nMe passa seu *nome* e *email* pra eu criar sua conta:\n\nExemplo: _Joao Silva / joao@gmail.com_`);
@@ -397,7 +508,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const option=detectOption(msg);
     if(!option){await sendText(fromE164,`Responde *1* (1 Serie R$10), *2* (Mensal R$16,90) ou *3* (Trimestral R$47,90) 😊`);return;}
     if(option==="series"){
-      await gerarPixSeries(fromE164, sessionData);
+      await gerarPixSeries(fromE164, sessionData, receivingPhoneNumberId);
     } else {
       await sendText(fromE164,`Otimo! 😊\n\nMe passa seu *nome* e *email* pra eu criar sua conta:\n\nExemplo: _Joao Silva / joao@gmail.com_`);
       await updateSession(fromE164,"collect_info",{...sessionData,plan:option});
@@ -417,7 +528,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if(!email){await sendText(fromE164,`Nao consegui identificar seu email 😅\n\nMe manda assim: *Nome Sobrenome / email@exemplo.com*`);return;}
     const nameRaw=messageText.replace(emailMatch?.[0]||"","").replace(/[\/,|\-]/g," ").trim();
     const name=nameRaw.split(/\s+/).filter(Boolean).slice(0,3).map((w:string)=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ")||"Cliente";
-    await finalizarCadastro(fromE164,name,email,sessionData);
+    await finalizarCadastro(fromE164,name,email,sessionData,receivingPhoneNumberId);
     return;
   }
 
@@ -426,11 +537,25 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const email=emailMatch?emailMatch[0].toLowerCase():null;
     if(!email){await sendText(fromE164,`Hmm, nao identifiquei um email valido 😅\n\nMe manda assim: _seuemail@gmail.com_`);return;}
     const name=String(sessionData.name||displayName||"Cliente");
-    await finalizarCadastro(fromE164,name,email,sessionData);
+    await finalizarCadastro(fromE164,name,email,sessionData,receivingPhoneNumberId);
     return;
   }
 
   if(step==="waiting_payment"){
+    // Reclamacao de PIX invalido/nao funciona: explica como usar e reenviar o codigo
+    if(detectPixProblem(msg)){
+      await sendText(fromE164,
+        `Sem problema! 😊 O codigo e valido sim! Veja como usar:\n\n` +
+        `1️⃣ Segure o codigo que mandei e toque em *Copiar*\n` +
+        `2️⃣ Abra o *app do seu banco*\n` +
+        `3️⃣ Va em *PIX* → *PIX Copia e Cola* (ou *Pagar com codigo*)\n` +
+        `4️⃣ Cole o codigo e confirme o pagamento\n\n` +
+        `⏳ Assim que confirmar, libero automaticamente! ✅\n\nAqui esta o codigo novamente:`
+      );
+      const pixPayload = String(sessionData.pix_payload || "");
+      if(pixPayload) await sendText(fromE164, pixPayload);
+      return;
+    }
     const plan=String(sessionData.plan||"");
     await sendText(fromE164,plan==="series"
       ?`Aguardando seu pagamento! ⏳\n\nAssim que o PIX confirmar, mando sua serie automaticamente! 🎉`
@@ -477,7 +602,9 @@ async function processMessage(fromE164: string, messageText: string, displayName
   await updateSession(fromE164,"choose_plan",sessionData);
 }
 
-async function finalizarCadastro(fromE164: string, name: string, email: string, sessionData: any) {
+async function finalizarCadastro(fromE164: string, name: string, email: string, sessionData: any, receivingPhoneNumberId?: string|null) {
+  if (!(await cbAllowPix())) return;
+  if (!(await pixDayAllow(fromE164))) return;
   const plan=(sessionData.plan as "monthly"|"quarterly")||"monthly";
   const planLabel=plan==="quarterly"?"Trimestral — R$47,90":"Mensal — R$16,90";
   const acc=await createUserAccount(name,fromE164,email);
@@ -487,6 +614,7 @@ async function finalizarCadastro(fromE164: string, name: string, email: string, 
     identified_series: sessionData.identified_series || null,
     ctwa_clid: sessionData.ctwa_clid || null,
     ad_source_id: sessionData.ad_source_id || null,
+    receiving_phone_number_id: receivingPhoneNumberId || null,
   });}catch(e){
     console.error("[asaas pix]",String(e));
     await sendText(fromE164,`Conta criada! Mas houve um erro ao gerar o PIX 😅 Fale com o suporte: ${SUPORTE_HUMANO}`);
@@ -495,10 +623,9 @@ async function finalizarCadastro(fromE164: string, name: string, email: string, 
   const greeting=`Conta criada com sucesso, ${name}! 🎉`;
   await sendText(fromE164,`${greeting}\n\nPlano ${planLabel} — seu PIX esta pronto! 💸\n\n⬇️ Na *proxima mensagem* esta o codigo PIX.\n\nSegure e toque em *Copiar* — cole no *PIX Copia e Cola* do seu banco.\n\n⏳ Assim que confirmar, libero seu acesso automaticamente! ✅`);
   await sendText(fromE164,pix.copyPaste);
-  await updateSession(fromE164,"waiting_payment",{...sessionData,email,name,plan,order_nsu:pix.externalReference});
+  await updateSession(fromE164,"waiting_payment",{...sessionData,email,name,plan,order_nsu:pix.externalReference,pix_payload:pix.copyPaste});
 }
 
-// Descobre a serie do anuncio para entrega (sessao -> pix_payments)
 async function resolveIdentifiedSeries(toE164: string, sess: any): Promise<string> {
   let idSeries = String(sess?.data?.identified_series || "");
   if (idSeries) return idSeries;
@@ -517,11 +644,15 @@ serve(async (req) => {
   const url=new URL(req.url);
   if(req.method==="OPTIONS")return new Response(null,{status:204,headers:corsHeaders});
   if(req.method==="GET"){
+    if(url.searchParams.get("selftest")==="alert" && url.searchParams.get("key")===SELFTEST_KEY){
+      await tripAlert("TESTE de alerta (selftest manual). Pode ignorar.");
+      return jsonRes(200,{ok:true,selftest:"alert disparado (email + whatsapp best-effort)"});
+    }
     const mode=url.searchParams.get("hub.mode");
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v28 (asaas sem email)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v30 (series update)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
@@ -571,7 +702,6 @@ serve(async (req) => {
       for(const entry of entries){
         for(const change of(Array.isArray(entry?.changes)?entry.changes:[])){
           const value=change?.value||{};
-          // ✅ Multi-numero: de qual numero (Phone Number ID) a mensagem chegou
           const receivingId=value?.metadata?.phone_number_id?String(value.metadata.phone_number_id):null;
           if(Array.isArray(value?.statuses)&&value.statuses.length&&!Array.isArray(value?.messages))continue;
           for(const msg of(Array.isArray(value?.messages)?value.messages:[])){
