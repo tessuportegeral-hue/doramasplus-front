@@ -643,7 +643,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
         `Obrigado por enviar! 😊\n\n`+
         `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n`+
         `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n`;
-      if(planAtual==="series"&&idSeries){
+      if(planAtual==="series"&&idSeries&&sessionData.cnpj_key_sent){
         suporteMsg+=`⚠️ *Ja menciona pro suporte o nome da serie que voce quer:*\n\n👉 *${idSeries}*\n\n`;
       }
       suporteMsg+=`Eles validam e liberam na hora! 🚀`;
@@ -661,6 +661,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
         `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n` +
         `O suporte valida e libera seu acesso na hora! 🚀`
       );
+      await updateSession(fromE164, "waiting_payment", { ...sessionData, cnpj_key_sent: true });
       return;
     }
     const plan=String(sessionData.plan||"");
