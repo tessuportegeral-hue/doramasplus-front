@@ -337,9 +337,33 @@ function detectPixProblem(msg: string): boolean {
     "invalido", "invalida", "codigo invalido", "chave invalida",
     "codigo expirado", "pix expirado", "codigo vencido", "pix vencido",
     "recusado", "recusou", "negado", "deu negado",
+    "acho que e o banco", "e o banco", "problema no banco", "meu banco nao deixa",
+    "o banco nao deixa", "banco nao ta deixando", "banco nao ta aceitando",
+    "banco ta recusando", "banco ta bloqueando",
   ];
 
   return frasesIsoladas.some(f => m.includes(f));
+}
+function detectPaymentDone(msg: string): boolean {
+  const m = norm(msg);
+  const frases = [
+    "ja fiz", "ja paguei", "fiz o pix", "fiz o pagamento", "realizei o pix",
+    "efetuei o pix", "paguei", "ja ta pago", "ta pago", "ja foi pago",
+    "mandei o comprovante", "mandei comprovante", "enviei o comprovante",
+    "enviei comprovante", "mando comprovante", "mando o comprovante",
+    "ja confirmou", "ja caiu", "ja processou", "ja foi",
+    "libera ai", "libera por favor", "pode liberar", "libera meu acesso",
+    "quando libera", "quando vai liberar", "cade minha serie",
+    "cade meu acesso", "nao recebi", "nao chegou", "nao liberou",
+    "comprovante", "ja efetuei", "ja realizei", "feito o pix",
+    "feito o pagamento", "pagamento feito", "pix feito", "pix enviado",
+    "ja transferi", "transferi", "ja mandei", "mandei o pix",
+  ];
+  if (frases.some(f => m.includes(f))) return true;
+  // mensagens curtíssimas de confirmação de pagamento
+  const curtas = ["libera", "paguei", "fiz", "feito", "pago"];
+  return curtas.includes(m.trim());
+  return frases.some(f => m.includes(f));
 }
 function looksLikeName(text: string): boolean {
   if (/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(text)) return false;
@@ -648,6 +672,16 @@ async function processMessage(fromE164: string, messageText: string, displayName
         if(pixPayload) await sendText(fromE164, pixPayload);
         await updateSession(fromE164, "waiting_payment", { ...sessionData, pix_help_sent: true });
       }
+      return;
+    }
+    // Cliente mandou comprovante (documento) ou disse que ja pagou
+    if(msg === "document" || msg === "image" || detectPaymentDone(msg)){
+      await sendText(fromE164,
+        `Boa! 😊 Recebi seu comprovante!\n\n` +
+        `Estou verificando o pagamento manualmente.\n\n` +
+        `Se o acesso nao liberar em alguns minutos, entre em contato com o suporte que resolve na hora:\n\n` +
+        `📲 *WhatsApp Suporte:* (18) 99679-6654`
+      );
       return;
     }
     const plan=String(sessionData.plan||"");
