@@ -637,12 +637,17 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="waiting_payment"){
     const isComprovante = msg==="image"||msg==="document"||msg==="sticker";
     if(isComprovante){
-      await sendText(fromE164,
-        `Obrigado por enviar! 😊\n\n` +
-        `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n` +
-        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n` +
-        `Eles validam e liberam na hora! 🚀`
-      );
+      const idSeries=String(sessionData.identified_series||"");
+      const planAtual=String(sessionData.plan||"");
+      let suporteMsg=
+        `Obrigado por enviar! 😊\n\n`+
+        `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n`+
+        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n`;
+      if(planAtual==="series"&&idSeries){
+        suporteMsg+=`⚠️ *Ja menciona pro suporte o nome da serie que voce quer:*\n\n👉 *${idSeries}*\n\n`;
+      }
+      suporteMsg+=`Eles validam e liberam na hora! 🚀`;
+      await sendText(fromE164, suporteMsg);
       return;
     }
     if(detectPixProblem(msg)){
