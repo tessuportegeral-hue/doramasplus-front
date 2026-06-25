@@ -60,6 +60,10 @@ const AD_SERIES_MAP: Record<string, string> = {
   "120247509416850786": "Tirar as notas, Acertar as Contas",
   "120247509416860786": "Presa pelo Odio, Livre pelo Amor",
   "120247509416870786": "O Amor que Deixei Escapar",
+  // Conta 1499 - nova campanha
+  "23859373371630792": "Tirar as notas, Acertar as Contas",
+  "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
+  "23859373371660792": "O Amor que Deixei Escapar",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
