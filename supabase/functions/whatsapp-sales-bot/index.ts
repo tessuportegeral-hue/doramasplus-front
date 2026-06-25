@@ -340,6 +340,13 @@ function detectPixProblem(msg: string): boolean {
     "acho que e o banco", "e o banco", "problema no banco", "meu banco nao deixa",
     "o banco nao deixa", "banco nao ta deixando", "banco nao ta aceitando",
     "banco ta recusando", "banco ta bloqueando",
+    "nao esta dando certo", "nao ta dando certo", "nao deu certo",
+    "nao funcionou", "nao funcionando", "nao funciona",
+    "nao to conseguindo", "nao estou conseguindo",
+    "nao to conseguindo pagar", "nao estou conseguindo pagar",
+    "dando erro", "deu erro", "deu problema",
+    "nao aceita", "nao aceitou", "nao passou",
+    "nao consigo", "n consigo",
   ];
 
   return frasesIsoladas.some(f => m.includes(f));
