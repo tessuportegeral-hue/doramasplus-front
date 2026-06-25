@@ -46,10 +46,14 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23859254996260792": "Fiquei com o bebe e o coracao do bilionario",
   "23859254996240792": "Ossos marcados pela dor",
   "23859254996250792": "Seu marido e o rei da Tecnologia",
-  // Conta 8218
+  // Conta 8218 - campanha original
   "120247300716450786": "Ossos marcados pela dor",
   "120247300716460786": "Seu marido e o rei da Tecnologia",
   "120247300716470786": "Fiquei com o bebe e o coracao do bilionario",
+  // Conta 8218 - campanha duplicada
+  "120247501781450786": "Seu marido e o rei da Tecnologia",
+  "120247501781460786": "Fiquei com o bebe e o coracao do bilionario",
+  "120247501781480786": "Ossos marcados pela dor",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
