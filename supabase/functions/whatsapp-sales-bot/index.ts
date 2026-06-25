@@ -635,6 +635,16 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if(step==="waiting_payment"){
+    const isComprovante = msg==="image"||msg==="document"||msg==="sticker";
+    if(isComprovante){
+      await sendText(fromE164,
+        `Obrigado por enviar! 😊\n\n` +
+        `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n` +
+        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n` +
+        `Eles validam e liberam na hora! 🚀`
+      );
+      return;
+    }
     if(detectPixProblem(msg)){
       await sendText(fromE164,
         `Sem estresse! 😊 Tenta pagar por essa chave PIX (CNPJ):\n\n` +
