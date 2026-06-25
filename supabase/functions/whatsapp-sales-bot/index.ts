@@ -254,9 +254,77 @@ function detectComplaint(msg: string): "nome"|"email"|null {
 }
 function detectPixProblem(msg: string): boolean {
   const m = norm(msg);
-  const temPalavraChave = m.includes("pix") || m.includes("codigo") || m.includes("codig") || m.includes("qr") || m.includes("pagamento") || m.includes("pagar");
-  const temProblema = m.includes("invalido") || m.includes("invalida") || m.includes("nao funciona") || m.includes("nao ta") || m.includes("nao esta") || m.includes("nao funcionou") || m.includes("erro") || m.includes("expirou") || m.includes("venceu") || m.includes("nao aceita") || m.includes("nao consigo") || m.includes("deu erro") || m.includes("recusado") || m.includes("nao passou") || m.includes("nao reconhec") || m.includes("nao acho") || m.includes("nao aparece") || m.includes("onde colo") || m.includes("como uso") || m.includes("como pago") || m.includes("como faco") || m.includes("nao sei") || m.includes("como colo");
-  return temPalavraChave && temProblema;
+
+  const temPalavraChave =
+    m.includes("pix") || m.includes("codigo") || m.includes("codig") ||
+    m.includes("qr") || m.includes("pagamento") || m.includes("pagar") ||
+    m.includes("pago") || m.includes("paguei") || m.includes("chave") ||
+    m.includes("copia") || m.includes("cola") || m.includes("copiar") ||
+    m.includes("colar") || m.includes("tentei") || m.includes("tentando") ||
+    m.includes("banco") || m.includes("transfere") || m.includes("transferi") ||
+    m.includes("valor") || m.includes("boleto") || m.includes("copiando") ||
+    m.includes("colando") || m.includes("leitura") || m.includes("escane") ||
+    m.includes("scanner") || m.includes("ler") || m.includes("reconhece");
+
+  const temProblema =
+    m.includes("invalido") || m.includes("invalida") ||
+    m.includes("nao funciona") || m.includes("nao ta") || m.includes("nao esta") ||
+    m.includes("nao funcionou") || m.includes("erro") || m.includes("expirou") ||
+    m.includes("venceu") || m.includes("expirado") || m.includes("vencido") ||
+    m.includes("nao aceita") || m.includes("nao consigo") || m.includes("n consigo") ||
+    m.includes("deu erro") || m.includes("recusado") || m.includes("recusando") ||
+    m.includes("nao passou") || m.includes("nao reconhec") || m.includes("nao acho") ||
+    m.includes("nao aparece") || m.includes("onde colo") || m.includes("como uso") ||
+    m.includes("como pago") || m.includes("como faco") || m.includes("nao sei") ||
+    m.includes("como colo") || m.includes("nao deu") || m.includes("n deu") ||
+    m.includes("nao vai") || m.includes("n vai") || m.includes("nao da") ||
+    m.includes("nao to") || m.includes("nao to conseguindo") ||
+    m.includes("nao estou conseguindo") || m.includes("nao to conseguindo") ||
+    m.includes("deu ruim") || m.includes("deu problema") || m.includes("deu errado") ||
+    m.includes("nao abriu") || m.includes("nao abre") ||
+    m.includes("varias vezes") || m.includes("ja tentei") || m.includes("tentei varia") ||
+    m.includes("nao foi") || m.includes("impossivel") || m.includes("nao processou") ||
+    m.includes("problema") || m.includes("dificuldade") || m.includes("nao funcionando") ||
+    m.includes("ta dando erro") || m.includes("continua") || m.includes("ainda nao") ||
+    m.includes("nao concluiu") || m.includes("nao finalizou") || m.includes("nao deu certo") ||
+    m.includes("nao ta dando") || m.includes("nao carregou") || m.includes("nao carrega") ||
+    m.includes("n ta") || m.includes("cadê") || m.includes("cade") || m.includes("sumiu") ||
+    m.includes("nao funcinou") || m.includes("nao fuinciona") ||
+    m.includes("nao to vendo") || m.includes("nao to achando") ||
+    m.includes("nao to entendendo") || m.includes("nao entendi") ||
+    m.includes("nao entendo") || m.includes("como faz") || m.includes("como faco") ||
+    m.includes("como fazo") || m.includes("nao sei usar") || m.includes("nao sei pagar") ||
+    m.includes("nao sei como") || m.includes("me ajuda") || m.includes("me ajude") ||
+    m.includes("nao consigo pagar") || m.includes("nao consegui pagar") ||
+    m.includes("recusou") || m.includes("bloqueado") || m.includes("bloqueou") ||
+    m.includes("nao aceitou") || m.includes("deu negado") || m.includes("negado") ||
+    m.includes("nao passei") || m.includes("nao completou") || m.includes("nao completei");
+
+  if (temPalavraChave && temProblema) return true;
+
+  // Frases isoladas que no contexto de waiting_payment indicam claramente problema com pagamento
+  const frasesIsoladas = [
+    "nao consigo pagar", "nao to conseguindo pagar", "nao estou conseguindo pagar",
+    "continua dando erro", "ainda nao consegui", "to sem conseguir pagar",
+    "nao ta funcionando", "nao funciona", "ta dando erro", "deu erro",
+    "nao da pra pagar", "nao consigo fazer o pix", "pix nao funciona",
+    "pix nao ta funcionando", "nao consigo fazer", "n consigo fazer",
+    "nao to conseguindo", "tentei e nao deu", "tentei mas nao deu",
+    "tentei mas deu erro", "ja tentei varias vezes", "ja tentei de tudo",
+    "nao ta dando", "nao da", "nao deu", "deu ruim", "deu problema",
+    "nao sei fazer", "nao sei como faz", "me explica como faz",
+    "como que faz", "como faz pra pagar", "como faz o pix",
+    "como faz pra fazer o pix", "como que eu pago", "como pago",
+    "como eu faco", "como eu pago", "onde eu colo", "onde coloco",
+    "nao to achando onde colar", "onde fica o pix copia e cola",
+    "nao acho o pix copia e cola", "banco nao aceita", "meu banco nao aceita",
+    "meu banco nao reconhece", "o banco nao aceita", "banco nao reconhece",
+    "invalido", "invalida", "codigo invalido", "chave invalida",
+    "codigo expirado", "pix expirado", "codigo vencido", "pix vencido",
+    "recusado", "recusou", "negado", "deu negado",
+  ];
+
+  return frasesIsoladas.some(f => m.includes(f));
 }
 function looksLikeName(text: string): boolean {
   if (/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(text)) return false;
