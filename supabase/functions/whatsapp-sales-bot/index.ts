@@ -344,27 +344,6 @@ function detectPixProblem(msg: string): boolean {
 
   return frasesIsoladas.some(f => m.includes(f));
 }
-function detectPaymentDone(msg: string): boolean {
-  const m = norm(msg);
-  const frases = [
-    "ja fiz", "ja paguei", "fiz o pix", "fiz o pagamento", "realizei o pix",
-    "efetuei o pix", "paguei", "ja ta pago", "ta pago", "ja foi pago",
-    "mandei o comprovante", "mandei comprovante", "enviei o comprovante",
-    "enviei comprovante", "mando comprovante", "mando o comprovante",
-    "ja confirmou", "ja caiu", "ja processou", "ja foi",
-    "libera ai", "libera por favor", "pode liberar", "libera meu acesso",
-    "quando libera", "quando vai liberar", "cade minha serie",
-    "cade meu acesso", "nao recebi", "nao chegou", "nao liberou",
-    "comprovante", "ja efetuei", "ja realizei", "feito o pix",
-    "feito o pagamento", "pagamento feito", "pix feito", "pix enviado",
-    "ja transferi", "transferi", "ja mandei", "mandei o pix",
-  ];
-  if (frases.some(f => m.includes(f))) return true;
-  // mensagens curtíssimas de confirmação de pagamento
-  const curtas = ["libera", "paguei", "fiz", "feito", "pago"];
-  return curtas.includes(m.trim());
-  return frases.some(f => m.includes(f));
-}
 function looksLikeName(text: string): boolean {
   if (/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/.test(text)) return false;
   const words = text.trim().split(/\s+/).filter(Boolean);
@@ -649,37 +628,11 @@ async function processMessage(fromE164: string, messageText: string, displayName
   }
 
   if(step==="waiting_payment"){
-    // Reclamacao de PIX invalido/nao funciona: explica como usar e reenviar o codigo
     if(detectPixProblem(msg)){
-      if(sessionData.pix_help_sent){
-        // Ja explicou uma vez e a pessoa continua sem conseguir: manda chave CNPJ + suporte
-        await sendText(fromE164,
-          `Sem estresse! 😊 Te passo outra forma de pagar:\n\n` +
-          `💳 *Chave PIX (CNPJ):*\n66108496000120\n\n` +
-          `Apos fazer o pagamento, envia o comprovante pra gente confirmar e liberar seu acesso:\n\n` +
-          `📲 *WhatsApp Suporte:* (18) 99679-6654`
-        );
-      } else {
-        await sendText(fromE164,
-          `Sem problema! 😊 O codigo e valido sim! Veja como usar:\n\n` +
-          `1️⃣ Segure o codigo que mandei e toque em *Copiar*\n` +
-          `2️⃣ Abra o *app do seu banco*\n` +
-          `3️⃣ Va em *PIX* → *PIX Copia e Cola* (ou *Pagar com codigo*)\n` +
-          `4️⃣ Cole o codigo e confirme o pagamento\n\n` +
-          `⏳ Assim que confirmar, libero automaticamente! ✅\n\nAqui esta o codigo novamente:`
-        );
-        const pixPayload = String(sessionData.pix_payload || "");
-        if(pixPayload) await sendText(fromE164, pixPayload);
-        await updateSession(fromE164, "waiting_payment", { ...sessionData, pix_help_sent: true });
-      }
-      return;
-    }
-    // Cliente mandou comprovante (documento) ou disse que ja pagou
-    if(msg === "document" || msg === "image" || detectPaymentDone(msg)){
       await sendText(fromE164,
-        `Boa! 😊 Recebi seu comprovante!\n\n` +
-        `Estou verificando o pagamento manualmente.\n\n` +
-        `Se o acesso nao liberar em alguns minutos, entre em contato com o suporte que resolve na hora:\n\n` +
+        `Sem estresse! 😊 Tenta pagar por essa chave PIX:\n\n` +
+        `💳 *Chave PIX (CNPJ):*\n66108496000120\n\n` +
+        `Apos pagar, manda o comprovante pro suporte que libera na hora:\n\n` +
         `📲 *WhatsApp Suporte:* (18) 99679-6654`
       );
       return;
