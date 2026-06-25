@@ -104,7 +104,8 @@ function buildHighlightedSeriesMsg(seriesName: string): string {
 function buildGenericSeriesMsg(): string {
   let msg = `🎉 Aqui estao suas series! Aproveite! 😊\n\n`;
   for (let i = 0; i < 6; i++) { msg += `${i + 1}️⃣ *${SERIES[i].name}*\n👉 ${SERIES[i].link}\n\n`; }
-  msg += `✨ *Bonus:* ${SERIES[6].name}\n👉 ${SERIES[6].link}\n\n`;
+  msg += `✨ *Bonus:*\n\n`;
+  for (let i = 6; i < SERIES.length; i++) { msg += `⭐ *${SERIES[i].name}*\n👉 ${SERIES[i].link}\n\n`; }
   msg += `📺 Quer assistir mais de 2000 series + atualizacoes diarias? Acesse: www.doramasplus.com.br`;
   return msg;
 }
