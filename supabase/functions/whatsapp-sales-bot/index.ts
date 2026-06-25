@@ -639,14 +639,18 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if(isComprovante){
       const idSeries=String(sessionData.identified_series||"");
       const planAtual=String(sessionData.plan||"");
-      let suporteMsg=
+      const suporteNum="5518996796654";
+      let textoLink=`Oi%2C+quero+liberar+meu+acesso.+Segue+o+comprovante!`;
+      if(planAtual==="series"&&idSeries&&sessionData.cnpj_key_sent){
+        const serieEnc=encodeURIComponent(idSeries);
+        textoLink=`Oi%2C+quero+liberar+meu+acesso+para+a+serie+${serieEnc}.+Segue+o+comprovante!`;
+      }
+      const linkSuporte=`https://wa.me/${suporteNum}?text=${textoLink}`;
+      const suporteMsg=
         `Obrigado por enviar! 😊\n\n`+
         `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n`+
-        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n`;
-      if(planAtual==="series"&&idSeries&&sessionData.cnpj_key_sent){
-        suporteMsg+=`⚠️ *Ja menciona pro suporte o nome da serie que voce quer:*\n\n👉 *${idSeries}*\n\n`;
-      }
-      suporteMsg+=`Eles validam e liberam na hora! 🚀`;
+        `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
+        `Eles validam e liberam na hora! 🚀`;
       await sendText(fromE164, suporteMsg);
       return;
     }
