@@ -36,6 +36,8 @@ const SERIES: { name: string; link: string }[] = [
   { name: "Ossos marcados pela dor", link: "https://player.mediadelivery.net/play/688480/15ca6b01-6ba5-4206-b9bf-fb28544227c0" },
   { name: "Seu marido e o rei da Tecnologia", link: "https://player.mediadelivery.net/play/688480/4548ae95-90fb-4a96-b047-3860ffb94ff6" },
   { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
+  { name: "Presa pelo Odio, Livre pelo Amor", link: "https://player.mediadelivery.net/play/688480/78170734-2461-4c1c-98ed-d1088abaddb2" },
+  { name: "Tirar as notas, Acertar as Contas", link: "https://player.mediadelivery.net/play/688480/0e5d9317-4218-4b6f-b616-ebd2cc80dd5f" },
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
@@ -54,6 +56,10 @@ const AD_SERIES_MAP: Record<string, string> = {
   "120247501781450786": "Seu marido e o rei da Tecnologia",
   "120247501781460786": "Fiquei com o bebe e o coracao do bilionario",
   "120247501781480786": "Ossos marcados pela dor",
+  // Conta 8218 - nova campanha
+  "120247509416850786": "Tirar as notas, Acertar as Contas",
+  "120247509416860786": "Presa pelo Odio, Livre pelo Amor",
+  "120247509416870786": "O Amor que Deixei Escapar",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
