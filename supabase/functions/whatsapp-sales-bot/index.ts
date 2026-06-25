@@ -637,10 +637,14 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="waiting_payment"){
     if(detectPixProblem(msg)){
       await sendText(fromE164,
-        `Sem estresse! 😊 Tenta pagar por essa chave PIX:\n\n` +
-        `💳 *Chave PIX (CNPJ):*\n66108496000120\n\n` +
-        `Apos pagar, manda o comprovante pro suporte que libera na hora:\n\n` +
-        `📲 *WhatsApp Suporte:* (18) 99679-6654`
+        `Sem estresse! 😊 Tenta pagar por essa chave PIX (CNPJ):\n\n` +
+        `⬇️ *Copia a chave abaixo e cola no seu banco:*`
+      );
+      await sendText(fromE164, `66108496000120`);
+      await sendText(fromE164,
+        `✅ Apos realizar o pagamento, *manda o comprovante aqui pra baixo* 👇\n\n` +
+        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n` +
+        `O suporte valida e libera seu acesso na hora! 🚀`
       );
       return;
     }
