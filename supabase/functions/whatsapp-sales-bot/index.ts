@@ -519,6 +519,10 @@ async function gerarPixSeries(fromE164: string, sessionData: any, receivingPhone
 async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null) {
   if (await isNumberBlocked(fromE164)) return;
   await saveMessage(fromE164,"in",messageText);
+  if(messageText==="audio"){
+    await sendText(fromE164,`Opa! 😊 Nao consigo ouvir audios por aqui.\n\nMe manda uma mensagem de texto que respondo na hora! 💬`);
+    return;
+  }
   const session=await getOrCreateSession(fromE164, receivingId);
   const step=session.step||"start";
   let sessionData=session.data||{};
