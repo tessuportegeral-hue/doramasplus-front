@@ -255,6 +255,21 @@ async function pixDayAllow(phone: string): Promise<boolean> {
 }
 // ====================================================================
 
+function detectPixJaPago(msg: string): boolean {
+  const m = norm(msg);
+  const frases = [
+    "ja paguei","ja fiz o pix","ja fiz","fiz o pix","ja realizei","ja efetuei","ja mandei o pix",
+    "ja transferi","mandei o pix","fiz a transferencia","fiz o pagamento","ja fiz o pagamento",
+    "pagamento feito","pix feito","pix realizado","pagamento realizado","ja realizei o pagamento",
+    "efetuei o pagamento","ja efetuei o pagamento","paguei","paguei agora","acabei de pagar",
+    "acabei de fazer","acabo de pagar","fiz agora","mandei agora","transferi agora",
+    "ja mandei","ja enviei o pix","enviei o pix","ja enviei","ja depositei","depositei",
+    "ja fiz a transferencia","fiz a transf","fiz transf","ja paguei o pix",
+    "realizei o pix","efetuei o pix","confirmei o pix","confirmei o pagamento",
+    "ja confirmei","foi aprovado","foi confirmado","caiu","ja caiu",
+  ];
+  return frases.some(f => m.includes(f));
+}
 function detectOption(msg: string): "series"|"monthly"|"quarterly"|null {
   const m = norm(msg);
   if (m==="1"||m.includes("serie")||m.includes("drive")||m.includes("10")||m.includes("avuls")) return "series";
@@ -673,6 +688,24 @@ async function processMessage(fromE164: string, messageText: string, displayName
         `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
         `Eles validam e liberam na hora! 🚀`;
       await sendText(fromE164, suporteMsg);
+      return;
+    }
+    if(detectPixJaPago(msg)){
+      const idSeries=String(sessionData.identified_series||"");
+      const planAtual=String(sessionData.plan||"");
+      const suporteNum="5518996796654";
+      let textoLink=`Oi%2C+ja+fiz+o+PIX.+Pode+liberar+meu+acesso!`;
+      if(planAtual==="series"&&idSeries){
+        const serieEnc=encodeURIComponent(idSeries);
+        textoLink=`Oi%2C+ja+fiz+o+PIX+da+serie+${serieEnc}.+Pode+liberar!`;
+      }
+      const linkSuporte=`https://wa.me/${suporteNum}?text=${textoLink}`;
+      await sendText(fromE164,
+        `Que otimo! 🎉\n\n`+
+        `Agora e so encaminhar o *comprovante* pro nosso suporte pra liberar na hora:\n\n`+
+        `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
+        `Eles validam e liberam rapidinho! 🚀`
+      );
       return;
     }
     if(detectPixProblem(msg)){
