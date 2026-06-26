@@ -21,6 +21,7 @@ const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 const SELFTEST_KEY = "dp_alert_selftest_7gk29";
 const FOLLOWUP_SECRET = Deno.env.get("FOLLOWUP_SECRET") || "dp_followup_k9x2m4p";
+const META_PIXEL_ID = "2158349711751327";
 const RL_MSG_PER_MIN = 7;
 const RL_BLOCK_MIN = 15;
 const RL_PIX_PER_DAY = 4;
@@ -254,6 +255,39 @@ async function pixDayAllow(phone: string): Promise<boolean> {
   } catch { return true; }
 }
 // ====================================================================
+
+async function sha256hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function fireMetaCAPI(phone: string, plan: string, sessionData: any, receivingPhoneNumberId?: string|null) {
+  try {
+    const token = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218
+      ? Deno.env.get("META_ACESS_TOKEN_WA_8218") || ""
+      : Deno.env.get("META_ACCESS_TOKEN_WA") || "";
+    if (!token) return;
+    const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
+    const contentName = plan === "series" ? "DoramasPlus 1 Serie" : plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
+    const hashedPhone = await sha256hex(digitsOnly(phone));
+    const userData: Record<string, unknown> = { ph: [hashedPhone] };
+    const ctwaClid = sessionData?.ctwa_clid ? String(sessionData.ctwa_clid) : null;
+    if (ctwaClid) userData.ctwa_clid = ctwaClid;
+    await fetch(`https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: [{
+          event_name: "Purchase",
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "other",
+          user_data: userData,
+          custom_data: { currency: "BRL", value, content_name: contentName },
+        }],
+        access_token: token,
+      }),
+    });
+  } catch (e) { console.error("[meta capi]", String(e)); }
+}
 
 function detectPixJaPago(msg: string): boolean {
   const m = norm(msg);
@@ -688,6 +722,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
         `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
         `Eles validam e liberam na hora! 🚀`;
       await sendText(fromE164, suporteMsg);
+      fireMetaCAPI(fromE164, planAtual||"series", sessionData, receivingPhoneNumberId).catch(()=>{});
       return;
     }
     if(detectPixJaPago(msg)){
@@ -706,6 +741,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
         `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
         `Eles validam e liberam rapidinho! 🚀`
       );
+      fireMetaCAPI(fromE164, planAtual||"series", sessionData, receivingPhoneNumberId).catch(()=>{});
       return;
     }
     if(detectPixProblem(msg)){
@@ -916,6 +952,7 @@ serve(async (req) => {
         if(idSeries && findSeries(idSeries)){ const p=buildPresenteMsg(idSeries); if(p)await sendText(toE164,p); }
         await updateSession(toE164,"access_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       }
+      fireMetaCAPI(toE164, plan, sess?.data||{}, sess?.receiving_phone_number_id||null).catch(()=>{});
       return jsonRes(200,{ok:true});
     }catch(e){return jsonRes(500,{ok:false,error:String(e)});}
   }
