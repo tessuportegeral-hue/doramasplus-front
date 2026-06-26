@@ -524,7 +524,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     return;
   }
   const session=await getOrCreateSession(fromE164, receivingId);
-  const step=session.step||"start";
+  let step=session.step||"start";
   let sessionData=session.data||{};
 
   if (referral && typeof referral === "object") {
@@ -534,6 +534,22 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if (referral.ctwa_clid && !sessionData.ctwa_clid) patch.ctwa_clid = referral.ctwa_clid;
     if (referral.source_id && !sessionData.ad_source_id) patch.ad_source_id = referral.source_id;
     if (Object.keys(patch).length) { sessionData = { ...sessionData, ...patch }; try { await updateSession(fromE164, step, sessionData); } catch {} }
+  }
+
+  // Timeout de inatividade: 24h em waiting_payment, 6h nos demais (exceto ja convertidos)
+  const STEPS_NO_RESET = new Set(["access_sent","series_sent"]);
+  if(!STEPS_NO_RESET.has(step)){
+    const updatedAt = session.updated_at ? new Date(session.updated_at).getTime() : 0;
+    if(updatedAt){
+      const elapsed = Date.now() - updatedAt;
+      const timeout = step==="waiting_payment" ? 86400000 : 21600000;
+      if(elapsed > timeout){
+        const preserved = { identified_series: sessionData.identified_series||null, ctwa_clid: sessionData.ctwa_clid||null, ad_source_id: sessionData.ad_source_id||null };
+        await updateSession(fromE164, "start", preserved);
+        sessionData = preserved;
+        step = "start";
+      }
+    }
   }
 
   const msg=messageText.trim().toLowerCase();
@@ -673,9 +689,24 @@ async function processMessage(fromE164: string, messageText: string, displayName
       return;
     }
     const plan=String(sessionData.plan||"");
-    await sendText(fromE164,plan==="series"
-      ?`Aguardando seu pagamento! ⏳\n\nAssim que o PIX confirmar, mando sua serie automaticamente! 🎉`
-      :`Aguardando confirmacao do seu pagamento! ⏳\n\nO acesso e liberado automaticamente assim que o PIX confirmar.\n\nSe quiser mudar de plano, so me falar! 😊`);
+    if(sessionData.pix_reminder_sent){
+      if(sessionData.cnpj_key_sent){
+        await sendText(fromE164,`Segue a chave PIX novamente! 😊\n\n⬇️ *Copia a chave abaixo e cola no seu banco:*`);
+        await sendText(fromE164,`66108496000120`);
+      } else if(sessionData.pix_payload){
+        await sendText(fromE164,`Segue o codigo PIX novamente! 😊\n\n⬇️ Segure e toque em *Copiar* e cola no *PIX Copia e Cola* do seu banco:`);
+        await sendText(fromE164,String(sessionData.pix_payload));
+      } else {
+        await sendText(fromE164,plan==="series"
+          ?`Aguardando seu pagamento! ⏳\n\nAssim que o PIX confirmar, mando sua serie automaticamente! 🎉`
+          :`Aguardando confirmacao do seu pagamento! ⏳\n\nO acesso e liberado automaticamente assim que o PIX confirmar.\n\nSe quiser mudar de plano, so me falar! 😊`);
+      }
+    } else {
+      await sendText(fromE164,plan==="series"
+        ?`Aguardando seu pagamento! ⏳\n\nAssim que o PIX confirmar, mando sua serie automaticamente! 🎉`
+        :`Aguardando confirmacao do seu pagamento! ⏳\n\nO acesso e liberado automaticamente assim que o PIX confirmar.\n\nSe quiser mudar de plano, so me falar! 😊`);
+      await updateSession(fromE164,"waiting_payment",{...sessionData,pix_reminder_sent:true});
+    }
     return;
   }
 
