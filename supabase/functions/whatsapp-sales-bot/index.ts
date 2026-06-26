@@ -145,7 +145,24 @@ function generateFakeCpf(): string {
 }
 async function saveMessage(phone: string, direction: "in"|"out", message: string) {
   const { error } = await supabase.from("sales_bot_messages").insert({ phone, direction, message });
-  if (error) console.error("[saveMessage] insert failed:", error.code, error.message, "phone:", phone, "dir:", direction);
+  if (!error) return;
+  console.error("[saveMessage] supabase-js error:", error.code, error.message, "phone:", phone, "dir:", direction);
+  // fallback: direct REST API to bypass any supabase-js client issue
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/sales_bot_messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify({ phone, direction, message }),
+    });
+    if (!r.ok) console.error("[saveMessage] fallback failed:", r.status, await r.text().catch(() => ""));
+  } catch (e2) {
+    console.error("[saveMessage] fallback threw:", String(e2));
+  }
 }
 
 // ====================== RATE LIMIT / DISJUNTOR ======================
@@ -1017,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v99 (savemessage logging + greeting receivingId fix)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v100 (saveMessage REST fallback)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
