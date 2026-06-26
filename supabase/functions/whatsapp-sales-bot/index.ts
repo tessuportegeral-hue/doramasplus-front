@@ -384,7 +384,7 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
     } catch (e) { console.error("[grant sub]", String(e)); }
     await sendText(fromE164, buildAccessMsg(email), receivingPhoneNumberId);
     const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
-    if (idSeries && findSeries(idSeries)) { const p = buildPresenteMsg(idSeries); if (p) await sendText(fromE164, p, receivingPhoneNumberId); }
+    if (idSeries && findSeries(idSeries)) { const a = buildAnuncioDestaque(idSeries); if (a) await sendText(fromE164, a, receivingPhoneNumberId); }
     await updateSession(fromE164, "access_sent", { ...sessionData, email, name, plan });
   }
   fireMetaCAPI(fromE164, plan, sessionData, receivingPhoneNumberId).catch(() => {});
@@ -715,9 +715,14 @@ async function processMessage(fromE164: string, messageText: string, displayName
 
   if((step==="access_sent"||step==="series_sent"||step==="support"||step==="support_detail")&&wantsSeriesAgain(msg)){
     const idSeries=await resolveIdentifiedSeries(fromE164,session);
+    const planAtual=String(sessionData.plan||"series");
     if(idSeries&&findSeries(idSeries)){
-      await sendText(fromE164, buildBonusSeriesMsg(idSeries));
-      await sendText(fromE164, buildAnuncioDestaque(idSeries));
+      if(planAtual==="monthly"||planAtual==="quarterly"){
+        await sendText(fromE164, buildAnuncioDestaque(idSeries));
+      } else {
+        await sendText(fromE164, buildBonusSeriesMsg(idSeries));
+        await sendText(fromE164, buildAnuncioDestaque(idSeries));
+      }
     } else {
       await sendText(fromE164,buildGenericSeriesMsg());
     }
@@ -1010,7 +1015,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v97 (followup sem nome de serie)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v98 (mensal/trimestral so serie do anuncio)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
@@ -1041,7 +1046,7 @@ serve(async (req) => {
       } else {
         await sendText(toE164,buildAccessMsg(email));
         const idSeries=await resolveIdentifiedSeries(toE164,sess);
-        if(idSeries && findSeries(idSeries)){ const p=buildPresenteMsg(idSeries); if(p)await sendText(toE164,p); }
+        if(idSeries && findSeries(idSeries)){ const a=buildAnuncioDestaque(idSeries); if(a)await sendText(toE164,a); }
         await updateSession(toE164,"access_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       }
       fireMetaCAPI(toE164, plan, sess?.data||{}, sess?.receiving_phone_number_id||null).catch(()=>{});
