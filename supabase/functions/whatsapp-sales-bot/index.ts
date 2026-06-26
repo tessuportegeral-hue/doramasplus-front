@@ -314,7 +314,9 @@ async function validateComprovanteWithClaude(base64: string, mimeType: string, p
   if (!apiKey) { console.error("[claude vision] ANTHROPIC_API_KEY not set"); return { valid: false, reason: "no_key" }; }
   const minVal = plan === "quarterly" ? 47.00 : plan === "series" ? 10.00 : 16.00;
   const maxVal = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
-  const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
+  const nowBRT = new Date(Date.now() - 3 * 3600000);
+  const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
+  const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n4. Data e hora do pagamento ha no maximo 15 minutos antes de agora\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
   try {
     const isImage = mimeType.startsWith("image/");
     const contentBlock = isImage
@@ -362,6 +364,12 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
       else {
         const { data: byEmail } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
         if (byEmail?.id) profileId = byEmail.id;
+      }
+      if (!profileId) {
+        try {
+          const acc = await createUserAccount(name, fromE164, email);
+          profileId = (acc as any)?.userId || null;
+        } catch(e) { console.error("[grant create user]", String(e)); }
       }
       if (profileId) {
         await supabase.from("profiles").update({ subscription_active_until: endAt }).eq("id", profileId);
@@ -1015,7 +1023,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v93 (pixel apenas apos validacao)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v94 (cria conta + validacao 15min)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
