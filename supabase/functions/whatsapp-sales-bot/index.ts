@@ -531,7 +531,7 @@ function detectPlanChange(msg: string): "series"|"monthly"|"quarterly"|"menu"|nu
   if (m==="1"||m==="10"||m.includes("serie")||m.includes("avuls")||m.includes("opcao 1")||m.includes("a de 10")) return "series";
   if (m==="3"||m.includes("trimes")||m.includes("opcao 3")||m.includes("tres mes")||m.includes("3 mes")||m.includes("anual")) return "quarterly";
   if (m==="2"||m.includes("mensal")||m.includes("opcao 2")||m.includes("um mes")||m.includes("1 mes")) return "monthly";
-  if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")) return "menu";
+  if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("mudei")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")||m.includes("quero outro")||m.includes("quero mudar")||m.includes("mudar de plano")||m.includes("trocar de plano")||m.includes("nao quero mais")||m.includes("nao quero esse")||m.includes("prefiro outro")) return "menu";
   return null;
 }
 function wantsSeriesAgain(msg: string): boolean {
@@ -784,7 +784,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       return;
     }
     await sendText(fromE164,
-      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\nResponda *1*, *2* ou *3*!`,
+      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\n_✏️ Escreva *voltar* a qualquer momento para trocar de opcao_\n\nResponda *1*, *2* ou *3*!`,
       receivingPhoneNumberId
     );
     await updateSession(fromE164,"choose_plan",{...sessionData,is_renewal:false});
@@ -1034,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v100 (saveMessage REST fallback)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v101 (voltar hint + smarter plan change detection)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
