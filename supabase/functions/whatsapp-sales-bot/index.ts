@@ -853,9 +853,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       );
       await sendText(fromE164, `66108496000120`);
       await sendText(fromE164,
-        `✅ Apos realizar o pagamento, *manda o comprovante aqui pra baixo* 👇\n\n` +
-        `📲 *WhatsApp Suporte:* (18) 99679-6654\n\n` +
-        `O suporte valida e libera seu acesso na hora! 🚀`
+        `✅ Apos realizar o pagamento, *manda o comprovante aqui pra baixo* 👇\n\nAssim que eu confirmar, libero seu acesso na hora! 🚀`
       );
       await updateSession(fromE164, "waiting_payment", { ...sessionData, cnpj_key_sent: true });
       return;
@@ -1023,7 +1021,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v94 (cria conta + validacao 15min)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v95 (remove suporte da chave pix)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
