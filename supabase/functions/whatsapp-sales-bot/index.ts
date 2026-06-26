@@ -20,6 +20,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 const SELFTEST_KEY = "dp_alert_selftest_7gk29";
+const FOLLOWUP_SECRET = Deno.env.get("FOLLOWUP_SECRET") || "dp_followup_k9x2m4p";
 const RL_MSG_PER_MIN = 7;
 const RL_BLOCK_MIN = 15;
 const RL_PIX_PER_DAY = 4;
@@ -513,7 +514,7 @@ async function gerarPixSeries(fromE164: string, sessionData: any, receivingPhone
     `⏳ Assim que confirmar, mando sua serie automaticamente! ✅`
   );
   await sendText(fromE164, pix.copyPaste);
-  await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference, pix_payload: pix.copyPaste });
+  await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference, pix_payload: pix.copyPaste, pix_sent_at: new Date().toISOString() });
 }
 
 async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null) {
@@ -770,7 +771,59 @@ async function finalizarCadastro(fromE164: string, name: string, email: string, 
   const greeting=`Conta criada com sucesso, ${name}! 🎉`;
   await sendText(fromE164,`${greeting}\n\nPlano ${planLabel} — seu PIX esta pronto! 💸\n\n⬇️ Na *proxima mensagem* esta o codigo PIX.\n\nSegure e toque em *Copiar* — cole no *PIX Copia e Cola* do seu banco.\n\n⏳ Assim que confirmar, libero seu acesso automaticamente! ✅`);
   await sendText(fromE164,pix.copyPaste);
-  await updateSession(fromE164,"waiting_payment",{...sessionData,email,name,plan,order_nsu:pix.externalReference,pix_payload:pix.copyPaste});
+  await updateSession(fromE164,"waiting_payment",{...sessionData,email,name,plan,order_nsu:pix.externalReference,pix_payload:pix.copyPaste,pix_sent_at:new Date().toISOString()});
+}
+
+async function processFollowups() {
+  const now = Date.now();
+  const { data: sessions } = await supabase
+    .from("sales_bot_sessions")
+    .select("*")
+    .eq("step", "waiting_payment");
+  if (!sessions?.length) return { processed: 0 };
+
+  let processed = 0;
+  for (const session of sessions) {
+    const sd = session.data || {};
+    const pixSentAt = sd.pix_sent_at ? new Date(sd.pix_sent_at).getTime() : 0;
+    if (!pixSentAt) continue;
+    const elapsed = now - pixSentAt;
+    const phone = String(session.phone);
+    const plan = String(sd.plan || "");
+    const seriesName = String(sd.identified_series || "");
+
+    // Follow-up 7 min: janela 7–20 min
+    if (elapsed >= 7 * 60000 && elapsed < 20 * 60000 && !sd.followup_7min_sent) {
+      const intro = plan === "series" && seriesName
+        ? `Oi! 😊 Lembra da serie *${seriesName}*?\n\nSeu PIX ainda esta aqui esperando! Aqui esta o codigo novamente:`
+        : `Oi! 😊 Seu codigo PIX ainda esta aqui!\n\nE so copiar e colar no PIX do seu banco:`;
+      await sendText(phone, intro);
+      if (sd.cnpj_key_sent) {
+        await sendText(phone, `66108496000120`);
+      } else if (sd.pix_payload) {
+        await sendText(phone, String(sd.pix_payload));
+      }
+      await updateSession(phone, "waiting_payment", { ...sd, followup_7min_sent: true });
+      processed++;
+      continue;
+    }
+
+    // Follow-up 22h: janela 22–23.5h (ultima chance antes do PIX expirar)
+    if (elapsed >= 22 * 3600000 && elapsed < 23.5 * 3600000 && !sd.followup_22h_sent) {
+      const msg = plan === "series" && seriesName
+        ? `⏰ Ei! O PIX da serie *${seriesName}* vai expirar em breve!\n\nUltima chance de garantir! Aqui esta o codigo:`
+        : `⏰ Ei! Seu PIX vai expirar em breve!\n\nUltima chance! Aqui esta o codigo:`;
+      await sendText(phone, msg);
+      if (sd.cnpj_key_sent) {
+        await sendText(phone, `66108496000120`);
+      } else if (sd.pix_payload) {
+        await sendText(phone, String(sd.pix_payload));
+      }
+      await updateSession(phone, "waiting_payment", { ...sd, followup_22h_sent: true });
+      processed++;
+    }
+  }
+  return { processed };
 }
 
 async function resolveIdentifiedSeries(toE164: string, sess: any): Promise<string> {
@@ -800,6 +853,14 @@ serve(async (req) => {
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
     return jsonRes(200,{ok:true,message:"whatsapp sales bot v30 (series update)"});
+  }
+  if(req.method==="POST"&&url.pathname.endsWith("/followup")){
+    const secret=req.headers.get("x-followup-secret")||"";
+    if(secret!==FOLLOWUP_SECRET)return jsonRes(401,{ok:false,error:"unauthorized"});
+    try{
+      const result=await processFollowups();
+      return jsonRes(200,{ok:true,...result});
+    }catch(e){return jsonRes(500,{ok:false,error:String(e)});}
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
