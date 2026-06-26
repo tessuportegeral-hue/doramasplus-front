@@ -289,6 +289,101 @@ async function fireMetaCAPI(phone: string, plan: string, sessionData: any, recei
   } catch (e) { console.error("[meta capi]", String(e)); }
 }
 
+async function downloadWhatsAppMedia(mediaId: string): Promise<{ base64: string; mimeType: string } | null> {
+  if (!WHATSAPP_TOKEN || !mediaId) return null;
+  try {
+    const r1 = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+    });
+    if (!r1.ok) { console.error("[wa media] get url failed", r1.status); return null; }
+    const meta = await r1.json();
+    const mediaUrl = String(meta?.url || "");
+    const mimeType = String(meta?.mime_type || "image/jpeg");
+    if (!mediaUrl) return null;
+    const r2 = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
+    if (!r2.ok) { console.error("[wa media] download failed", r2.status); return null; }
+    const bytes = new Uint8Array(await r2.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { base64: btoa(binary), mimeType };
+  } catch (e) { console.error("[wa media]", String(e)); return null; }
+}
+
+async function validateComprovanteWithClaude(base64: string, mimeType: string, plan: string): Promise<{ valid: boolean; reason: string }> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) { console.error("[claude vision] ANTHROPIC_API_KEY not set"); return { valid: false, reason: "no_key" }; }
+  const minVal = plan === "quarterly" ? 47.00 : plan === "series" ? 10.00 : 16.00;
+  const maxVal = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
+  const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
+  try {
+    const isImage = mimeType.startsWith("image/");
+    const contentBlock = isImage
+      ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
+      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }],
+      }),
+    });
+    if (!r.ok) { const t = await r.text().catch(() => ""); console.error("[claude vision] api error", r.status, t); return { valid: false, reason: "api_error" }; }
+    const d = await r.json();
+    const content = String(d?.content?.[0]?.text || "");
+    const match = content.match(/\{[\s\S]*?\}/);
+    if (!match) { console.error("[claude vision] no json:", content); return { valid: false, reason: "parse_error" }; }
+    const parsed = JSON.parse(match[0]);
+    console.log("[claude vision] result:", JSON.stringify(parsed));
+    return { valid: !!parsed.valido, reason: String(parsed.motivo || "") };
+  } catch (e) { console.error("[claude vision]", String(e)); return { valid: false, reason: "exception" }; }
+}
+
+async function grantAccessDirectly(fromE164: string, sessionData: any, receivingPhoneNumberId?: string | null) {
+  const plan = String(sessionData.plan || "series") as "series" | "monthly" | "quarterly";
+  const email = String(sessionData.email || generateFakeEmail(fromE164));
+  const name = String(sessionData.name || "Cliente");
+  const now = new Date();
+  const days = plan === "quarterly" ? 90 : 30;
+  const endAt = new Date(now.getTime() + days * 86400000).toISOString();
+
+  if (plan === "series") {
+    const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
+    if (idSeries && findSeries(idSeries)) await sendText(fromE164, buildHighlightedSeriesMsg(idSeries), receivingPhoneNumberId);
+    else await sendText(fromE164, buildGenericSeriesMsg(), receivingPhoneNumberId);
+    await updateSession(fromE164, "series_sent", { ...sessionData, email, name, plan, identified_series: idSeries || (sessionData.identified_series || "") });
+  } else {
+    try {
+      const digits = digitsOnly(fromE164);
+      let profileId: string | null = null;
+      const { data: byPhone } = await supabase.from("profiles").select("id").eq("phone", digits).maybeSingle();
+      if (byPhone?.id) { profileId = byPhone.id; }
+      else {
+        const { data: byEmail } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
+        if (byEmail?.id) profileId = byEmail.id;
+      }
+      if (profileId) {
+        await supabase.from("profiles").update({ subscription_active_until: endAt }).eq("id", profileId);
+        await supabase.from("subscriptions").upsert({
+          user_id: profileId, status: "active",
+          start_at: now.toISOString(), end_at: endAt,
+          current_period_start: now.toISOString(), current_period_end: endAt,
+          plan_name: plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal",
+          plan_interval: plan === "quarterly" ? "quarterly" : "monthly",
+          is_manual: true, source: "whatsapp_comprovante", provider: "comprovante_validado",
+          order_nsu: String(sessionData.order_nsu || ""),
+        }, { onConflict: "user_id" });
+      }
+    } catch (e) { console.error("[grant sub]", String(e)); }
+    await sendText(fromE164, buildAccessMsg(email), receivingPhoneNumberId);
+    const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
+    if (idSeries && findSeries(idSeries)) { const p = buildPresenteMsg(idSeries); if (p) await sendText(fromE164, p, receivingPhoneNumberId); }
+    await updateSession(fromE164, "access_sent", { ...sessionData, email, name, plan });
+  }
+  fireMetaCAPI(fromE164, plan, sessionData, receivingPhoneNumberId).catch(() => {});
+}
+
 function detectPixJaPago(msg: string): boolean {
   const m = norm(msg);
   const frases = [
@@ -566,7 +661,7 @@ async function gerarPixSeries(fromE164: string, sessionData: any, receivingPhone
   await updateSession(fromE164, "waiting_payment", { ...sessionData, plan: "series", order_nsu: pix.externalReference, pix_payload: pix.copyPaste, pix_sent_at: new Date().toISOString() });
 }
 
-async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null) {
+async function processMessage(fromE164: string, messageText: string, displayName: string|null, referral: any, receivingId?: string|null, mediaId?: string|null) {
   if (await isNumberBlocked(fromE164)) return;
   await saveMessage(fromE164,"in",messageText);
   if(messageText==="audio"){
@@ -707,8 +802,21 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if(step==="waiting_payment"){
     const isComprovante = msg==="image"||msg==="document"||msg==="sticker";
     if(isComprovante){
+      const planAtual=String(sessionData.plan||"series");
+      fireMetaCAPI(fromE164, planAtual, sessionData, receivingPhoneNumberId).catch(()=>{});
+      if(msg!=="sticker"&&mediaId){
+        await sendText(fromE164,`Analisando seu comprovante... ⏳`,receivingPhoneNumberId);
+        const media=await downloadWhatsAppMedia(mediaId);
+        if(media){
+          const result=await validateComprovanteWithClaude(media.base64,media.mimeType,planAtual);
+          if(result.valid){
+            await grantAccessDirectly(fromE164,sessionData,receivingPhoneNumberId);
+            return;
+          }
+          console.log("[comprovante] not validated:",result.reason);
+        }
+      }
       const idSeries=String(sessionData.identified_series||"");
-      const planAtual=String(sessionData.plan||"");
       const suporteNum="5518996796654";
       let textoLink=`Oi%2C+quero+liberar+meu+acesso.+Segue+o+comprovante!`;
       if(planAtual==="series"&&idSeries&&sessionData.cnpj_key_sent){
@@ -716,32 +824,21 @@ async function processMessage(fromE164: string, messageText: string, displayName
         textoLink=`Oi%2C+quero+liberar+meu+acesso+para+a+serie+${serieEnc}.+Segue+o+comprovante!`;
       }
       const linkSuporte=`https://wa.me/${suporteNum}?text=${textoLink}`;
-      const suporteMsg=
-        `Obrigado por enviar! 😊\n\n`+
-        `Para liberar seu acesso, encaminha esse comprovante direto pro nosso suporte:\n\n`+
-        `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
-        `Eles validam e liberam na hora! 🚀`;
-      await sendText(fromE164, suporteMsg);
-      fireMetaCAPI(fromE164, planAtual||"series", sessionData, receivingPhoneNumberId).catch(()=>{});
+      await sendText(fromE164,
+        `Nao consegui confirmar automaticamente 😅\n\n`+
+        `Encaminha pro nosso suporte que eles liberam na hora:\n\n`+
+        `👇 *Clica aqui:*\n${linkSuporte}`
+      ,receivingPhoneNumberId);
       return;
     }
     if(detectPixJaPago(msg)){
-      const idSeries=String(sessionData.identified_series||"");
-      const planAtual=String(sessionData.plan||"");
-      const suporteNum="5518996796654";
-      let textoLink=`Oi%2C+ja+fiz+o+PIX.+Pode+liberar+meu+acesso!`;
-      if(planAtual==="series"&&idSeries){
-        const serieEnc=encodeURIComponent(idSeries);
-        textoLink=`Oi%2C+ja+fiz+o+PIX+da+serie+${serieEnc}.+Pode+liberar!`;
-      }
-      const linkSuporte=`https://wa.me/${suporteNum}?text=${textoLink}`;
+      const planAtual=String(sessionData.plan||"series");
       await sendText(fromE164,
         `Que otimo! 🎉\n\n`+
-        `Agora e so encaminhar o *comprovante* pro nosso suporte pra liberar na hora:\n\n`+
-        `👇 *Clica aqui pra abrir o suporte:*\n${linkSuporte}\n\n`+
-        `Eles validam e liberam rapidinho! 🚀`
-      );
-      fireMetaCAPI(fromE164, planAtual||"series", sessionData, receivingPhoneNumberId).catch(()=>{});
+        `Me manda o comprovante aqui mesmo que eu libero seu acesso na hora! 📸\n\n`+
+        `E so tirar um print da tela do banco e enviar aqui embaixo! 👇`
+      ,receivingPhoneNumberId);
+      fireMetaCAPI(fromE164,planAtual,sessionData,receivingPhoneNumberId).catch(()=>{});
       return;
     }
     if(detectPixProblem(msg)){
@@ -921,7 +1018,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v30 (series update)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v92 (claude vision comprovante)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
@@ -990,11 +1087,18 @@ serve(async (req) => {
             const referral=msg?.referral||null;
             const msgType=String(msg?.type||"").toLowerCase();
             let text="";
+            let mediaId:string|null=null;
             if(msgType==="text")text=String(msg?.text?.body||"");
             else if(msgType==="interactive")text=msg?.interactive?.button_reply?.title||msg?.interactive?.list_reply?.title||"";
-            else text=msgType;
+            else{
+              text=msgType;
+              if(msgType==="image"||msgType==="document"||msgType==="sticker"){
+                const mObj=msg?.[msgType];
+                mediaId=mObj?.id?String(mObj.id):null;
+              }
+            }
             if(!text)continue;
-            processMessage(fromE164,text,displayName,referral,receivingId).catch(e=>console.error("[processMessage]",String(e)));
+            processMessage(fromE164,text,displayName,referral,receivingId,mediaId).catch(e=>console.error("[processMessage]",String(e)));
           }
         }
       }
