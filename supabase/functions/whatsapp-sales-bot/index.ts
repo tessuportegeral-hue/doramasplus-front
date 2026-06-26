@@ -144,7 +144,8 @@ function generateFakeCpf(): string {
   return d.join("");
 }
 async function saveMessage(phone: string, direction: "in"|"out", message: string) {
-  try { await supabase.from("sales_bot_messages").insert({ phone, direction, message }); } catch {}
+  const { error } = await supabase.from("sales_bot_messages").insert({ phone, direction, message });
+  if (error) console.error("[saveMessage] insert failed:", error.code, error.message, "phone:", phone, "dir:", direction);
 }
 
 // ====================== RATE LIMIT / DISJUNTOR ======================
@@ -755,18 +756,19 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const existing=await checkExistingUser(fromE164);
     if(existing?.subscription){
       const name=existing.profile.name||displayName||"";
-      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Voce ja tem assinatura ativa!\n\nAcesse: ${PUBLIC_BASE_URL}\n\nPrecisa de ajuda?`);
+      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Voce ja tem assinatura ativa!\n\nAcesse: ${PUBLIC_BASE_URL}\n\nPrecisa de ajuda?`,receivingPhoneNumberId);
       await updateSession(fromE164,"support",{...sessionData,existing:true,email:existing.profile.email});
       return;
     }
     if(existing&&!existing.subscription){
       const name=existing.profile.name||displayName||"";
-      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$16,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$16,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`,receivingPhoneNumberId);
       await updateSession(fromE164,"choose_plan",{...sessionData,email:existing.profile.email,is_renewal:true});
       return;
     }
     await sendText(fromE164,
-      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\nResponda *1*, *2* ou *3*!`
+      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\nResponda *1*, *2* ou *3*!`,
+      receivingPhoneNumberId
     );
     await updateSession(fromE164,"choose_plan",{...sessionData,is_renewal:false});
     return;
@@ -1015,7 +1017,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v98 (mensal/trimestral so serie do anuncio)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v99 (savemessage logging + greeting receivingId fix)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
