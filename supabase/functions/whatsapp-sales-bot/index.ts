@@ -953,14 +953,10 @@ async function processFollowups() {
     if (!pixSentAt) continue;
     const elapsed = now - pixSentAt;
     const phone = String(session.phone);
-    const plan = String(sd.plan || "");
-    const seriesName = String(sd.identified_series || "");
 
     // Follow-up 7 min: janela 7–20 min
     if (elapsed >= 7 * 60000 && elapsed < 20 * 60000 && !sd.followup_7min_sent) {
-      const intro = plan === "series" && seriesName
-        ? `Oi! 😊 Lembra da serie *${seriesName}*?\n\nSeu PIX ainda esta aqui esperando! Aqui esta o codigo novamente:`
-        : `Oi! 😊 Seu codigo PIX ainda esta aqui!\n\nE so copiar e colar no PIX do seu banco:`;
+      const intro = `Oi! 😊 Ainda tem interesse? Seu codigo PIX ainda esta aqui!\n\nE so copiar e colar no PIX do seu banco:`;
       await sendText(phone, intro);
       if (sd.cnpj_key_sent) {
         await sendText(phone, `66108496000120`);
@@ -974,9 +970,7 @@ async function processFollowups() {
 
     // Follow-up 22h: janela 22–23.5h (ultima chance antes do PIX expirar)
     if (elapsed >= 22 * 3600000 && elapsed < 23.5 * 3600000 && !sd.followup_22h_sent) {
-      const msg = plan === "series" && seriesName
-        ? `⏰ Ei! O PIX da serie *${seriesName}* vai expirar em breve!\n\nUltima chance de garantir! Aqui esta o codigo:`
-        : `⏰ Ei! Seu PIX vai expirar em breve!\n\nUltima chance! Aqui esta o codigo:`;
+      const msg = `⏰ Ei! Seu PIX vai expirar em breve!\n\nUltima chance de garantir! E so copiar e colar no PIX do seu banco:`;
       await sendText(phone, msg);
       if (sd.cnpj_key_sent) {
         await sendText(phone, `66108496000120`);
@@ -1016,7 +1010,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v96 (bonus primeiro, anuncio por ultimo)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v97 (followup sem nome de serie)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
