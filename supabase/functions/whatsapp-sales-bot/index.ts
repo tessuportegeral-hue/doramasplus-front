@@ -92,16 +92,17 @@ function identifySeriesFromReferral(ref: any): string | null {
   if (txt) { for (const s of SERIES) { if (txt.includes(norm(s.name))) return s.name; } }
   return null;
 }
-function buildHighlightedSeriesMsg(seriesName: string): string {
-  const hit = findSeries(seriesName);
-  if (!hit) return buildGenericSeriesMsg();
-  const others = SERIES.filter(s => norm(s.name) !== norm(hit.name));
-  let msg = `🎉 Aqui esta a serie que voce pediu! 😊\n\n` +
-    `👉 *${hit.name}*\n${hit.link}\n\n` +
-    `✨ E de bonus, separei mais essas pra voce:\n\n`;
+function buildBonusSeriesMsg(excludeSeriesName: string): string {
+  const others = SERIES.filter(s => norm(s.name) !== norm(excludeSeriesName));
+  let msg = `🎁 De bonus, separei essas series incriveis pra voce:\n\n`;
   others.forEach((s, i) => { msg += `${i + 1}️⃣ *${s.name}*\n👉 ${s.link}\n\n`; });
   msg += `📺 Quer assistir mais de 2000 series + atualizacoes diarias? Acesse: www.doramasplus.com.br`;
   return msg;
+}
+function buildAnuncioDestaque(seriesName: string): string {
+  const hit = findSeries(seriesName);
+  if (!hit) return "";
+  return `⭐ *SERIE DO ANUNCIO:*\n\n👉 *${hit.name}*\n${hit.link}\n\n⬆️ Clica no link acima pra assistir!`;
 }
 function buildGenericSeriesMsg(): string {
   let msg = `🎉 Aqui estao suas series! Aproveite! 😊\n\n`;
@@ -110,11 +111,6 @@ function buildGenericSeriesMsg(): string {
   for (let i = 6; i < SERIES.length; i++) { msg += `⭐ *${SERIES[i].name}*\n👉 ${SERIES[i].link}\n\n`; }
   msg += `📺 Quer assistir mais de 2000 series + atualizacoes diarias? Acesse: www.doramasplus.com.br`;
   return msg;
-}
-function buildAnuncioStarMsg(seriesName: string): string {
-  const hit = findSeries(seriesName);
-  if (!hit) return "";
-  return `📢 *AQUI ESTA A SERIE DO ANUNCIO:*\n\n⭐⭐⭐ *${hit.name}* ⭐⭐⭐\n\n👉 ${hit.link}\n\n⬆️ Clique nesse link acima!`;
 }
 
 const corsHeaders: Record<string, string> = {
@@ -352,8 +348,10 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
 
   if (plan === "series") {
     const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
-    if (idSeries && findSeries(idSeries)) await sendText(fromE164, buildHighlightedSeriesMsg(idSeries), receivingPhoneNumberId);
-    else await sendText(fromE164, buildGenericSeriesMsg(), receivingPhoneNumberId);
+    if (idSeries && findSeries(idSeries)) {
+      await sendText(fromE164, buildBonusSeriesMsg(idSeries), receivingPhoneNumberId);
+      await sendText(fromE164, buildAnuncioDestaque(idSeries), receivingPhoneNumberId);
+    } else await sendText(fromE164, buildGenericSeriesMsg(), receivingPhoneNumberId);
     await updateSession(fromE164, "series_sent", { ...sessionData, email, name, plan, identified_series: idSeries || (sessionData.identified_series || "") });
   } else {
     try {
@@ -718,9 +716,8 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if((step==="access_sent"||step==="series_sent"||step==="support"||step==="support_detail")&&wantsSeriesAgain(msg)){
     const idSeries=await resolveIdentifiedSeries(fromE164,session);
     if(idSeries&&findSeries(idSeries)){
-      const star=buildAnuncioStarMsg(idSeries);
-      if(star)await sendText(fromE164,star);
-      await sendText(fromE164,buildHighlightedSeriesMsg(idSeries));
+      await sendText(fromE164, buildBonusSeriesMsg(idSeries));
+      await sendText(fromE164, buildAnuncioDestaque(idSeries));
     } else {
       await sendText(fromE164,buildGenericSeriesMsg());
     }
@@ -885,10 +882,8 @@ async function processMessage(fromE164: string, messageText: string, displayName
     if(step==="series_sent"){
       const idSeries=String(sessionData.identified_series||"");
       if(idSeries && findSeries(idSeries)){
-        const star=buildAnuncioStarMsg(idSeries);
-        if(star)await sendText(fromE164,star);
-        await sendText(fromE164,`😊 E de bonus, aqui estao todas as series:👇`);
-        await sendText(fromE164,buildHighlightedSeriesMsg(idSeries));
+        await sendText(fromE164, buildBonusSeriesMsg(idSeries));
+        await sendText(fromE164, buildAnuncioDestaque(idSeries));
       } else {
         await sendText(fromE164,`Claro! Aqui estao as series novamente 😊👇`);
         await sendText(fromE164,buildGenericSeriesMsg());
@@ -1021,7 +1016,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v95 (remove suporte da chave pix)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v96 (bonus primeiro, anuncio por ultimo)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
@@ -1043,7 +1038,10 @@ serve(async (req) => {
       const sess=await getSession(toE164);
       if(plan==="series"){
         const idSeries=String(body?.identified_series||"")||await resolveIdentifiedSeries(toE164,sess);
-        if(idSeries && findSeries(idSeries)) await sendText(toE164,buildHighlightedSeriesMsg(idSeries));
+        if(idSeries && findSeries(idSeries)) {
+          await sendText(toE164, buildBonusSeriesMsg(idSeries));
+          await sendText(toE164, buildAnuncioDestaque(idSeries));
+        }
         else await sendText(toE164,buildGenericSeriesMsg());
         await updateSession(toE164,"series_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       } else {
