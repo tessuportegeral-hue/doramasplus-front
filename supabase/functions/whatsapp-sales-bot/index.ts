@@ -803,7 +803,6 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const isComprovante = msg==="image"||msg==="document"||msg==="sticker";
     if(isComprovante){
       const planAtual=String(sessionData.plan||"series");
-      fireMetaCAPI(fromE164, planAtual, sessionData, receivingPhoneNumberId).catch(()=>{});
       if(msg!=="sticker"&&mediaId){
         await sendText(fromE164,`Analisando seu comprovante... ⏳`,receivingPhoneNumberId);
         const media=await downloadWhatsAppMedia(mediaId);
@@ -832,13 +831,11 @@ async function processMessage(fromE164: string, messageText: string, displayName
       return;
     }
     if(detectPixJaPago(msg)){
-      const planAtual=String(sessionData.plan||"series");
       await sendText(fromE164,
         `Que otimo! 🎉\n\n`+
         `Me manda o comprovante aqui mesmo que eu libero seu acesso na hora! 📸\n\n`+
         `E so tirar um print da tela do banco e enviar aqui embaixo! 👇`
       ,receivingPhoneNumberId);
-      fireMetaCAPI(fromE164,planAtual,sessionData,receivingPhoneNumberId).catch(()=>{});
       return;
     }
     if(detectPixProblem(msg)){
@@ -1018,7 +1015,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v92 (claude vision comprovante)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v93 (pixel apenas apos validacao)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
