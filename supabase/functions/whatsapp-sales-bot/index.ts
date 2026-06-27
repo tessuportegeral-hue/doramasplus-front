@@ -31,7 +31,7 @@ const CB_PIX_PER_HOUR = 100;
 const CB_PAUSE_MIN = 60;
 
 const SERIES: { name: string; link: string }[] = [
-  { name: "O Amor que Deixei Escapar", link: "https://player.mediadelivery.net/play/624586/bc001156-66d6-49d2-8373-b3a25153949d" },
+  { name: "Prefiro Morrer a te amar de Novo", link: "https://player.mediadelivery.net/play/688480/9c52b33b-1b80-46a0-b98f-3f040fe9db69" },
   { name: "Jogo do Destino", link: "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035" },
   { name: "Sai da minha vida meu Primeiro amor Acabou", link: "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040" },
   { name: "Fiquei com o bebe e o coracao do bilionario", link: "https://player.mediadelivery.net/play/688480/e6532d6c-5c61-428d-be0a-a27a1ca781b1" },
@@ -45,7 +45,7 @@ const SERIES: { name: string; link: string }[] = [
 const AD_SERIES_MAP: Record<string, string> = {
   // Conta 1499
   "23859058018740792": "Jogo do Destino",
-  "23859058018750792": "O Amor que Deixei Escapar",
+  "23859058018750792": "Prefiro Morrer a te amar de Novo",
   "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
   "23859254996260792": "Fiquei com o bebe e o coracao do bilionario",
   "23859254996240792": "Ossos marcados pela dor",
@@ -61,11 +61,11 @@ const AD_SERIES_MAP: Record<string, string> = {
   // Conta 8218 - nova campanha
   "120247509416850786": "Tirar as notas, Acertar as Contas",
   "120247509416860786": "Presa pelo Odio, Livre pelo Amor",
-  "120247509416870786": "O Amor que Deixei Escapar",
+  "120247509416870786": "Prefiro Morrer a te amar de Novo",
   // Conta 1499 - nova campanha
   "23859373371630792": "Tirar as notas, Acertar as Contas",
   "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
-  "23859373371660792": "O Amor que Deixei Escapar",
+  "23859373371660792": "Prefiro Morrer a te amar de Novo",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
@@ -1034,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v101 (voltar hint + smarter plan change detection)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v102 (fix series: Prefiro Morrer a te amar de Novo)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
