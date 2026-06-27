@@ -144,7 +144,25 @@ function generateFakeCpf(): string {
   return d.join("");
 }
 async function saveMessage(phone: string, direction: "in"|"out", message: string) {
-  try { await supabase.from("sales_bot_messages").insert({ phone, direction, message }); } catch {}
+  const { error } = await supabase.from("sales_bot_messages").insert({ phone, direction, message });
+  if (!error) return;
+  console.error("[saveMessage] supabase-js error:", error.code, error.message, "phone:", phone, "dir:", direction);
+  // fallback: direct REST API to bypass any supabase-js client issue
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/sales_bot_messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify({ phone, direction, message }),
+    });
+    if (!r.ok) console.error("[saveMessage] fallback failed:", r.status, await r.text().catch(() => ""));
+  } catch (e2) {
+    console.error("[saveMessage] fallback threw:", String(e2));
+  }
 }
 
 // ====================== RATE LIMIT / DISJUNTOR ======================
@@ -513,7 +531,7 @@ function detectPlanChange(msg: string): "series"|"monthly"|"quarterly"|"menu"|nu
   if (m==="1"||m==="10"||m.includes("serie")||m.includes("avuls")||m.includes("opcao 1")||m.includes("a de 10")) return "series";
   if (m==="3"||m.includes("trimes")||m.includes("opcao 3")||m.includes("tres mes")||m.includes("3 mes")||m.includes("anual")) return "quarterly";
   if (m==="2"||m.includes("mensal")||m.includes("opcao 2")||m.includes("um mes")||m.includes("1 mes")) return "monthly";
-  if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")) return "menu";
+  if (m.includes("cancel")||m.includes("voltar")||m.includes("desist")||m.includes("muda")||m.includes("mudei")||m.includes("troca")||m.includes("arrepend")||m.includes("outro plano")||m.includes("outra opcao")||m.includes("menu")||m.includes("quero outro")||m.includes("quero mudar")||m.includes("mudar de plano")||m.includes("trocar de plano")||m.includes("nao quero mais")||m.includes("nao quero esse")||m.includes("prefiro outro")) return "menu";
   return null;
 }
 function wantsSeriesAgain(msg: string): boolean {
@@ -755,18 +773,19 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const existing=await checkExistingUser(fromE164);
     if(existing?.subscription){
       const name=existing.profile.name||displayName||"";
-      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Voce ja tem assinatura ativa!\n\nAcesse: ${PUBLIC_BASE_URL}\n\nPrecisa de ajuda?`);
+      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Voce ja tem assinatura ativa!\n\nAcesse: ${PUBLIC_BASE_URL}\n\nPrecisa de ajuda?`,receivingPhoneNumberId);
       await updateSession(fromE164,"support",{...sessionData,existing:true,email:existing.profile.email});
       return;
     }
     if(existing&&!existing.subscription){
       const name=existing.profile.name||displayName||"";
-      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$16,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$16,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`,receivingPhoneNumberId);
       await updateSession(fromE164,"choose_plan",{...sessionData,email:existing.profile.email,is_renewal:true});
       return;
     }
     await sendText(fromE164,
-      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\nResponda *1*, *2* ou *3*!`
+      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\n_✏️ Escreva *voltar* a qualquer momento para trocar de opcao_\n\nResponda *1*, *2* ou *3*!`,
+      receivingPhoneNumberId
     );
     await updateSession(fromE164,"choose_plan",{...sessionData,is_renewal:false});
     return;
@@ -1015,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v98 (mensal/trimestral so serie do anuncio)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v101 (voltar hint + smarter plan change detection)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
