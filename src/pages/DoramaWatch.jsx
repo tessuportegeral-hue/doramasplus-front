@@ -115,6 +115,15 @@ export default function DoramaWatch() {
   }, [dbg, user?.email]);
   // ===============================================================================
 
+  // ===================== PLAYER FIX (gateado no tesagencia) =======================
+  // Mantém o player montado ao voltar pra aba (não desmonta no flicker de
+  // checkingPremium/claim) + pausa ao sair da tela. Quando validado, trocar
+  // playerFixOn para valer pra todos.
+  const playerFixOn = debugPlayer;
+  const claimAllowedRef = useRef(false);
+  const playerReadyRef = useRef(false);
+  // ===============================================================================
+
   const nextUrl = useMemo(() => {
     return location.pathname + location.search;
   }, [location.pathname, location.search]);
@@ -421,9 +430,13 @@ export default function DoramaWatch() {
   useEffect(() => {
     if (!isAuthenticated || !isPremium || !dorama?.id || loading || checkingPremium) return;
 
-    setClaimChecked(false);
-    setClaimAllowed(false);
-    setClaimMessage("");
+    // PLAYER FIX: não derruba um claim já concedido num re-run do effect
+    // (evita o setClaimAllowed(false) que desmontava o player ao voltar pra aba)
+    if (!(playerFixOn && claimAllowedRef.current)) {
+      setClaimChecked(false);
+      setClaimAllowed(false);
+      setClaimMessage("");
+    }
 
     let heartbeatId;
     let active = true;
@@ -501,6 +514,14 @@ export default function DoramaWatch() {
       clearInterval(heartbeatId);
     };
   }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium]);
+
+  // PLAYER FIX: mantém claimAllowedRef em sincronia com o estado
+  useEffect(() => { claimAllowedRef.current = claimAllowed; }, [claimAllowed]);
+  // PLAYER FIX: marca que o player já subiu; reseta ao trocar de dorama
+  useEffect(() => { playerReadyRef.current = false; }, [dorama?.id]);
+  useEffect(() => {
+    if (claimAllowed && !!videoUrl && playerType !== "none") playerReadyRef.current = true;
+  }, [claimAllowed, videoUrl, playerType]);
 
   // ✅ Carrega tempo salvo do banco
   useEffect(() => {
@@ -639,7 +660,17 @@ export default function DoramaWatch() {
     const onEnded = () => flush();
 
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
+      if (document.visibilityState === "hidden") {
+        flush();
+        // PLAYER FIX: pausa ao sair da tela (resolve "áudio continua" + dá
+        // posição estável ao voltar). Não pausa se estiver em picture-in-picture.
+        if (playerFixOn) {
+          try {
+            const inPip = typeof document !== "undefined" && document.pictureInPictureElement;
+            if (!inPip && el && typeof el.pause === "function") el.pause();
+          } catch {}
+        }
+      }
     };
 
     const onBeforeUnload = () => flush();
@@ -790,7 +821,16 @@ export default function DoramaWatch() {
   }
 
   // ✅ (CORREÇÃO DO BUG): só espera checkingPremium se estiver logado
-  if (loading || loadingDorama || (isAuthenticated && checkingPremium) || (!isAuthenticated && !ipTrialChecked) || (isAuthenticated && isPremium && !checkingPremium && !claimChecked)) {
+  // PLAYER FIX: uma vez que o player subiu, revalidações de rotina (checkingPremium/
+  // claim ao voltar pra aba) NÃO devem mais cair no loader e desmontar o <video>.
+  const keepPlayerMounted = playerFixOn && playerReadyRef.current;
+  if (
+    loading ||
+    loadingDorama ||
+    (!keepPlayerMounted && isAuthenticated && checkingPremium) ||
+    (!isAuthenticated && !ipTrialChecked) ||
+    (!keepPlayerMounted && isAuthenticated && isPremium && !checkingPremium && !claimChecked)
+  ) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
         <Loader2 className="w-8 h-8 animate-spin text-purple-400 mr-2" />
@@ -932,7 +972,7 @@ export default function DoramaWatch() {
                 </div>
               ) : !isAuthenticated && (!ipTrialAllowed || ipTrialExpired) ? (
                 <div className="w-full h-full bg-black" />
-              ) : isAuthenticated && isPremium && !claimAllowed ? (
+              ) : isAuthenticated && isPremium && !claimAllowed && !keepPlayerMounted ? (
                 <div className="w-full h-full bg-black" />
               ) : !videoUrl ? (
                 <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-slate-500">
