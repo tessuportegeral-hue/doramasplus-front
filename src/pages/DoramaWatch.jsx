@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Helmet } from "react-helmet";
@@ -86,6 +86,34 @@ export default function DoramaWatch() {
   const [claimChecked, setClaimChecked] = useState(false);
   const [claimAllowed, setClaimAllowed] = useState(false);
   const [claimMessage, setClaimMessage] = useState("");
+
+  // ===================== DEBUG PLAYER (TEMP — remover depois) =====================
+  // Painel on-screen gateado só no email de teste. Registra mount/unmount do
+  // <video>, visibilitychange e transições de premium/claim — pra confirmar se o
+  // player está sendo desmontado ao voltar pra aba. Zero efeito p/ outros usuários.
+  const DEBUG_PLAYER_EMAIL = "tesagencia@gmail.com";
+  const debugPlayer = (user?.email || "") === DEBUG_PLAYER_EMAIL;
+  const dbgRef = useRef([]);
+  const [dbgLines, setDbgLines] = useState([]);
+  const dbg = useCallback((label) => {
+    if (!debugPlayer) return;
+    try {
+      const d = new Date();
+      const ts = `${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+      const ct = videoRef.current ? Math.floor(videoRef.current.currentTime || 0) : "-";
+      const line = `${ts} ${label} | ct=${ct} vis=${typeof document !== "undefined" ? document.visibilityState : "?"}`;
+      dbgRef.current = [line, ...dbgRef.current].slice(0, 30);
+      setDbgLines(dbgRef.current);
+      // eslint-disable-next-line no-console
+      console.log("[dbgPlayer]", line);
+    } catch {}
+  }, [debugPlayer]);
+  // ref-callback do <video>: dispara só em mount real (el) / unmount real (null)
+  const videoRefCb = useCallback((el) => {
+    videoRef.current = el;
+    if ((user?.email || "") === DEBUG_PLAYER_EMAIL) dbg(el ? "VIDEO MOUNT" : "VIDEO UNMOUNT");
+  }, [dbg, user?.email]);
+  // ===============================================================================
 
   const nextUrl = useMemo(() => {
     return location.pathname + location.search;
@@ -728,6 +756,29 @@ export default function DoramaWatch() {
     } catch {}
   };
 
+  // ===================== DEBUG PLAYER effects (TEMP — remover depois) =============
+  useEffect(() => {
+    if (!debugPlayer) return;
+    dbg("DEBUG START");
+    const onVis = () => dbg(`VIS:${document.visibilityState}`);
+    const onFocus = () => dbg("WINDOW focus");
+    const onBlur = () => dbg("WINDOW blur");
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [debugPlayer, dbg]);
+
+  useEffect(() => {
+    if (!debugPlayer) return;
+    dbg(`state cp=${checkingPremium ? 1 : 0} cc=${claimChecked ? 1 : 0} ca=${claimAllowed ? 1 : 0} pt=${playerType} url=${videoUrl ? 1 : 0}`);
+  }, [debugPlayer, dbg, checkingPremium, claimChecked, claimAllowed, playerType, videoUrl]);
+  // ===============================================================================
+
   // ✅ GATE: logado sem premium -> plans
   if (!loading && isAuthenticated && !checkingPremium && !isPremium) {
     return (
@@ -898,7 +949,7 @@ export default function DoramaWatch() {
                 />
               ) : (
                 <video
-                  ref={videoRef}
+                  ref={videoRefCb}
                   controls
                   controlsList="nodownload"
                   disablePictureInPicture
@@ -958,6 +1009,23 @@ export default function DoramaWatch() {
           )}
         </main>
       </div>
+
+      {/* ===== DEBUG PLAYER overlay (TEMP — remover depois) ===== */}
+      {debugPlayer && (
+        <div
+          style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, maxHeight: "42vh",
+            overflowY: "auto", background: "rgba(0,0,0,0.88)", color: "#0f0",
+            font: "10px/1.35 monospace", zIndex: 99999, padding: "6px 8px",
+            whiteSpace: "pre-wrap", borderTop: "1px solid #0f0",
+          }}
+        >
+          <div style={{ color: "#ff0", marginBottom: 4 }}>
+            DEBUG PLAYER (só você vê) — assista, saia pro WhatsApp, volte, e mande print
+          </div>
+          {dbgLines.map((l, i) => (<div key={i}>{l}</div>))}
+        </div>
+      )}
     </>
   );
 }
