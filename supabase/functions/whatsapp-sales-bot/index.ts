@@ -327,7 +327,7 @@ async function validateComprovanteWithClaude(base64: string, mimeType: string, p
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) { console.error("[claude vision] ANTHROPIC_API_KEY not set"); return { valid: false, reason: "no_key" }; }
   const minVal = plan === "quarterly" ? 47.00 : plan === "series" ? 10.00 : 16.00;
-  const maxVal = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
+  const maxVal = plan === "quarterly" ? 48.00 : plan === "series" ? 10.00 : 17.00;
   const nowBRT = new Date(Date.now() - 3 * 3600000);
   const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
   const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n4. Data e hora do pagamento ha no maximo 15 minutos antes de agora\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
@@ -1034,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v102 (fix series: Prefiro Morrer a te amar de Novo)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v103 (expand comprovante valid amounts: monthly 16-17, quarterly 47-48)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
