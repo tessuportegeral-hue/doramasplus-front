@@ -19,17 +19,15 @@ const SITE = "www.doramasplus.com.br";
 
 const SERIES_DRIVE_LINKS: Record<string, string> = {
   "O Amor que Deixei Escapar": "https://player.mediadelivery.net/play/624586/bc001156-66d6-49d2-8373-b3a25153949d",
-  "Chefe, Ela disse nao de Novo": "https://drive.google.com/file/d/199tW_4UVLbFCT5TMnSA6t4vkt9oSN6c7/view?usp=drive_link",
   "Viciada no Melhor amigo do meu Irmao": "https://player.mediadelivery.net/play/688480/879155f0-d1b3-41da-9ec0-f15b7f230f82",
   "Jogo do Destino": "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035",
   "Sai da minha vida meu Primeiro amor Acabou": "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040",
-  "Prefiro Morrer a te Amar de Novo": "https://drive.google.com/file/d/1J6KrS7CCB1AsWpajthR7jTvVUe0CSl-R/view?usp=drive_link",
+  "Prefiro Morrer a te Amar de Novo": "https://player.mediadelivery.net/play/688480/9c52b33b-1b80-46a0-b98f-3f040fe9db69",
   "Quando o Destino assinou por Mim": "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745",
 };
 
 const SERIES_ORDER = [
   "O Amor que Deixei Escapar",
-  "Chefe, Ela disse nao de Novo",
   "Viciada no Melhor amigo do meu Irmao",
   "Jogo do Destino",
   "Sai da minha vida meu Primeiro amor Acabou",
@@ -41,11 +39,10 @@ function buildSeriesMsg(identifiedSeries: string | null): string {
   if (!identifiedSeries || !SERIES_DRIVE_LINKS[identifiedSeries]) {
     return `\u{1F389} Aqui estao suas series! Aproveite! \u{1F60A}\n\n` +
       `1\u{FE0F}\u{20E3} *O Amor que Deixei Escapar*\n\u{1F449} ${SERIES_DRIVE_LINKS["O Amor que Deixei Escapar"]}\n\n` +
-      `2\u{FE0F}\u{20E3} *Chefe, Ela disse nao de Novo*\n\u{1F449} ${SERIES_DRIVE_LINKS["Chefe, Ela disse nao de Novo"]}\n\n` +
-      `3\u{FE0F}\u{20E3} *Viciada no Melhor amigo do meu Irmao*\n\u{1F449} ${SERIES_DRIVE_LINKS["Viciada no Melhor amigo do meu Irmao"]}\n\n` +
-      `4\u{FE0F}\u{20E3} *Jogo do Destino*\n\u{1F449} ${SERIES_DRIVE_LINKS["Jogo do Destino"]}\n\n` +
-      `5\u{FE0F}\u{20E3} *Sai da minha vida meu Primeiro amor Acabou*\n\u{1F449} ${SERIES_DRIVE_LINKS["Sai da minha vida meu Primeiro amor Acabou"]}\n\n` +
-      `6\u{FE0F}\u{20E3} *Prefiro Morrer a te Amar de Novo*\n\u{1F449} ${SERIES_DRIVE_LINKS["Prefiro Morrer a te Amar de Novo"]}\n\n` +
+      `2\u{FE0F}\u{20E3} *Viciada no Melhor amigo do meu Irmao*\n\u{1F449} ${SERIES_DRIVE_LINKS["Viciada no Melhor amigo do meu Irmao"]}\n\n` +
+      `3\u{FE0F}\u{20E3} *Jogo do Destino*\n\u{1F449} ${SERIES_DRIVE_LINKS["Jogo do Destino"]}\n\n` +
+      `4\u{FE0F}\u{20E3} *Sai da minha vida meu Primeiro amor Acabou*\n\u{1F449} ${SERIES_DRIVE_LINKS["Sai da minha vida meu Primeiro amor Acabou"]}\n\n` +
+      `5\u{FE0F}\u{20E3} *Prefiro Morrer a te Amar de Novo*\n\u{1F449} ${SERIES_DRIVE_LINKS["Prefiro Morrer a te Amar de Novo"]}\n\n` +
       `\u{2728} *Bonus:* Quando o Destino assinou por Mim\n\u{1F449} ${SERIES_DRIVE_LINKS["Quando o Destino assinou por Mim"]}\n\n` +
       `\u{1F4FA} Quer assistir mais de 2000 series + atualizacoes diarias? Acesse: ${SITE}`;
   }
@@ -815,7 +812,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v54"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v55"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/notify-access")){
     try{
