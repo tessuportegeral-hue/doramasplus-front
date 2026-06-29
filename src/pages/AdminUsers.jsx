@@ -152,7 +152,7 @@ const AdminUsers = () => {
     `👤 Login: {LOGIN}\n` +
     `🔑 Senha: {SENHA}\n\n` +
     `🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n` +
-    `https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k\n\n` +
+    `https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR\n\n` +
     `Qualquer dúvida é só me chamar 😊\n` +
     `*Ah, e adiciona meu número pra você ficar por dentro das novidades*`;
 
