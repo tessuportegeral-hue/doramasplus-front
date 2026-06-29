@@ -907,7 +907,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
   const normalizedQuery = (searchQuery || "").trim().toLowerCase();
 
-  const communityLink = "https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k";
+  const communityLink = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 
   const goCommunity = () => {
     window.open(communityLink, "_blank", "noopener,noreferrer");
