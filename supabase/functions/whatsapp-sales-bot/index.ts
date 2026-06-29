@@ -10,7 +10,7 @@ const DEFAULT_PHONE_NUMBER_ID = WHATSAPP_PHONE_NUMBER_ID_1499;
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "doramasplus_sales_verify";
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
 const DEFAULT_PASSWORD = "123456";
-const VIP_GROUP = "https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k";
+const VIP_GROUP = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 const ADMIN_EMAIL = "tessuportegeral@gmail.com";
 const SUPORTE_HUMANO = "https://wa.me/5518996796654";
 
@@ -1034,7 +1034,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v103 (expand comprovante valid amounts: monthly 16-17, quarterly 47-48)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v104 (update VIP_GROUP link)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
