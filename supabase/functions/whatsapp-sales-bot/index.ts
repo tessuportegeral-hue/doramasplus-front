@@ -43,6 +43,9 @@ const SERIES: { name: string; link: string }[] = [
   { name: "Luz apos a Traicao", link: "https://player.mediadelivery.net/play/688480/83fb731a-8d2f-430a-8906-2ec4620fa458" },
   { name: "Para Sempre ao seu Lado", link: "https://player.mediadelivery.net/play/688480/5c46dc59-3c6f-4b90-b3ed-302f9cc9306a" },
   { name: "O Garoto de Programa que Conheci em Paris", link: "https://player.mediadelivery.net/play/688480/1cb00351-514f-4361-90f7-91526c9717aa" },
+  { name: "No Aniversario do filho ela perdeu Tudo", link: "https://player.mediadelivery.net/play/688480/e2ed5e87-f729-4c33-afbb-de19091cdfdf" },
+  { name: "Amor a Mesa", link: "https://player.mediadelivery.net/play/688480/1dcf0ccf-2ec7-435d-938f-01d7842e2f5a" },
+  { name: "De Chefona a Aluna: Vinganca na Sala", link: "https://player.mediadelivery.net/play/688480/ecf9490a-ffc8-47f5-86cb-c3dfd405206e" },
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
@@ -73,6 +76,9 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23859931352390792": "Luz apos a Traicao",
   "23859931352380792": "O Garoto de Programa que Conheci em Paris",
   "23859931352350792": "Para Sempre ao seu Lado",
+  "23859931733930792": "No Aniversario do filho ela perdeu Tudo",
+  "23859931733920792": "Amor a Mesa",
+  "23859931733940792": "De Chefona a Aluna: Vinganca na Sala",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
@@ -1041,7 +1047,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v105 (add 3 new series)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v106 (add 3 more series)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
