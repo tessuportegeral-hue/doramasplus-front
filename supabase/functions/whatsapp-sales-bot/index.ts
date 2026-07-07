@@ -40,6 +40,9 @@ const SERIES: { name: string; link: string }[] = [
   { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
   { name: "Presa pelo Odio, Livre pelo Amor", link: "https://player.mediadelivery.net/play/688480/78170734-2461-4c1c-98ed-d1088abaddb2" },
   { name: "Tirar as notas, Acertar as Contas", link: "https://player.mediadelivery.net/play/688480/0e5d9317-4218-4b6f-b616-ebd2cc80dd5f" },
+  { name: "Luz apos a Traicao", link: "https://player.mediadelivery.net/play/688480/83fb731a-8d2f-430a-8906-2ec4620fa458" },
+  { name: "Para Sempre ao seu Lado", link: "https://player.mediadelivery.net/play/688480/5c46dc59-3c6f-4b90-b3ed-302f9cc9306a" },
+  { name: "O Garoto de Programa que Conheci em Paris", link: "https://player.mediadelivery.net/play/688480/1cb00351-514f-4361-90f7-91526c9717aa" },
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
@@ -66,6 +69,10 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23859373371630792": "Tirar as notas, Acertar as Contas",
   "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
   "23859373371660792": "Prefiro Morrer a te amar de Novo",
+  // Conta 1499 - nova campanha jul/2026
+  "23859931352390792": "Luz apos a Traicao",
+  "23859931352380792": "O Garoto de Programa que Conheci em Paris",
+  "23859931352350792": "Para Sempre ao seu Lado",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
@@ -1034,7 +1041,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v104 (update VIP_GROUP link)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v105 (add 3 new series)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
