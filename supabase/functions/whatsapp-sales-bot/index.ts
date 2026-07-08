@@ -57,6 +57,9 @@ const AD_SERIES_MAP: Record<string, string> = {
   "120248362227890786": "De Chefona a Aluna: Vinganca na Sala",
   "120248362227850786": "O Garoto de Programa que Conheci em Paris",
   "120248362227880786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362671150786": "Para Sempre ao seu Lado",
+  "120248362671160786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362671130786": "No Aniversario do filho ela perdeu Tudo",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {};
 
@@ -1018,7 +1021,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v110 (keep only 6 new series)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v111 (add 3 more ad ids conta 8218)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
