@@ -387,7 +387,7 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
         }, { onConflict: "user_id" });
       }
     } catch (e) { console.error("[grant sub]", String(e)); }
-    await sendText(fromE164, buildAccessMsg(email), receivingPhoneNumberId);
+    await sendText(fromE164, buildAccessMsg(email, plan), receivingPhoneNumberId);
     const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
     if (idSeries && findSeries(idSeries)) { const a = buildAnuncioDestaque(idSeries); if (a) await sendText(fromE164, a, receivingPhoneNumberId); }
     await updateSession(fromE164, "access_sent", { ...sessionData, email, name, plan });
@@ -627,8 +627,9 @@ async function createAsaasPix(userEmail: string, userName: string, plan: "monthl
   try{await supabase.from("pix_payments").insert({provider:"asaas",plan,amount_cents:amountCents,order_nsu:externalReference,status:"pending",raw:d2,source:"whatsapp_sales_bot",...(extra||{})});}catch{}
   return{copyPaste,externalReference,paymentId};
 }
-function buildAccessMsg(email: string): string {
-  return `🎉 Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo ✅\n⏳ Acesso valido por 30 dias\n\n📱 Acesse agora:\n👉 ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! 🔓\n\n🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\n📲 *Suporte oficial:* (18) 99679-6654\n\nQualquer duvida e so me chamar 😊\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
+function buildAccessMsg(email: string, plan?: string): string {
+  const dias = plan === "quarterly" ? "90 dias (3 meses)" : "30 dias";
+  return `🎉 Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo ✅\n⏳ Acesso valido por ${dias}\n\n📱 Acesse agora:\n👉 ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! 🔓\n\n🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\n📲 *Suporte oficial:* (18) 99679-6654\n\nQualquer duvida e so me chamar 😊\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
 }
 function buildPresenteMsg(seriesName: string): string {
   const hit = findSeries(seriesName);
@@ -1021,7 +1022,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v111 (add 3 more ad ids conta 8218)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v112 (fix access msg duration for quarterly)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
@@ -1050,7 +1051,7 @@ serve(async (req) => {
         else await sendText(toE164,buildGenericSeriesMsg());
         await updateSession(toE164,"series_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       } else {
-        await sendText(toE164,buildAccessMsg(email));
+        await sendText(toE164,buildAccessMsg(email, plan));
         const idSeries=await resolveIdentifiedSeries(toE164,sess);
         if(idSeries && findSeries(idSeries)){ const a=buildAnuncioDestaque(idSeries); if(a)await sendText(toE164,a); }
         await updateSession(toE164,"access_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
