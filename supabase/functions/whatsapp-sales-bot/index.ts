@@ -317,29 +317,39 @@ async function validateComprovanteWithClaude(base64: string, mimeType: string, p
   const maxVal = plan === "quarterly" ? 48.00 : plan === "series" ? 10.00 : 17.00;
   const nowBRT = new Date(Date.now() - 3 * 3600000);
   const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
-  const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n4. Data e hora do pagamento ha no maximo 15 minutos antes de agora\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
-  try {
-    const isImage = mimeType.startsWith("image/");
-    const contentBlock = isImage
-      ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
-      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+
+  const buildPrompt = (lenient: boolean) =>
+    `Voce e um validador de comprovantes PIX brasileiro. Analise a imagem e responda SOMENTE com JSON:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nCRITERIOS:\n\n1. STATUS: Pagamento CONCLUIDO/REALIZADO/APROVADO/CONFIRMADO.\n   Invalido se: agendado, pendente, em processamento, aguardando.\n\n2. DESTINATARIO: Qualquer uma dessas opcoes e valida:\n   - Nome contem "Cavalcante" ou "Stefano" ou "Streaming" (qualquer caixa/variacao)\n   - Chave PIX e o CNPJ 66108496000120 (pode aparecer como 66.108.496/0001-20)\n   - Razao social associada a esse CNPJ\n   - Se a chave for um CNPJ ou CPF nao identificavel pelo nome, confira se os outros 3 criterios estao ok\n\n3. VALOR: Entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}.\n\n4. DATA/HORA: Pagamento feito ha no maximo 30 minutos antes de agora.\n\nINSTRUCOES:\n- Bancos como Nubank (roxo), Itau, Bradesco, Caixa, Inter, C6, PicPay, BB tem layouts DIFERENTES — leia com atencao cada campo\n- A chave PIX do destinatario pode ser CPF, CNPJ, email ou telefone — nao e o nome\n- ${lenient ? "Se 3 dos 4 criterios estiverem claramente atendidos e o 4o nao estiver legivel por qualidade da imagem, considere valido=true." : "Todos os criterios devem estar claramente atendidos."}\n- Nao rejeite por baixa qualidade de screenshot se os dados principais estao visiveis\n\nResponda APENAS o JSON.`;
+
+  const isImage = mimeType.startsWith("image/");
+  const contentBlock = isImage
+    ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
+    : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+
+  const callModel = async (model: string, lenient: boolean) => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 150,
-        messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }],
-      }),
+      body: JSON.stringify({ model, max_tokens: 200, messages: [{ role: "user", content: [contentBlock, { type: "text", text: buildPrompt(lenient) }] }] }),
     });
-    if (!r.ok) { const t = await r.text().catch(() => ""); console.error("[claude vision] api error", r.status, t); return { valid: false, reason: "api_error" }; }
+    if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error(`api_error ${r.status}: ${t}`); }
     const d = await r.json();
     const content = String(d?.content?.[0]?.text || "");
     const match = content.match(/\{[\s\S]*?\}/);
-    if (!match) { console.error("[claude vision] no json:", content); return { valid: false, reason: "parse_error" }; }
+    if (!match) throw new Error(`parse_error: ${content}`);
     const parsed = JSON.parse(match[0]);
-    console.log("[claude vision] result:", JSON.stringify(parsed));
     return { valid: !!parsed.valido, reason: String(parsed.motivo || "") };
+  };
+
+  try {
+    const r1 = await callModel("claude-haiku-4-5-20251001", false);
+    console.log("[claude vision] haiku:", JSON.stringify(r1));
+    if (r1.valid) return r1;
+    // Se o haiku reprovou, tenta com sonnet (mais capaz para imagens dificeis)
+    console.log("[claude vision] haiku reprovou, tentando sonnet:", r1.reason);
+    const r2 = await callModel("claude-sonnet-5", true);
+    console.log("[claude vision] sonnet:", JSON.stringify(r2));
+    return r2;
   } catch (e) { console.error("[claude vision]", String(e)); return { valid: false, reason: "exception" }; }
 }
 
@@ -1022,7 +1032,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v112 (fix access msg duration for quarterly)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v113 (improve comprovante validation)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
