@@ -697,7 +697,15 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if (referral && typeof referral === "object") {
     const sid = identifySeriesFromReferral(referral);
     const patch: Record<string,unknown> = {};
-    if (sid && !sessionData.identified_series) patch.identified_series = sid;
+    if (sid) {
+      const sevenDays = 7 * 24 * 3600000;
+      const identifiedAt = sessionData.series_identified_at ? Number(sessionData.series_identified_at) : 0;
+      const isStale = !identifiedAt || (Date.now() - identifiedAt > sevenDays);
+      if (!sessionData.identified_series || isStale) {
+        patch.identified_series = sid;
+        patch.series_identified_at = Date.now();
+      }
+    }
     if (referral.ctwa_clid && !sessionData.ctwa_clid) patch.ctwa_clid = referral.ctwa_clid;
     if (referral.source_id && !sessionData.ad_source_id) patch.ad_source_id = referral.source_id;
     if (Object.keys(patch).length) { sessionData = { ...sessionData, ...patch }; try { await updateSession(fromE164, step, sessionData); } catch {} }
@@ -711,7 +719,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       const elapsed = Date.now() - updatedAt;
       const timeout = step==="waiting_payment" ? 86400000 : 21600000;
       if(elapsed > timeout){
-        const preserved = { identified_series: sessionData.identified_series||null, ctwa_clid: sessionData.ctwa_clid||null, ad_source_id: sessionData.ad_source_id||null };
+        const preserved = { identified_series: sessionData.identified_series||null, series_identified_at: sessionData.series_identified_at||null, ctwa_clid: sessionData.ctwa_clid||null, ad_source_id: sessionData.ad_source_id||null };
         await updateSession(fromE164, "start", preserved);
         sessionData = preserved;
         step = "start";
@@ -1032,7 +1040,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v113 (improve comprovante validation)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v114 (identified_series 7-day persistence)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
