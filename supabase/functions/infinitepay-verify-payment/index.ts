@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
     // ====== acumular dias se ainda estiver ativo ======
     const now = new Date();
     // ✅ dias por plano: trial3 = 3, monthly = 30, quarterly = 90
-    const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 3 : 30;
+    const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 1 : 30;
     let baseDate = now;
 
     try {
@@ -300,12 +300,12 @@ Deno.serve(async (req) => {
           ? "DoramasPlus Passe Teste"
           : "DoramasPlus Padrão";
     const planInterval = plan === "quarterly" ? "quarter" : plan === "trial3" ? "trial" : "month";
-    const amountCents = plan === "quarterly" ? 4390 : plan === "trial3" ? 590 : 1590;
+    const amountCents = plan === "quarterly" ? 4390 : plan === "trial3" ? 299 : 1590;
     const priceId =
       plan === "quarterly"
         ? "infinitepay_pix_4390"
         : plan === "trial3"
-          ? "infinitepay_pix_590"
+          ? "infinitepay_pix_299"
           : "infinitepay_pix_1590";
 
     // marca/atualiza pix_payments como paid (idempotente)

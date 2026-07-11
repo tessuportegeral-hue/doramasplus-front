@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Check, Loader2, Star, MessageCircle } from 'lucide-react';
+import { Check, Loader2, Star, MessageCircle, Zap } from 'lucide-react';
 
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
 
 // ✅ metadados dos planos (nome + valor exibido no InitiateCheckout)
 const PLAN_META = {
-  trial3: { name: 'DoramasPlus Passe Teste', value: 5.9 },
+  trial3: { name: 'DoramasPlus Passe Teste', value: 2.99 },
   monthly: { name: 'DoramasPlus Padrão', value: 16.9 },
   quarterly: { name: 'DoramasPlus Trimestral', value: 47.9 },
 };
@@ -390,6 +390,48 @@ const SubscriptionPlans = () => {
             </motion.p>
           </div>
 
+          {/* ✅ PASSE TESTE — 1 dia (só para quem NÃO é ativo e NÃO veio por indicação) */}
+          {showTrial && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="relative max-w-4xl mx-auto mb-8 bg-gradient-to-r from-emerald-600/25 to-slate-900 border border-emerald-400/60 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6"
+            >
+              <div className="absolute -top-3 left-6 bg-emerald-500 text-slate-950 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                <Zap className="w-3 h-3" fill="currentColor" />
+                COMECE POR AQUI
+              </div>
+
+              <div className="flex-1">
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-1">
+                  Passe Teste — 1 dia
+                </h3>
+                <p className="text-sm text-emerald-100/90 mb-3">
+                  Teste a plataforma inteira sem compromisso. Acesso liberado na hora.
+                </p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-bold text-emerald-300">
+                    R$ 2,99
+                  </span>
+                  <span className="text-slate-300">/1 dia</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => handlePix('trial3')}
+                disabled={isLoading}
+                className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-6 px-8 text-lg"
+              >
+                {loadingPlan === 'pix_trial3' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  'Testar por R$ 2,99 (Pix)'
+                )}
+              </Button>
+            </motion.div>
+          )}
+
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* ✅ PLANO MENSAL */}
             <motion.div
@@ -519,32 +561,6 @@ const SubscriptionPlans = () => {
               </Button>
             </motion.div>
           </div>
-
-          {/* ✅ PASSE TESTE — opção discreta pra quem ainda está na dúvida (não canibaliza os planos cheios) */}
-          {showTrial && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="mt-6 max-w-4xl mx-auto text-center"
-            >
-              <p className="text-sm text-slate-400">
-                Ainda com dúvida?{' '}
-                <button
-                  type="button"
-                  onClick={() => handlePix('trial3')}
-                  disabled={isLoading}
-                  className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2 font-medium disabled:opacity-60"
-                >
-                  {loadingPlan === 'pix_trial3' ? (
-                    <Loader2 className="inline w-4 h-4 animate-spin" />
-                  ) : (
-                    'Teste 3 dias por R$ 5,90 (Pix)'
-                  )}
-                </button>
-              </p>
-            </motion.div>
-          )}
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

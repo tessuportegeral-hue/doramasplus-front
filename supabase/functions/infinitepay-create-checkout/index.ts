@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const utm_content = typeof body?.utm_content === "string" ? body.utm_content.trim() : "";
     const fbclid = typeof body?.fbclid === "string" ? body.fbclid.trim() : "";
 
-    const amountCents = plan === "quarterly" ? 4790 : plan === "trial3" ? 590 : 1690;
+    const amountCents = plan === "quarterly" ? 4790 : plan === "trial3" ? 299 : 1690;
     const description =
       plan === "quarterly"
         ? "DoramasPlus Trimestral"

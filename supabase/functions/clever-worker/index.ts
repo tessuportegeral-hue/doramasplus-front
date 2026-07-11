@@ -439,17 +439,23 @@ Deno.serve(async (req) => {
       );
       clearTimeout(to);
       const check = await checkResp.json().catch(() => ({} as any));
-      if (checkResp.ok && check?.success && check?.paid === false) {
-        return json({ success: false, message: "Pagamento nao confirmado" }, 400);
+      if (check?.success && check?.paid) {
+        paymentConfirmed = true;
+      } else {
+        // NAO bloqueia mais: a API de conferencia da InfinityPay as vezes ainda nao
+        // reflete o pagamento no instante em que o webhook chega (race condition).
+        // O webhook so dispara em pagamento real, entao liberamos o acesso na hora e
+        // apenas marcamos como nao-confirmado-pela-conferencia. Isso elimina a
+        // dependencia do retry externo da InfinityPay (~20 min) que travava o acesso.
+        console.warn("payment_check inconclusivo (paid!=true) - liberando mesmo assim:", JSON.stringify(check).slice(0, 300));
       }
-      if (check?.success && check?.paid) paymentConfirmed = true;
     } catch (e) {
       console.warn("payment_check timeout/erro:", String(e));
     }
 
     const now = new Date();
     // ✅ dias por plano: trial3 = 3, monthly = 30, quarterly = 90
-    const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 3 : 30;
+    const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 1 : 30;
     let baseDate = now;
 
     try {
@@ -481,7 +487,7 @@ Deno.serve(async (req) => {
           ? "DoramasPlus Passe Teste"
           : "DoramasPlus Padrao";
     const planInterval = plan === "quarterly" ? "quarter" : plan === "trial3" ? "trial" : "month";
-    const amountCents = plan === "quarterly" ? 4790 : plan === "trial3" ? 590 : 1690;
+    const amountCents = plan === "quarterly" ? 4790 : plan === "trial3" ? 299 : 1690;
     const priceId =
       plan === "quarterly"
         ? "infinitepay_pix_4790"
