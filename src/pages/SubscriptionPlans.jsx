@@ -1,16 +1,59 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Check, Loader2, Star, MessageCircle } from 'lucide-react';
+import { Check, Loader2, Star, MessageCircle, Zap } from 'lucide-react';
 
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+
+// ✅ email de teste: sempre vê o Passe Teste e passa direto pelo gate (validação antes do lançamento)
+const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
+
+// ✅ metadados dos planos (nome + valor exibido no InitiateCheckout)
+const PLAN_META = {
+  trial3: { name: 'DoramasPlus Passe Teste', value: 5.9 },
+  monthly: { name: 'DoramasPlus Padrão', value: 16.9 },
+  quarterly: { name: 'DoramasPlus Trimestral', value: 47.9 },
+};
 
 const SubscriptionPlans = () => {
   const { toast } = useToast();
+  const { isPremium, user } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState(null);
+
+  // ✅ Passe Teste não aparece para contas criadas por indicação
+  const [wasReferred, setWasReferred] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    if (!user?.id) {
+      setWasReferred(false);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('referred_by')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (alive) setWasReferred(!!data?.referred_by);
+      } catch {
+        if (alive) setWasReferred(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user?.id]);
+
+  // mostra o Passe Teste só para quem não é assinante ativo e não veio por indicação
+  // (o email de teste sempre vê, pra você conferir o front sem criar conta nova)
+  const isTrialTester = (user?.email || '').toLowerCase() === TRIAL_TEST_EMAIL;
+  const showTrial = isTrialTester || (!isPremium && !wasReferred);
 
   // ✅ (NOVO) META PIXEL - InitiateCheckout (mínimo e seguro)
   const fireInitiateCheckout = ({ planType, planName, value, eventId }) => {
@@ -171,7 +214,7 @@ const SubscriptionPlans = () => {
   const handlePix = async (planType) => {
     if (loadingPlan) return;
 
-    if (!['monthly', 'quarterly'].includes(planType)) {
+    if (!['trial3', 'monthly', 'quarterly'].includes(planType)) {
       toast({
         variant: 'destructive',
         title: 'Plano inválido',
@@ -229,9 +272,8 @@ const SubscriptionPlans = () => {
       } catch {}
 
       // ✅ dispara InitiateCheckout no clique do Pix
-      const planName =
-        planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
-      const value = planType === 'quarterly' ? 47.9 : 16.9;
+      const planName = (PLAN_META[planType] || PLAN_META.monthly).name;
+      const value = (PLAN_META[planType] || PLAN_META.monthly).value;
 
       const event_id = `ic_${planType}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       fireInitiateCheckout({ planType, planName, value, eventId: event_id });
@@ -347,6 +389,48 @@ const SubscriptionPlans = () => {
               Acesso ilimitado a milhares de doramas, sem anúncios.
             </motion.p>
           </div>
+
+          {/* ✅ PASSE TESTE — 3 dias (só para quem NÃO é ativo e NÃO veio por indicação) */}
+          {showTrial && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="relative max-w-4xl mx-auto mb-8 bg-gradient-to-r from-emerald-600/25 to-slate-900 border border-emerald-400/60 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6"
+            >
+              <div className="absolute -top-3 left-6 bg-emerald-500 text-slate-950 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                <Zap className="w-3 h-3" fill="currentColor" />
+                COMECE POR AQUI
+              </div>
+
+              <div className="flex-1">
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-1">
+                  Passe Teste — 3 dias
+                </h3>
+                <p className="text-sm text-emerald-100/90 mb-3">
+                  Teste a plataforma inteira sem compromisso. Acesso liberado na hora.
+                </p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl sm:text-4xl font-bold text-emerald-300">
+                    R$ 5,90
+                  </span>
+                  <span className="text-slate-300">/3 dias</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => handlePix('trial3')}
+                disabled={isLoading}
+                className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-6 px-8 text-lg"
+              >
+                {loadingPlan === 'pix_trial3' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  'Testar por R$ 5,90 (Pix)'
+                )}
+              </Button>
+            </motion.div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {/* ✅ PLANO MENSAL */}
