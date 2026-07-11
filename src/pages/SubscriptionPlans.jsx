@@ -370,7 +370,7 @@ const SubscriptionPlans = () => {
       <div className="min-h-screen bg-slate-950 text-slate-100">
         <Navbar />
 
-        <div className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="pt-32 sm:pt-28 pb-16 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center mb-12">
             <motion.h1
               initial={{ opacity: 0, y: -20 }}
