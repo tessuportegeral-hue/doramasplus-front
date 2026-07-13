@@ -64,6 +64,12 @@ Deno.serve(async (req) => {
     const plan =
       rawPlan === "quarterly" ? "quarterly" : rawPlan === "trial3" ? "trial3" : "monthly";
 
+    // ⛔ Passe Teste (trial3) DESATIVADO no backend (2026-07-13): recusa qualquer
+    // checkout novo, independente de front/cache/link antigo. Para reativar, remova este bloco.
+    if (plan === "trial3") {
+      return json({ error: "O Passe Teste nao esta disponivel no momento." }, 403);
+    }
+
     const event_id_from_front =
       typeof body?.event_id === "string" && body.event_id.trim()
         ? body.event_id.trim()
