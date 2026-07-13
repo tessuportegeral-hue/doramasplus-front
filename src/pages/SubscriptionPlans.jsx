@@ -53,7 +53,10 @@ const SubscriptionPlans = () => {
   // mostra o Passe Teste só para quem não é assinante ativo e não veio por indicação
   // (o email de teste sempre vê, pra você conferir o front sem criar conta nova)
   const isTrialTester = (user?.email || '').toLowerCase() === TRIAL_TEST_EMAIL;
-  const showTrial = isTrialTester || (!isPremium && !wasReferred);
+  // ⛔ Passe Teste desativado no /plans (2026-07-13) — só esconde o card; código mantido.
+  //    Para reativar, troque TRIAL_ENABLED_ON_PLANS para true.
+  const TRIAL_ENABLED_ON_PLANS = false;
+  const showTrial = TRIAL_ENABLED_ON_PLANS && (isTrialTester || (!isPremium && !wasReferred));
 
   // ✅ (NOVO) META PIXEL - InitiateCheckout (mínimo e seguro)
   const fireInitiateCheckout = ({ planType, planName, value, eventId }) => {
