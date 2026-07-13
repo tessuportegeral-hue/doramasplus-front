@@ -262,18 +262,20 @@ async function sha256hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 async function fireMetaCAPI(phone: string, plan: string, sessionData: any, receivingPhoneNumberId?: string|null) {
+  const account = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218 ? "8218" : "1499";
   try {
-    const token = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218
+    const token = account === "8218"
       ? Deno.env.get("META_ACCESS_TOKEN_WA_8218") || ""
       : Deno.env.get("META_ACCESS_TOKEN_WA") || "";
-    if (!token) return;
+    if (!token) { console.error("[meta capi] token vazio para conta", account); return; }
     const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
     const contentName = plan === "series" ? "DoramasPlus 1 Serie" : plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
     const hashedPhone = await sha256hex(digitsOnly(phone));
     const userData: Record<string, unknown> = { ph: [hashedPhone] };
     const ctwaClid = sessionData?.ctwa_clid ? String(sessionData.ctwa_clid) : null;
     if (ctwaClid) userData.ctwa_clid = ctwaClid;
-    await fetch(`https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`, {
+    console.log("[meta capi] disparando conta:", account, "plan:", plan, "ctwa_clid:", ctwaClid ? "sim" : "nao");
+    const res = await fetch(`https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -287,7 +289,13 @@ async function fireMetaCAPI(phone: string, plan: string, sessionData: any, recei
         access_token: token,
       }),
     });
-  } catch (e) { console.error("[meta capi]", String(e)); }
+    const resBody = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("[meta capi] erro conta:", account, "status:", res.status, "body:", JSON.stringify(resBody));
+    } else {
+      console.log("[meta capi] ok conta:", account, "events_received:", (resBody as any)?.events_received);
+    }
+  } catch (e) { console.error("[meta capi] exception conta:", account, String(e)); }
 }
 
 async function downloadWhatsAppMedia(mediaId: string): Promise<{ base64: string; mimeType: string } | null> {
