@@ -264,7 +264,7 @@ async function sha256hex(text: string): Promise<string> {
 async function fireMetaCAPI(phone: string, plan: string, sessionData: any, receivingPhoneNumberId?: string|null) {
   try {
     const token = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218
-      ? Deno.env.get("META_ACESS_TOKEN_WA_8218") || ""
+      ? Deno.env.get("META_ACCESS_TOKEN_WA_8218") || ""
       : Deno.env.get("META_ACCESS_TOKEN_WA") || "";
     if (!token) return;
     const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
@@ -280,7 +280,7 @@ async function fireMetaCAPI(phone: string, plan: string, sessionData: any, recei
         data: [{
           event_name: "Purchase",
           event_time: Math.floor(Date.now() / 1000),
-          action_source: "other",
+          action_source: "chat",
           user_data: userData,
           custom_data: { currency: "BRL", value, content_name: contentName },
         }],
