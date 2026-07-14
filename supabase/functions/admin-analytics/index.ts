@@ -60,6 +60,13 @@ Deno.serve(async (req) => {
       new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59)
     );
 
+    // periodo de comparacao (churn/retencao) - por padrao, o mes de calendario
+    // imediatamente anterior ao inicio do periodo principal
+    const defaultCompareStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+    const defaultCompareEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0, 23, 59, 59);
+    const comparePeriodStart = safeIsoDate(body?.compare_period_start, defaultCompareStart);
+    const comparePeriodEnd = safeIsoDate(body?.compare_period_end, defaultCompareEnd);
+
     // ======================================================================
     // Faturamento do periodo, somando as origens de pagamento:
     // - InfinityPay (site) + Asaas (bot)  -> pix_payments.amount_cents (valor real)
@@ -119,6 +126,61 @@ Deno.serve(async (req) => {
             (coalesce(s.end_at, s.current_period_end) is null and s.provider is null)
             or coalesce(s.end_at, s.current_period_end) > now()
           )
+      ),
+      -- Entraram / saíram / retenção no período principal (A) e no de comparação (B).
+      -- "Cohort no inicio de X" = pra cada usuario, pega o evento de renovacao mais
+      -- recente registrado ATE o inicio de X (subscription_renewals so loga quando
+      -- status vira 'active', entao isso reconstroi quem estava coberto naquele
+      -- instante). "Retido no fim de X" = confere no estado ATUAL da assinatura se
+      -- a cobertura ainda passa do fim de X (mesma regra do gate de premium).
+      cohort_a as (
+        select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+        from subscription_renewals sr, period
+        where sr.renewed_at <= period.p_start
+        order by sr.user_id, sr.renewed_at desc
+      ),
+      cohort_a_active as (
+        select user_id from cohort_a, period
+        where (end_at is null and provider is null) or end_at > period.p_start
+      ),
+      retained_a as (
+        select ca.user_id
+        from cohort_a_active ca
+        join subscriptions s on s.user_id = ca.user_id, period
+        where s.status in ('active','trialing','paid')
+          and ( (coalesce(s.end_at,s.current_period_end) is null and s.provider is null)
+                or coalesce(s.end_at,s.current_period_end) > period.p_end )
+      ),
+      new_a as (
+        select count(distinct sr.user_id) as qtd
+        from subscription_renewals sr, period
+        where sr.is_renewal = false and sr.renewed_at between period.p_start and period.p_end
+      ),
+      compare_period as (
+        select '${comparePeriodStart}'::timestamptz as c_start, '${comparePeriodEnd}'::timestamptz as c_end
+      ),
+      cohort_b as (
+        select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+        from subscription_renewals sr, compare_period
+        where sr.renewed_at <= compare_period.c_start
+        order by sr.user_id, sr.renewed_at desc
+      ),
+      cohort_b_active as (
+        select user_id from cohort_b, compare_period
+        where (end_at is null and provider is null) or end_at > compare_period.c_start
+      ),
+      retained_b as (
+        select cb.user_id
+        from cohort_b_active cb
+        join subscriptions s on s.user_id = cb.user_id, compare_period
+        where s.status in ('active','trialing','paid')
+          and ( (coalesce(s.end_at,s.current_period_end) is null and s.provider is null)
+                or coalesce(s.end_at,s.current_period_end) > compare_period.c_end )
+      ),
+      new_b as (
+        select count(distinct sr.user_id) as qtd
+        from subscription_renewals sr, compare_period
+        where sr.is_renewal = false and sr.renewed_at between compare_period.c_start and compare_period.c_end
       )
       select
         (select total from pix) as pix_total,
@@ -132,7 +194,13 @@ Deno.serve(async (req) => {
         (select qtd from manual_ren) as manual_qtd,
         (select total from ativos) as ativos_total,
         (select mensal from ativos) as ativos_mensal,
-        (select trimestral from ativos) as ativos_trimestral
+        (select trimestral from ativos) as ativos_trimestral,
+        (select count(*) from cohort_a_active) as churn_a_cohort,
+        (select count(*) from retained_a) as churn_a_retained,
+        (select qtd from new_a) as churn_a_new,
+        (select count(*) from cohort_b_active) as churn_b_cohort,
+        (select count(*) from retained_b) as churn_b_retained,
+        (select qtd from new_b) as churn_b_new
     `;
 
     const { data: revRows, error: revErr } = await admin.rpc('exec_sql', { q: revenueQuery });
@@ -191,6 +259,11 @@ Deno.serve(async (req) => {
     const d30Base = d30BaseIds.length;
     const d30Rate = d30Base > 0 ? Math.round((d30Retained / d30Base) * 10000) / 100 : 0;
 
+    const churnACohort = Number(rev.churn_a_cohort || 0);
+    const churnARetained = Number(rev.churn_a_retained || 0);
+    const churnBCohort = Number(rev.churn_b_cohort || 0);
+    const churnBRetained = Number(rev.churn_b_retained || 0);
+
     return json({
       sold_total: soldTotal,
       sold_monthly: soldMonthly,
@@ -209,6 +282,24 @@ Deno.serve(async (req) => {
       d30_base: d30Base,
       d30_retained: d30Retained,
       d30_rate: d30Rate,
+      churn: {
+        period: {
+          new: Number(rev.churn_a_new || 0),
+          cohort: churnACohort,
+          retained: churnARetained,
+          churned: churnACohort - churnARetained,
+          retention_rate: churnACohort > 0 ? Math.round((churnARetained / churnACohort) * 10000) / 100 : 0,
+        },
+        compare_period: {
+          new: Number(rev.churn_b_new || 0),
+          cohort: churnBCohort,
+          retained: churnBRetained,
+          churned: churnBCohort - churnBRetained,
+          retention_rate: churnBCohort > 0 ? Math.round((churnBRetained / churnBCohort) * 10000) / 100 : 0,
+          period_start: comparePeriodStart,
+          period_end: comparePeriodEnd,
+        },
+      },
     });
   } catch (e) {
     return json({ error: 'internal', details: String(e) }, 500);

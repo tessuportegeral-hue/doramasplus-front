@@ -12,6 +12,9 @@ import {
   Loader2,
   Calendar,
   TrendingUp,
+  TrendingDown,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 
 /**
@@ -114,6 +117,11 @@ export default function AdminAnalytics() {
   const [startDateStr, setStartDateStr] = useState("");
   const [endDateStr, setEndDateStr] = useState("");
 
+  // Período de comparação (churn/retenção) — por padrão, mês anterior ao período principal
+  const [comparePeriod, setComparePeriod] = useState("prev_month"); // prev_month | custom
+  const [compareStartDateStr, setCompareStartDateStr] = useState("");
+  const [compareEndDateStr, setCompareEndDateStr] = useState("");
+
   // Estado de carregamento / erro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -146,6 +154,12 @@ export default function AdminAnalytics() {
     base_com_30_dias: 0,
     ainda_ativos: 0,
     retencao_d30: 0,
+  });
+
+  // Churn / retenção do período (+ período de comparação)
+  const [churn, setChurn] = useState({
+    period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0 },
+    compare_period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0, period_start: null, period_end: null },
   });
 
 
@@ -232,6 +246,50 @@ export default function AdminAnalytics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickPeriod]);
 
+  // Datas derivadas do período de COMPARAÇÃO (churn/retenção)
+  const { compareStart, compareEnd, compareLabel } = useMemo(() => {
+    if (comparePeriod === "custom") {
+      const s = fromDateInputValue(compareStartDateStr);
+      const e = fromDateInputValue(compareEndDateStr);
+      const valid = s && e && s <= e;
+      if (valid) {
+        const sDay = startOfDay(s);
+        const eDay = endOfDay(e);
+        return {
+          compareStart: sDay,
+          compareEnd: eDay,
+          compareLabel: `${toDateInputValue(sDay).split("-").reverse().join("/")} até ${toDateInputValue(eDay)
+            .split("-")
+            .reverse()
+            .join("/")}`,
+        };
+      }
+    }
+    // prev_month (default): mês de calendário imediatamente anterior ao início do período principal
+    const ref = addMonths(periodStart, -1);
+    const s = startOfMonth(ref);
+    const e = endOfMonth(ref);
+    return {
+      compareStart: s,
+      compareEnd: e,
+      compareLabel: `${toDateInputValue(s).split("-").reverse().join("/")} até ${toDateInputValue(e)
+        .split("-")
+        .reverse()
+        .join("/")}`,
+    };
+  }, [comparePeriod, compareStartDateStr, compareEndDateStr, periodStart]);
+
+  // Inicializa inputs do período de comparação quando muda o modo
+  useEffect(() => {
+    if (comparePeriod === "prev_month") {
+      const ref = addMonths(periodStart, -1);
+      setCompareStartDateStr(toDateInputValue(startOfMonth(ref)));
+      setCompareEndDateStr(toDateInputValue(endOfMonth(ref)));
+    }
+    // custom não mexe
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparePeriod, periodStart]);
+
   // ✅ Gate admin (mais seguro)
   useEffect(() => {
     let mounted = true;
@@ -307,7 +365,12 @@ export default function AdminAnalytics() {
       // toda linha antiga com plan_name nulo. Agora vem pronto e correto da
       // function, com a mesma regra do gate de premium.)
       const { data: pix, error: pixErr } = await supabase.functions.invoke("admin-analytics", {
-        body: { period_start: toISO(periodStart), period_end: toISO(periodEnd) },
+        body: {
+          period_start: toISO(periodStart),
+          period_end: toISO(periodEnd),
+          compare_period_start: toISO(compareStart),
+          compare_period_end: toISO(compareEnd),
+        },
       });
       if (pixErr) throw new Error(`admin-analytics: ${pixErr.message}`);
 
@@ -338,13 +401,34 @@ export default function AdminAnalytics() {
         ainda_ativos: safeNum(pix.d30_retained),
         retencao_d30: safeNum(pix.d30_rate),
       });
+
+      const churnPeriod = pix.churn?.period || {};
+      const churnCompare = pix.churn?.compare_period || {};
+      setChurn({
+        period: {
+          new: safeNum(churnPeriod.new),
+          cohort: safeNum(churnPeriod.cohort),
+          retained: safeNum(churnPeriod.retained),
+          churned: safeNum(churnPeriod.churned),
+          retention_rate: safeNum(churnPeriod.retention_rate),
+        },
+        compare_period: {
+          new: safeNum(churnCompare.new),
+          cohort: safeNum(churnCompare.cohort),
+          retained: safeNum(churnCompare.retained),
+          churned: safeNum(churnCompare.churned),
+          retention_rate: safeNum(churnCompare.retention_rate),
+          period_start: churnCompare.period_start || null,
+          period_end: churnCompare.period_end || null,
+        },
+      });
     } catch (e) {
       console.error(e);
       setError(String(e?.message || e || "Erro desconhecido"));
     } finally {
       setLoading(false);
     }
-  }, [adminChecked, isAdmin, periodStart, periodEnd]);
+  }, [adminChecked, isAdmin, periodStart, periodEnd, compareStart, compareEnd]);
 
   useEffect(() => {
     if (!adminChecked) return;
@@ -587,6 +671,58 @@ export default function AdminAnalytics() {
           </div>
         </div>
 
+        {/* Comparar com (churn/retenção) */}
+        <div className="mt-4 rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-white/80">
+            <TrendingDown className="w-4 h-4" />
+            Comparar com (churn/retenção)
+          </div>
+          <div className="text-xs text-white/50 mt-1">Comparação: {compareLabel}</div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-4">
+              <label className="text-xs text-white/60">Período de comparação</label>
+              <select
+                value={comparePeriod}
+                onChange={(e) => setComparePeriod(e.target.value)}
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
+              >
+                <option value="prev_month">Mês anterior ao período selecionado</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="text-xs text-white/60">Data inicial</label>
+              <input
+                type="date"
+                value={compareStartDateStr}
+                onChange={(e) => {
+                  setComparePeriod("custom");
+                  setCompareStartDateStr(e.target.value);
+                }}
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="text-xs text-white/60">Data final</label>
+              <input
+                type="date"
+                value={compareEndDateStr}
+                onChange={(e) => {
+                  setComparePeriod("custom");
+                  setCompareEndDateStr(e.target.value);
+                }}
+                className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
+                style={{ colorScheme: "dark" }}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Estado: erro / warning / loading */}
         {error ? (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/30 p-4 text-sm text-red-200">
@@ -715,6 +851,103 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
+            </div>
+
+            {/* Churn / Retenção (período selecionado vs. comparação) */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2">Churn / Retenção (período selecionado)</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Entraram no período",
+                    `${churn.period.new}`,
+                    <UserPlus className="w-5 h-5 text-green-300" />,
+                    "Primeira assinatura no período",
+                    "ok"
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Saíram no período",
+                    `${churn.period.churned}`,
+                    <UserMinus className="w-5 h-5 text-red-300" />,
+                    `De ${churn.period.cohort} ativos no início do período`,
+                    churn.period.churned > 0 ? "bad" : "default"
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Retidos no período",
+                    `${churn.period.retained}`,
+                    <Users className="w-5 h-5 text-white/70" />,
+                    `De ${churn.period.cohort} ativos no início do período`
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Retenção do período",
+                    formatPct(churn.period.retention_rate),
+                    <TrendingUp className="w-5 h-5 text-green-300" />,
+                    "Retidos ÷ ativos no início",
+                    "ok"
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 text-xs text-white/50">Comparação — {compareLabel}</div>
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Entraram (comparação)",
+                    `${churn.compare_period.new}`,
+                    <UserPlus className="w-5 h-5 text-white/50" />,
+                    "Primeira assinatura no período comparado"
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Saíram (comparação)",
+                    `${churn.compare_period.churned}`,
+                    <UserMinus className="w-5 h-5 text-white/50" />,
+                    `De ${churn.compare_period.cohort} ativos no início`
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Retidos (comparação)",
+                    `${churn.compare_period.retained}`,
+                    <Users className="w-5 h-5 text-white/50" />,
+                    `De ${churn.compare_period.cohort} ativos no início`
+                  )}
+                </div>
+
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Retenção (comparação)",
+                    formatPct(churn.compare_period.retention_rate),
+                    churn.period.retention_rate >= churn.compare_period.retention_rate ? (
+                      <TrendingUp className="w-5 h-5 text-green-300" />
+                    ) : (
+                      <TrendingDown className="w-5 h-5 text-red-300" />
+                    ),
+                    churn.period.retention_rate >= churn.compare_period.retention_rate
+                      ? "Retenção do período está melhor"
+                      : "Retenção do período está pior",
+                    churn.period.retention_rate >= churn.compare_period.retention_rate ? "ok" : "bad"
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                "Ativo no início" = cobertura reconstruída a partir do histórico de renovações. "Retido" = a
+                assinatura atual do usuário ainda cobre o fim do período em questão (mesma regra do gate de acesso).
+              </div>
             </div>
 
             {/* Vendas (período selecionado) */}
