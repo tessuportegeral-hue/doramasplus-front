@@ -67,6 +67,9 @@ import AdminSupport from '@/pages/AdminSupport';
 // ✅ (NOVO) Painel de monitoramento do Bot de Vendas (1499)
 import AdminBotVendas from '@/pages/AdminBotVendas';
 
+// ✅ (NOVO) Painel de monitoramento/resposta da Dora (chat do site)
+import AdminDora from '@/pages/AdminDora';
+
 // Landing
 import Landing from '@/pages/Landing';
 import Privacidade from '@/pages/Privacidade';
@@ -539,6 +542,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminBotVendas />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ (NOVO) ADMIN DORA (chat do site) */}
+                <Route
+                  path="/admin/dora"
+                  element={
+                    <AdminRoute>
+                      <AdminDora />
                     </AdminRoute>
                   }
                 />

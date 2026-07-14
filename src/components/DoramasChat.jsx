@@ -23,6 +23,8 @@ export default function DoramasChat() {
   const inputRef = useRef(null);
   const proactiveFiredRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
+  const lastAdminSeenRef = useRef(new Date().toISOString());
+  const [hasUnreadAdmin, setHasUnreadAdmin] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -33,7 +35,53 @@ export default function DoramasChat() {
 
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus();
+    if (open) setHasUnreadAdmin(false);
   }, [open]);
+
+  // Um atendente pode responder direto pelo painel admin (/admin/dora).
+  // Não existe realtime pra visitante anônimo aqui (a tabela só é legível
+  // pelo admin via RLS), então a Dora fica perguntando de tempos em tempos
+  // se chegou alguma resposta nova pra essa sessão.
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const resp = await fetch(
+          "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-poll-admin-replies",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: sessionIdRef.current,
+              after: lastAdminSeenRef.current,
+            }),
+          }
+        );
+        const data = await resp.json();
+        const msgs = Array.isArray(data?.messages) ? data.messages : [];
+        if (cancelled || !msgs.length) return;
+
+        lastAdminSeenRef.current = msgs[msgs.length - 1].created_at;
+        setMessages((prev) => [
+          ...prev,
+          ...msgs.map((m) => ({ role: "assistant", content: m.content, fromAdmin: true })),
+        ]);
+        setOpen((wasOpen) => {
+          if (!wasOpen) setHasUnreadAdmin(true);
+          return wasOpen;
+        });
+      } catch {
+        // silencioso — só tenta de novo no próximo intervalo
+      }
+    };
+
+    const id = setInterval(poll, 7000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Permite abrir o chat de qualquer lugar do site (ex: banner da home)
   useEffect(() => {
@@ -247,6 +295,20 @@ export default function DoramasChat() {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         )}
+        {!open && hasUnreadAdmin && (
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              right: "2px",
+              width: "14px",
+              height: "14px",
+              borderRadius: "50%",
+              background: "#2ecc71",
+              border: "2px solid #0f0f0f",
+            }}
+          />
+        )}
       </button>
 
       {/* Chat window */}
@@ -346,23 +408,30 @@ export default function DoramasChat() {
                   className="chat-msg"
                   style={{
                     display: "flex",
-                    justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                    flexDirection: "column",
+                    alignItems: msg.role === "user" ? "flex-end" : "flex-start",
                   }}
                 >
+                  {msg.fromAdmin && (
+                    <div style={{ fontSize: "10px", color: "#2ecc71", marginBottom: "3px", fontFamily: "system-ui" }}>
+                      Atendimento DoramasPlus
+                    </div>
+                  )}
                   <div
                     style={{
                       maxWidth: "82%",
                       padding: "10px 14px",
                       borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                      background:
-                        msg.role === "user"
-                          ? "linear-gradient(135deg, #e74c3c, #c0392b)"
-                          : "#1e1e1e",
+                      background: msg.role === "user"
+                        ? "linear-gradient(135deg, #e74c3c, #c0392b)"
+                        : msg.fromAdmin
+                        ? "#123a24"
+                        : "#1e1e1e",
                       color: "#fff",
                       fontSize: "13.5px",
                       lineHeight: "1.5",
                       fontFamily: "system-ui, -apple-system, sans-serif",
-                      border: msg.role === "assistant" ? "1px solid #2a2a2a" : "none",
+                      border: msg.role === "assistant" ? (msg.fromAdmin ? "1px solid #2ecc71" : "1px solid #2a2a2a") : "none",
                       wordBreak: "break-word",
                     }}
                   >

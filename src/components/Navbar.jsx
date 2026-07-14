@@ -442,6 +442,11 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       <DropdownMenuItem onClick={() => navigate('/admin/support')}>
                         Atendimento WhatsApp
                       </DropdownMenuItem>
+
+                      {/* ✅ ADICIONADO: Admin Dora (chat do site) */}
+                      <DropdownMenuItem onClick={() => navigate('/admin/dora')}>
+                        Dora (chat do site)
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -649,6 +654,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       className="mt-2 text-slate-200 text-sm text-left"
                     >
                       Atendimento WhatsApp
+                    </button>
+
+                    {/* ✅ ADICIONADO: Admin Dora (chat do site) no mobile */}
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); navigate('/admin/dora'); }}
+                      className="mt-2 text-slate-200 text-sm text-left block"
+                    >
+                      Dora (chat do site)
                     </button>
                   </div>
                 )}
