@@ -75,7 +75,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data: subscriptions, error } = await supabase
         .from("subscriptions")
-        .select("status, end_at, current_period_end, created_at")
+        .select("status, end_at, current_period_end, created_at, provider")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(5);
@@ -91,7 +91,9 @@ export const AuthProvider = ({ children }) => {
         const status = String(sub?.status ?? "").trim().toLowerCase();
         if (!ACTIVE_STATUSES.has(status)) return false;
         const v = sub?.end_at || sub?.current_period_end;
-        if (!v) return true;
+        // Sem data de fim: só o Stripe (provider null, auto-renovável) pode ficar sem data.
+        // Manual/infinitepay/asaas SEM data = NEGA (evita o vazamento de acesso infinito).
+        if (!v) return sub?.provider == null;
         const d = new Date(v);
         return !Number.isNaN(d.getTime()) && d > now;
       });
