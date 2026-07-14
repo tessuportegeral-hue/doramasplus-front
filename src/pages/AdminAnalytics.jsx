@@ -300,35 +300,23 @@ export default function AdminAnalytics() {
     setWarning("");
 
     try {
-      const now = new Date();
-
-      // ---- 1. Assinaturas ativas (subscriptions) ----
-      const [
-        { count: cTotal, error: e1 },
-        { count: cMonthly, error: e2 },
-        { count: cQuarterly, error: e3 },
-      ] = await Promise.all([
-        supabase.from("subscriptions").select("id", { count: "exact", head: true })
-          .eq("status", "active").gt("end_at", now.toISOString()),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true })
-          .eq("status", "active").gt("end_at", now.toISOString()).ilike("plan_name", "%Padrão%"),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true })
-          .eq("status", "active").gt("end_at", now.toISOString()).ilike("plan_name", "%Trimestral%"),
-      ]);
-      if (e1 || e2 || e3) throw new Error((e1 || e2 || e3).message);
-
-      const activeNow = safeNum(cTotal);
-      const activeMonthly = safeNum(cMonthly);
-      const activeQuarterly = safeNum(cQuarterly);
-      const mrrMonthlyVal = activeMonthly * PRICE_MONTHLY;
-      const mrrQuarterlyVal = (activeQuarterly * PRICE_QUARTERLY) / 3;
-      const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
-
-      // ---- 2-4. Métricas PIX via edge function (bypassa RLS com service_role) ----
+      // ---- 1-4. Ativos + métricas PIX/Stripe/manual via edge function ----
+      // (antes calculava "ativos" aqui direto no front com .gt('end_at', now),
+      // o que excluía quem tem end_at nulo (Stripe sem data fixa, normal) e
+      // classificava mensal/trimestral só por ilike no plan_name, perdendo
+      // toda linha antiga com plan_name nulo. Agora vem pronto e correto da
+      // function, com a mesma regra do gate de premium.)
       const { data: pix, error: pixErr } = await supabase.functions.invoke("admin-analytics", {
         body: { period_start: toISO(periodStart), period_end: toISO(periodEnd) },
       });
       if (pixErr) throw new Error(`admin-analytics: ${pixErr.message}`);
+
+      const activeNow = safeNum(pix.active_now);
+      const activeMonthly = safeNum(pix.active_now_monthly);
+      const activeQuarterly = safeNum(pix.active_now_quarterly);
+      const mrrMonthlyVal = activeMonthly * PRICE_MONTHLY;
+      const mrrQuarterlyVal = (activeQuarterly * PRICE_QUARTERLY) / 3;
+      const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
 
       setMetrics({
         active_now: activeNow,
