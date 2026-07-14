@@ -21,6 +21,7 @@ import {
   XCircle,
   KeyRound,
   Lock,
+  Phone,
 } from 'lucide-react';
 import {
   Dialog,
@@ -734,6 +735,24 @@ const AdminUsers = () => {
         <div className="flex items-center gap-2 text-sm">
           <span className="text-slate-500">Email:</span>
           <span className="font-medium break-all">{profile.email}</span>
+        </div>
+
+        <div className="flex items-center gap-2 text-sm">
+          <Phone size={14} className="text-slate-500" />
+          <span>{profile.phone || 'Telefone não informado'}</span>
+          {profile.phone ? (
+            <a
+              href={`https://wa.me/${(() => {
+                const digits = String(profile.phone).replace(/\D/g, '');
+                return digits.length <= 11 ? `55${digits}` : digits;
+              })()}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-400 hover:underline text-xs"
+            >
+              (WhatsApp)
+            </a>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 text-sm">
