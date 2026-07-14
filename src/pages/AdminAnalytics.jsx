@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
+import AdminTabs from "@/components/AdminTabs";
 import {
   BarChart3,
   Users,
@@ -523,6 +524,8 @@ export default function AdminAnalytics() {
       <Helmet>
         <title>Painel Administrativo | DoramasPlus</title>
       </Helmet>
+
+      <AdminTabs />
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Header */}

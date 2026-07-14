@@ -8,6 +8,7 @@
 // nessas linhas e mostra pro visitante como "Atendimento DoramasPlus".
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import AdminTabs from "@/components/AdminTabs";
 
 const POLL_MS = 15000; // polling de segurança (caso o realtime caia)
 const PREVIEW_LIMIT = 3000; // linhas recentes carregadas pra montar a lista de conversas
@@ -406,7 +407,7 @@ export default function AdminDora() {
 
   // ===== Estilos (mesmo padrão visual do AdminBotVendas) =====
   const S = {
-    page: { display: "flex", height: "100dvh", background: "#0b0b0b", color: "rgba(255,255,255,0.92)", position: "relative" },
+    page: { display: "flex", flex: 1, minHeight: 0, background: "#0b0b0b", color: "rgba(255,255,255,0.92)", position: "relative" },
     column: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%" },
     panelHeader: { padding: 12, borderBottom: "1px solid #2a2a2a", background: "rgba(255,255,255,0.02)" },
     headerTitleRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
@@ -628,13 +629,16 @@ export default function AdminDora() {
   );
 
   return (
-    <div style={S.page}>
-      {isMobile ? (selectedConv ? ChatPanel : ListPanel) : (
-        <>
-          {ListPanel}
-          {ChatPanel}
-        </>
-      )}
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+      <AdminTabs />
+      <div style={S.page}>
+        {isMobile ? (selectedConv ? ChatPanel : ListPanel) : (
+          <>
+            {ListPanel}
+            {ChatPanel}
+          </>
+        )}
+      </div>
     </div>
   );
 }

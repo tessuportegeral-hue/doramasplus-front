@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { supabase } from '@/lib/supabaseClient';
+import AdminTabs from '@/components/AdminTabs';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import {
@@ -760,6 +761,8 @@ const AdminUsers = () => {
       <Helmet>
         <title>Gerenciar Usuários – DoramasPlus</title>
       </Helmet>
+
+      <AdminTabs />
 
       <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8">
         <header className="relative z-10 flex flex-wrap justify-between items-center gap-3 mb-8 max-w-7xl mx-auto">

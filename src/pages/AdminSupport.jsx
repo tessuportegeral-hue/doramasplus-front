@@ -1,6 +1,7 @@
 // src/pages/AdminSupport.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, whatsappSupabase } from "@/lib/supabaseClient";
+import AdminTabs from "@/components/AdminTabs";
 
 export default function AdminSupport() {
   const [conversations, setConversations] = useState([]);
@@ -679,7 +680,8 @@ export default function AdminSupport() {
   const S = {
     page: {
       display: "flex",
-      height: "100dvh",
+      flex: 1,
+      minHeight: 0,
       background: "#0b0b0b",
       color: "rgba(255,255,255,0.92)",
       position: "relative",
@@ -1494,21 +1496,24 @@ export default function AdminSupport() {
 
   // ===== Layout responsivo =====
   return (
-    <div style={S.page}>
-      {isMobile ? (
-        selected ? (
-          ChatPanel
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+      <AdminTabs />
+      <div style={S.page}>
+        {isMobile ? (
+          selected ? (
+            ChatPanel
+          ) : (
+            ListPanel
+          )
         ) : (
-          ListPanel
-        )
-      ) : (
-        <>
-          {ListPanel}
-          {ChatPanel}
-        </>
-      )}
+          <>
+            {ListPanel}
+            {ChatPanel}
+          </>
+        )}
 
-      {ViewerModal}
+        {ViewerModal}
+      </div>
     </div>
   );
 }
