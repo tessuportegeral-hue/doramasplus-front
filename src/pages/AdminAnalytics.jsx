@@ -187,16 +187,15 @@ export default function AdminAnalytics() {
       const valid = s && e && s <= e;
 
       if (!valid) {
-        // fallback (este mês)
+        // fallback (este mês até hoje)
         const s2 = startOfMonth(now);
-        const e2 = endOfMonth(now);
         return {
           periodStart: s2,
-          periodEnd: e2,
-          periodLabel: `Período: ${toDateInputValue(s2).split("-").reverse().join("/")} até ${toDateInputValue(e2)
+          periodEnd: now,
+          periodLabel: `Período: ${toDateInputValue(s2).split("-").reverse().join("/")} até ${toDateInputValue(now)
             .split("-")
             .reverse()
-            .join("/")}`,
+            .join("/")} (mês em andamento)`,
         };
       }
 
@@ -213,16 +212,17 @@ export default function AdminAnalytics() {
       };
     }
 
-    // this_month (default)
+    // this_month (default) — vai do dia 1 até HOJE, não até o fim do mês
+    // (mês ainda em andamento; mostrar "até dia 30" quando só estamos no dia
+    // 14 confundia e não representava os dados de verdade).
     const s = startOfMonth(now);
-    const e = endOfMonth(now);
     return {
       periodStart: s,
-      periodEnd: e,
-      periodLabel: `Período: ${toDateInputValue(s).split("-").reverse().join("/")} até ${toDateInputValue(e)
+      periodEnd: now,
+      periodLabel: `Período: ${toDateInputValue(s).split("-").reverse().join("/")} até ${toDateInputValue(now)
         .split("-")
         .reverse()
-        .join("/")}`,
+        .join("/")} (mês em andamento)`,
     };
   }, [quickPeriod, startDateStr, endDateStr]);
 
@@ -265,30 +265,35 @@ export default function AdminAnalytics() {
         };
       }
     }
-    // prev_month (default): mês de calendário imediatamente anterior ao início do período principal
-    const ref = addMonths(periodStart, -1);
-    const s = startOfMonth(ref);
-    const e = endOfMonth(ref);
+    // prev_month (default): mesmo intervalo de dias do período principal, um mês
+    // antes. Ex.: período principal 01/07 até 14/07 (mês em andamento) compara
+    // com 01/06 até 14/06 — mesma quantidade de dias, não o mês inteiro passado
+    // (comparar 14 dias com 30 dias dava número torto e confuso).
+    const s = startOfMonth(addMonths(periodStart, -1));
+    const durationMs = periodEnd.getTime() - periodStart.getTime();
+    const e = new Date(s.getTime() + durationMs);
     return {
       compareStart: s,
       compareEnd: e,
       compareLabel: `${toDateInputValue(s).split("-").reverse().join("/")} até ${toDateInputValue(e)
         .split("-")
         .reverse()
-        .join("/")}`,
+        .join("/")} (mesma quantidade de dias, um mês antes)`,
     };
-  }, [comparePeriod, compareStartDateStr, compareEndDateStr, periodStart]);
+  }, [comparePeriod, compareStartDateStr, compareEndDateStr, periodStart, periodEnd]);
 
   // Inicializa inputs do período de comparação quando muda o modo
   useEffect(() => {
     if (comparePeriod === "prev_month") {
-      const ref = addMonths(periodStart, -1);
-      setCompareStartDateStr(toDateInputValue(startOfMonth(ref)));
-      setCompareEndDateStr(toDateInputValue(endOfMonth(ref)));
+      const s = startOfMonth(addMonths(periodStart, -1));
+      const durationMs = periodEnd.getTime() - periodStart.getTime();
+      const e = new Date(s.getTime() + durationMs);
+      setCompareStartDateStr(toDateInputValue(s));
+      setCompareEndDateStr(toDateInputValue(e));
     }
     // custom não mexe
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comparePeriod, periodStart]);
+  }, [comparePeriod, periodStart, periodEnd]);
 
   // ✅ Gate admin (mais seguro)
   useEffect(() => {
