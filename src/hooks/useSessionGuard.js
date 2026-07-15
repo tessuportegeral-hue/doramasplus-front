@@ -84,7 +84,19 @@ const useSessionGuard = () => {
           .maybeSingle();
 
         if (!isMountedRef.current) return;
-        if (error) return; // fail-open
+        if (error) {
+          // Mesmo problema do SupabaseAuthContext: se o token de refresh já
+          // morreu (sessão derrubada há um tempo, aba nunca recarregada), um
+          // "tenta de novo em 8s pra sempre" vira retry infinito. Confere se
+          // a sessão realmente morreu antes de desistir.
+          const { data: authData } = await supabase.auth.getUser();
+          if (!isMountedRef.current) return;
+          if (!authData?.user) {
+            console.warn("[useSessionGuard] sessão morta no player → desconectando");
+            handleKick();
+          }
+          return;
+        }
         if (!data) return; // sem registro, aguarda
 
         const bankVersion = String(data.session_version || "");

@@ -224,7 +224,21 @@ export const AuthProvider = ({ children }) => {
         .eq("user_id", uid)
         .maybeSingle();
 
-      if (error) { console.error("[single-session] validateSession error:", error); return true; }
+      if (error) {
+        console.error("[single-session] validateSession error:", error);
+        // Antes disso, um erro aqui sempre era tratado como "tudo bem,
+        // tenta de novo em 5s" — pra sempre. Se o token de refresh já
+        // morreu (ex.: sessão derrubada por outro device faz tempo e a
+        // aba nunca foi recarregada), o Supabase autoRefreshToken fica
+        // tentando renovar em loop e essa checagem vira um retry infinito
+        // que só gera erro. Confere de vez se a sessão realmente morreu.
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) {
+          console.warn("[single-session] sessão morta (refresh falhando) → parando o polling");
+          return false;
+        }
+        return true;
+      }
       if (!data) {
         // Sem registro no banco: grava a nossa versão. Confere antes que o
         // JWT ainda é desse uid (mesma corrida de troca-de-conta descrita
