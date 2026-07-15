@@ -62,17 +62,34 @@ export default function DoramaDetail() {
 
         const normalizedSlug = decodeURIComponent(slugFromUrl).trim().toLowerCase();
 
+        // maybeSingle (não single): com 0 linhas, single() retorna ERRO
+        // (PGRST116) em vez de data:null, o que pulava a checagem de
+        // slug_redirects logo abaixo e caía direto em "não encontrado".
         const { data, error: queryError } = await supabase
           .from('doramas')
           .select('*')
           .eq('slug', normalizedSlug)
-          .single();
+          .maybeSingle();
 
         if (queryError) {
           console.error('Supabase error:', queryError);
           setError(true);
         } else if (!data) {
           console.warn('No dorama found for slug:', normalizedSlug);
+          // Fallback client-side: em produção o middleware.js já resolve isso
+          // com 301 real antes do React nem carregar, mas em dev local
+          // (`vite dev` não roda o middleware do Vercel) e como defesa em
+          // profundidade, confere aqui também se é um slug antigo renomeado.
+          const { data: redirectRow } = await supabase
+            .from('slug_redirects')
+            .select('new_slug')
+            .eq('old_slug', normalizedSlug)
+            .maybeSingle();
+
+          if (redirectRow?.new_slug) {
+            navigate(`/dorama/${redirectRow.new_slug}`, { replace: true });
+            return;
+          }
           setError(true);
         } else {
           setDorama(data);
@@ -121,6 +138,9 @@ export default function DoramaDetail() {
   if (error || !dorama) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white gap-4 p-4">
+        <Helmet>
+          <meta name="robots" content="noindex" />
+        </Helmet>
         <h2 className="text-xl font-semibold text-red-400">Dorama não encontrado</h2>
         <p className="text-slate-400 text-center max-w-md">
           Não foi possível encontrar o dorama "{slugFromUrl}". Ele pode ter sido removido ou o link está incorreto.
