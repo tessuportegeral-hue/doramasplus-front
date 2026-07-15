@@ -90,8 +90,30 @@ export default function DoramaDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
-        <div className="animate-pulse">Carregando dorama...</div>
+      <div className="min-h-screen bg-slate-950 text-slate-100 pb-12 animate-pulse">
+        <div className="container mx-auto px-4 py-6">
+          <div className="h-9 w-40 bg-slate-900 rounded mb-4" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
+            <div className="md:col-span-1 space-y-6">
+              <div className="aspect-[2/3] rounded-2xl border border-slate-800 max-w-sm mx-auto bg-slate-900" />
+              <div className="h-14 w-full bg-slate-900 rounded-md" />
+            </div>
+
+            <div className="md:col-span-2 space-y-8">
+              <div className="space-y-2">
+                <div className="h-9 w-3/4 bg-slate-900 rounded" />
+                <div className="h-5 w-1/2 bg-slate-900 rounded" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-slate-900 rounded" />
+                <div className="h-4 w-full bg-slate-900 rounded" />
+                <div className="h-4 w-2/3 bg-slate-900 rounded" />
+              </div>
+              <div className="h-40 w-full bg-slate-900/50 rounded-xl border border-slate-800/50" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -137,11 +159,14 @@ export default function DoramaDetail() {
             {/* Left Column: Poster and Watch Button */}
             <div className="md:col-span-1 space-y-6">
               {dorama.cover_url && (
-                <div className="rounded-2xl overflow-hidden border border-slate-800 shadow-lg max-w-sm mx-auto">
+                <div className="aspect-[2/3] rounded-2xl overflow-hidden border border-slate-800 shadow-lg max-w-sm mx-auto bg-slate-900">
                   <img
                     src={dorama.cover_url}
                     alt={`Capa de ${dorama.title}`}
-                    className="w-full h-auto object-cover"
+                    width={400}
+                    height={600}
+                    fetchpriority="high"
+                    className="w-full h-full object-cover"
                   />
                 </div>
               )}
