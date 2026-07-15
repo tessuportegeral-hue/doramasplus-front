@@ -62,6 +62,17 @@ const Login = () => {
   const registerSessionImmediate = async (userId) => {
     const newVersion = crypto.randomUUID();
 
+    // Confere que o JWT atual é realmente desse userId antes de escrever.
+    // Sem isso, uma troca de conta na mesma aba (ou uma chamada que ficou
+    // pendente enquanto o usuário trocava) pode tentar gravar user_id de
+    // uma sessão que não é mais a autenticada, e o Postgres rejeita com
+    // RLS 42501 (o token já não bate mais com o user_id enviado).
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user?.id !== userId) {
+      console.warn("[login] registerSession: JWT não confere com userId, pulando write");
+      return null;
+    }
+
     // Grava no banco (upsert = sobrescreve o device antigo)
     const { error } = await supabase
       .from("active_sessions")

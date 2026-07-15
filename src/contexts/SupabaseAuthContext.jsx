@@ -175,6 +175,13 @@ export const AuthProvider = ({ children }) => {
         return true;
       }
 
+      // Confere que o JWT atual ainda é desse uid antes de escrever — entre
+      // o select acima e aqui é assíncrono, e se o usuário trocou de conta
+      // (ou deslogou) nesse meio-tempo o token já não bate mais, e o
+      // Postgres rejeitaria com RLS 42501.
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id !== uid) return true;
+
       // Grava nossa versão (caso banco esteja vazio)
       const { error } = await supabase
         .from("active_sessions")
@@ -219,13 +226,18 @@ export const AuthProvider = ({ children }) => {
 
       if (error) { console.error("[single-session] validateSession error:", error); return true; }
       if (!data) {
-        // Sem registro no banco: grava a nossa versão
-        await supabase
-          .from("active_sessions")
-          .upsert(
-            { user_id: uid, session_version: localVersionRef.current, updated_at: new Date().toISOString() },
-            { onConflict: "user_id" }
-          );
+        // Sem registro no banco: grava a nossa versão. Confere antes que o
+        // JWT ainda é desse uid (mesma corrida de troca-de-conta descrita
+        // em startSession — o select acima é assíncrono).
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.id === uid) {
+          await supabase
+            .from("active_sessions")
+            .upsert(
+              { user_id: uid, session_version: localVersionRef.current, updated_at: new Date().toISOString() },
+              { onConflict: "user_id" }
+            );
+        }
         return true;
       }
 
