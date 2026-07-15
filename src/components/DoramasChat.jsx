@@ -83,6 +83,51 @@ export default function DoramasChat() {
     };
   }, []);
 
+  // Mensagens de admin criadas fora de uma sessão ao vivo (ex.: broadcast de
+  // desculpas) não chegam pelo poll acima, porque esse poll é por session_id
+  // e cada carregamento de página gera um session_id novo. Essa checagem usa
+  // a conta logada (user_id) pra entregar isso assim que o usuário volta.
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkRecovery = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const resp = await fetch(
+          "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-recovery-check",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+          }
+        );
+        const data = await resp.json();
+        const msgs = Array.isArray(data?.messages) ? data.messages : [];
+        if (cancelled || !msgs.length) return;
+
+        setMessages((prev) => [
+          ...prev,
+          ...msgs.map((m) => ({ role: "assistant", content: m.content, fromAdmin: true })),
+        ]);
+        setOpen((wasOpen) => {
+          if (!wasOpen) setHasUnreadAdmin(true);
+          return wasOpen;
+        });
+      } catch {
+        // silencioso — sem problema tentar de novo na próxima visita
+      }
+    };
+
+    checkRecovery();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Permite abrir o chat de qualquer lugar do site (ex: banner da home)
   useEffect(() => {
     if (typeof window === "undefined") return;
