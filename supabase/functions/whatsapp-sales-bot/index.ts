@@ -37,6 +37,15 @@ const SERIES: { name: string; link: string }[] = [
   { name: "No Aniversario do filho ela perdeu Tudo", link: "https://player.mediadelivery.net/play/688480/e2ed5e87-f729-4c33-afbb-de19091cdfdf" },
   { name: "Amor a Mesa", link: "https://player.mediadelivery.net/play/688480/1dcf0ccf-2ec7-435d-938f-01d7842e2f5a" },
   { name: "De Chefona a Aluna: Vinganca na Sala", link: "https://player.mediadelivery.net/play/688480/ecf9490a-ffc8-47f5-86cb-c3dfd405206e" },
+  { name: "Prefiro Morrer a te amar de Novo", link: "https://player.mediadelivery.net/play/688480/9c52b33b-1b80-46a0-b98f-3f040fe9db69" },
+  { name: "Jogo do Destino", link: "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035" },
+  { name: "Sai da minha vida meu Primeiro amor Acabou", link: "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040" },
+  { name: "Fiquei com o bebe e o coracao do bilionario", link: "https://player.mediadelivery.net/play/688480/e6532d6c-5c61-428d-be0a-a27a1ca781b1" },
+  { name: "Ossos marcados pela dor", link: "https://player.mediadelivery.net/play/688480/15ca6b01-6ba5-4206-b9bf-fb28544227c0" },
+  { name: "Seu marido e o rei da Tecnologia", link: "https://player.mediadelivery.net/play/688480/4548ae95-90fb-4a96-b047-3860ffb94ff6" },
+  { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
+  { name: "Presa pelo Odio, Livre pelo Amor", link: "https://player.mediadelivery.net/play/688480/78170734-2461-4c1c-98ed-d1088abaddb2" },
+  { name: "Tirar as notas, Acertar as Contas", link: "https://player.mediadelivery.net/play/688480/0e5d9317-4218-4b6f-b616-ebd2cc80dd5f" },
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
@@ -50,6 +59,16 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23859931862560792": "De Chefona a Aluna: Vinganca na Sala",
   "23859931862550792": "De Chefona a Aluna: Vinganca na Sala",
   "23859931862530792": "De Chefona a Aluna: Vinganca na Sala",
+  // Conta 1499 - campanhas anteriores
+  "23859058018740792": "Jogo do Destino",
+  "23859058018750792": "Prefiro Morrer a te amar de Novo",
+  "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
+  "23859254996260792": "Fiquei com o bebe e o coracao do bilionario",
+  "23859254996240792": "Ossos marcados pela dor",
+  "23859254996250792": "Seu marido e o rei da Tecnologia",
+  "23859373371630792": "Tirar as notas, Acertar as Contas",
+  "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
+  "23859373371660792": "Prefiro Morrer a te amar de Novo",
   // Conta 8218 - campanha jul/2026
   "120248362051280786": "Luz apos a Traicao",
   "120248362051240786": "Amor a Mesa",
@@ -60,8 +79,25 @@ const AD_SERIES_MAP: Record<string, string> = {
   "120248362671150786": "Para Sempre ao seu Lado",
   "120248362671160786": "De Chefona a Aluna: Vinganca na Sala",
   "120248362671130786": "No Aniversario do filho ela perdeu Tudo",
+  // Conta 8218 - campanhas anteriores
+  "120247300716450786": "Ossos marcados pela dor",
+  "120247300716460786": "Seu marido e o rei da Tecnologia",
+  "120247300716470786": "Fiquei com o bebe e o coracao do bilionario",
+  "120247501781450786": "Seu marido e o rei da Tecnologia",
+  "120247501781460786": "Fiquei com o bebe e o coracao do bilionario",
+  "120247501781480786": "Ossos marcados pela dor",
+  "120247509416850786": "Tirar as notas, Acertar as Contas",
+  "120247509416860786": "Presa pelo Odio, Livre pelo Amor",
+  "120247509416870786": "Prefiro Morrer a te amar de Novo",
 };
-const CAMPAIGN_SERIES_MAP: Record<string, string> = {};
+const CAMPAIGN_SERIES_MAP: Record<string, string> = {
+  "23858872800390792": "Quando o Destino assinou por Mim",
+  "23858872800400792": "Quando o Destino assinou por Mim",
+  "23858872800410792": "Quando o Destino assinou por Mim",
+  "23858925078670792": "Quando o Destino assinou por Mim",
+  "23858925078680792": "Quando o Destino assinou por Mim",
+  "23858925078690792": "Quando o Destino assinou por Mim",
+};
 
 function norm(s: string) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim(); }
 function findSeries(name: string) {
@@ -1048,7 +1084,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v121 (meta capi await fix)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v122 (15 series + 42 ad ids)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
