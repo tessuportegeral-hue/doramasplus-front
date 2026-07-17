@@ -22,14 +22,21 @@
 // (igual à `free-trial`), senão o gateway do Supabase bloqueia o anônimo
 // antes do código rodar. O auth é feito DENTRO da função.
 //
+// === ÁUDIO ALTERNATIVO (dublado/legendado) ===
+// Alguns doramas têm uma segunda versão de áudio cadastrada nas colunas
+// `alt_bunny_url` / `alt_bunny_stream_url` (o oposto do `language` padrão
+// do dorama). O client manda `body.audio === 'alt'` pra pedir essa versão.
+// Se não existir alt cadastrado, cai de volta pra versão padrão (nunca
+// quebra por falta de alt).
+//
 // Fluxo:
 //   1. Tenta resolver o usuário via JWT (opcional)
 //   2. Autoriza: usuário autenticado (gate de teste) OU trial por IP
 //   3. (TODO) Confirma assinatura premium ativa (caminho autenticado)
 //   4. Busca a URL crua no banco via service_role
-//   5. Escolhe entre normal/iphone
+//   5. Escolhe entre normal/iphone E entre padrão/alt
 //   6. Assina com a chave do Bunny apropriada (CDN vs Stream)
-//   7. Devolve { url, expiresAt, playerType, mode }
+//   7. Devolve { url, expiresAt, playerType, mode, audio }
 //
 // Deploy: supabase functions deploy get-stream-url --no-verify-jwt
 //
@@ -231,6 +238,7 @@ Deno.serve(async (req: Request) => {
     const doramaId = String(body?.dorama_id || '').trim()
     const mode = body?.mode === 'iphone' ? 'iphone' : 'normal'
     const freeTrial = body?.free_trial === true
+    const wantsAlt = body?.audio === 'alt'
     if (!doramaId) {
       return jsonResp(400, { error: 'dorama_id required' })
     }
@@ -273,12 +281,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4) Fetch dorama (service_role bypassa RLS)
-    // IMPORTANTE: a tabela `doramas` só tem bunny_url e bunny_stream_url.
+    // IMPORTANTE: a tabela `doramas` tem bunny_url/bunny_stream_url (padrão)
+    // e alt_bunny_url/alt_bunny_stream_url (áudio alternativo, opcional).
     // NÃO incluir bunny_embed_url no select — coluna não existe no schema
     // e PostgREST retorna erro, derrubando a função pra todos.
     const { data: dorama, error: dorErr } = await admin
       .from('doramas')
-      .select('id, bunny_url, bunny_stream_url')
+      .select('id, bunny_url, bunny_stream_url, alt_bunny_url, alt_bunny_stream_url')
       .eq('id', doramaId)
       .single()
 
@@ -286,9 +295,26 @@ Deno.serve(async (req: Request) => {
       return jsonResp(404, { error: 'Dorama not found' })
     }
 
-    // 5) Escolhe URL conforme mode — mesma lógica do useMemo no client
-    const normal = (dorama.bunny_url || dorama.bunny_stream_url || '').trim()
-    const iphone = (dorama.bunny_stream_url || dorama.bunny_url || '').trim()
+    // 5) Escolhe URL conforme mode e áudio (padrão vs alternativo) — mesma
+    // lógica do useMemo no client. Se pediram 'alt' mas o dorama não tem
+    // áudio alternativo cadastrado, cai pro padrão sem erro.
+    const hasAlt = !!(
+      (dorama.alt_bunny_url && String(dorama.alt_bunny_url).trim()) ||
+      (dorama.alt_bunny_stream_url && String(dorama.alt_bunny_stream_url).trim())
+    )
+    const useAlt = wantsAlt && hasAlt
+    const audio: 'primary' | 'alt' = useAlt ? 'alt' : 'primary'
+
+    const primaryBunnyUrl = (dorama.bunny_url || '').trim()
+    const primaryStreamUrl = (dorama.bunny_stream_url || '').trim()
+    const altBunnyUrl = (dorama.alt_bunny_url || '').trim()
+    const altStreamUrl = (dorama.alt_bunny_stream_url || '').trim()
+
+    const bunnyUrl = useAlt ? (altBunnyUrl || primaryBunnyUrl) : primaryBunnyUrl
+    const streamUrl = useAlt ? (altStreamUrl || primaryStreamUrl) : primaryStreamUrl
+
+    const normal = (bunnyUrl || streamUrl || '').trim()
+    const iphone = (streamUrl || bunnyUrl || '').trim()
     const rawUrl = mode === 'iphone' ? iphone : normal
 
     if (!rawUrl) {
@@ -340,6 +366,7 @@ Deno.serve(async (req: Request) => {
       expiresAt,
       playerType: detectPlayerType(url),
       mode,
+      audio,
     })
   } catch (err) {
     console.error('[get-stream-url] unexpected error:', err)

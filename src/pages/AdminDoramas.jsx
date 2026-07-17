@@ -105,6 +105,8 @@ export default function AdminDoramas() {
     banner_url: '',
     bunny_url: '',          // ✅ STORE (não mexer)
     bunny_stream_url: '',   // ✅ iPhone (Stream)
+    alt_bunny_url: '',        // ✅ Vídeo do áudio alternativo (STORE)
+    alt_bunny_stream_url: '', // ✅ Vídeo do áudio alternativo (iPhone/Stream)
     is_exclusive: false,
     is_new: false,
     is_featured: false,
@@ -277,10 +279,10 @@ export default function AdminDoramas() {
     const newValue = type === 'checkbox' ? checked : value;
 
     // ✅ Só normaliza o STREAM do iPhone. STORE fica intacto.
-    if (name === 'bunny_stream_url') {
+    if (name === 'bunny_stream_url' || name === 'alt_bunny_stream_url') {
       setFormData((prev) => ({
         ...prev,
-        bunny_stream_url: normalizeStreamUrl(value),
+        [name]: normalizeStreamUrl(value),
       }));
       return;
     }
@@ -319,6 +321,8 @@ export default function AdminDoramas() {
       banner_url: '',
       bunny_url: '',
       bunny_stream_url: '',
+      alt_bunny_url: '',
+      alt_bunny_stream_url: '',
       is_exclusive: false,
       is_new: false,
       is_featured: false,
@@ -382,6 +386,10 @@ export default function AdminDoramas() {
         banner_url: finalBannerUrl,
         bunny_url: formData.bunny_url, // ✅ STORE
         bunny_stream_url: normalizeStreamUrl(formData.bunny_stream_url), // ✅ iPhone
+        alt_bunny_url: formData.alt_bunny_url || null, // ✅ áudio alternativo (STORE)
+        alt_bunny_stream_url: formData.alt_bunny_stream_url
+          ? normalizeStreamUrl(formData.alt_bunny_stream_url)
+          : null, // ✅ áudio alternativo (iPhone)
         is_exclusive: formData.is_exclusive,
         is_new: formData.is_new,
         is_featured: formData.is_featured,
@@ -462,6 +470,8 @@ export default function AdminDoramas() {
       banner_url: dorama.banner_url || '',
       bunny_url: dorama.bunny_url || '',
       bunny_stream_url: normalizeStreamUrl(dorama.bunny_stream_url || ''),
+      alt_bunny_url: dorama.alt_bunny_url || '',
+      alt_bunny_stream_url: normalizeStreamUrl(dorama.alt_bunny_stream_url || ''),
       is_exclusive: dorama.is_exclusive || false,
       is_new: dorama.is_new || false,
       is_featured: dorama.is_featured || false,
@@ -939,6 +949,42 @@ export default function AdminDoramas() {
                     <p className="text-[11px] text-slate-500 mt-1">
                       Se vier com <b>/play/</b>, eu converto para <b>/embed/</b> automaticamente.
                     </p>
+                  </div>
+
+                  {/* ✅ ÁUDIO ALTERNATIVO (dublado/legendado no mesmo dorama) */}
+                  <div className="border border-dashed border-slate-800 rounded-lg p-4 space-y-4">
+                    <p className="text-sm font-medium text-purple-300">
+                      Áudio alternativo ({formData.language === 'dublado' ? 'Legendado' : 'Dublado'}) — opcional
+                    </p>
+                    <p className="text-[11px] text-slate-500 -mt-3">
+                      Se a dublagem tiver problema, cadastre aqui a versão {formData.language === 'dublado' ? 'legendada' : 'dublada'} do mesmo dorama. Aparece um botão pra pessoa trocar de áudio, sem duplicar o card no catálogo.
+                    </p>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">
+                        Bunny URL alternativo (STORE)
+                      </label>
+                      <input
+                        name="alt_bunny_url"
+                        value={formData.alt_bunny_url}
+                        onChange={handleInputChange}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                        placeholder="https://sua-pullzone.b-cdn.net/video-alt.mp4"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">
+                        Bunny Stream URL alternativo (iPhone)
+                      </label>
+                      <input
+                        name="alt_bunny_stream_url"
+                        value={formData.alt_bunny_stream_url}
+                        onChange={handleInputChange}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                        placeholder="Cole /play/ que vira /embed/ sozinho"
+                      />
+                    </div>
                   </div>
 
                   {/* ✅ SINOPSE */}

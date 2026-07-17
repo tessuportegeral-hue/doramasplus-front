@@ -37,6 +37,10 @@ export default function DoramaWatch() {
   const [loadingDorama, setLoadingDorama] = useState(true);
   const [error, setError] = useState(false);
 
+  // ✅ Áudio alternativo (dublado/legendado no mesmo dorama)
+  const [audioTrack, setAudioTrack] = useState("primary"); // "primary" | "alt"
+  const pendingSeekRef = useRef(0); // segundos a retomar após trocar de áudio
+
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
 
@@ -132,6 +136,7 @@ export default function DoramaWatch() {
     const fetchDorama = async () => {
       setLoadingDorama(true);
       setError(false);
+      setAudioTrack("primary");
 
       try {
         if (!slugFromUrl) {
@@ -197,6 +202,7 @@ export default function DoramaWatch() {
             dorama_id: dorama.id,
             mode: isIphoneMode ? "iphone" : "normal",
             free_trial: !user?.id,
+            audio: audioTrack,
           },
         }
       );
@@ -209,7 +215,7 @@ export default function DoramaWatch() {
       setSignedVideoUrl(data.url);
     })();
     return () => { cancelled = true; };
-  }, [useStreamToken, dorama?.id, isIphoneMode, user?.id, isAuthenticated, ipTrialAllowed, ipTrialExpired]);
+  }, [useStreamToken, dorama?.id, isIphoneMode, user?.id, isAuthenticated, ipTrialAllowed, ipTrialExpired, audioTrack]);
 
   // ✅ Escolhe URL (normal vs iphone)
   const videoUrl = useMemo(() => {
@@ -219,14 +225,42 @@ export default function DoramaWatch() {
     if (!dorama) return "";
 
     const embed = (dorama.bunny_embed_url || "").trim();
+    const useAlt = audioTrack === "alt" && (dorama.alt_bunny_url || dorama.alt_bunny_stream_url);
 
-    const normal = (dorama.bunny_url || dorama.bunny_stream_url || embed || "").trim();
-    const iphone = (dorama.bunny_stream_url || dorama.bunny_url || embed || "").trim();
+    const bunnyUrl = useAlt ? (dorama.alt_bunny_url || dorama.bunny_url) : dorama.bunny_url;
+    const streamUrl = useAlt ? (dorama.alt_bunny_stream_url || dorama.bunny_stream_url) : dorama.bunny_stream_url;
+
+    const normal = (bunnyUrl || streamUrl || embed || "").trim();
+    const iphone = (streamUrl || bunnyUrl || embed || "").trim();
 
     return isIphoneMode ? iphone : normal;
-  }, [useStreamToken, signedVideoUrl, dorama, isIphoneMode]);
+  }, [useStreamToken, signedVideoUrl, dorama, isIphoneMode, audioTrack]);
 
-  const hasStream = !!(dorama?.bunny_stream_url && String(dorama.bunny_stream_url).trim());
+  // ✅ Áudio alternativo (dublado/legendado) disponível pra este dorama?
+  const hasAltAudio = !!(
+    (dorama?.alt_bunny_url && String(dorama.alt_bunny_url).trim()) ||
+    (dorama?.alt_bunny_stream_url && String(dorama.alt_bunny_stream_url).trim())
+  );
+
+  const primaryAudioLabel = dorama?.language === "dublado" ? "Dublado" : "Legendado";
+  const altAudioLabel = dorama?.language === "dublado" ? "Legendado" : "Dublado";
+
+  const handleSwitchAudio = (target) => {
+    if (target === audioTrack) return;
+    const current = videoRef.current?.currentTime || latestTimeRef.current || 0;
+    pendingSeekRef.current = current;
+    if (current >= 10) {
+      iframeLocalCounterRef.current = Math.floor(current);
+      setIframeResumeT(current);
+    }
+    setAudioTrack(target);
+  };
+
+  const hasStream = (() => {
+    const useAlt = audioTrack === "alt" && hasAltAudio;
+    const streamUrl = useAlt ? (dorama?.alt_bunny_stream_url || dorama?.bunny_stream_url) : dorama?.bunny_stream_url;
+    return !!(streamUrl && String(streamUrl).trim());
+  })();
 
   // ✅ tipo do player
   const playerType = useMemo(() => {
@@ -614,6 +648,18 @@ export default function DoramaWatch() {
     };
 
     const onLoadedMetadata = () => {
+      // ✅ Troca de áudio (dublado/legendado): retoma de onde a pessoa
+      // estava, em vez de aplicar o resume salvo no banco (ou zerar).
+      if (pendingSeekRef.current > 0) {
+        const seekTo = pendingSeekRef.current;
+        pendingSeekRef.current = 0;
+        try {
+          el.currentTime = seekTo;
+          hasAppliedResumeRef.current = true;
+          el.play().catch(() => {});
+        } catch {}
+        return;
+      }
       applyResume();
     };
 
@@ -843,6 +889,34 @@ export default function DoramaWatch() {
                     <span className="text-slate-300/90">Crie sua conta para continuar depois</span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ✅ TOGGLE DE ÁUDIO: dublado/legendado (só quando o dorama tem os dois) */}
+            {hasAltAudio && (
+              <div className="px-3 sm:px-0 mb-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchAudio("primary")}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    audioTrack === "primary"
+                      ? "bg-purple-600 border-purple-500 text-white"
+                      : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {primaryAudioLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchAudio("alt")}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    audioTrack === "alt"
+                      ? "bg-purple-600 border-purple-500 text-white"
+                      : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {altAudioLabel}
+                </button>
               </div>
             )}
 
