@@ -557,6 +557,16 @@ function detectPixProblem(msg: string): boolean {
     "dando erro", "deu erro", "deu problema",
     "nao aceita", "nao aceitou", "nao passou",
     "nao consigo", "n consigo",
+    // frases de "nao vai" / rejeicao do codigo
+    "nao vai", "essa nao vai", "esse nao vai", "nao ta indo", "vai nao",
+    "nao funciona essa", "esse nao funciona", "essa nao funciona",
+    "nao to conseguindo usar", "nao consigo usar", "nao usa",
+    "nao roda", "nao abre", "nao abriu",
+    "ta dando invalido", "diz que e invalido", "diz invalido",
+    "nao reconhece esse", "nao aceita esse", "nao aceita essa",
+    "esse codigo nao", "essa chave nao", "codigo nao funciona",
+    "chave nao funciona", "nao tá indo", "nao ta aceitando",
+    "nao ta deixando", "nao deixa", "nao to conseguindo pagar",
   ];
 
   return frasesIsoladas.some(f => m.includes(f));
@@ -1084,7 +1094,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v122 (15 series + 42 ad ids)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v123 (15 series + 42 ad ids + pix problem detection)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
