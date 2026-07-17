@@ -951,41 +951,43 @@ export default function AdminDoramas() {
                     </p>
                   </div>
 
-                  {/* ✅ ÁUDIO ALTERNATIVO (dublado/legendado no mesmo dorama) */}
-                  <div className="border border-dashed border-slate-800 rounded-lg p-4 space-y-4">
-                    <p className="text-sm font-medium text-purple-300">
-                      Áudio alternativo ({formData.language === 'dublado' ? 'Legendado' : 'Dublado'}) — opcional
-                    </p>
-                    <p className="text-[11px] text-slate-500 -mt-3">
-                      Se a dublagem tiver problema, cadastre aqui a versão {formData.language === 'dublado' ? 'legendada' : 'dublada'} do mesmo dorama. Aparece um botão pra pessoa trocar de áudio, sem duplicar o card no catálogo.
-                    </p>
+                  {/* ✅ VÍDEO LEGENDADO (opcional, só pra doramas dublados) */}
+                  {formData.language === 'dublado' && (
+                    <div className="border border-dashed border-slate-800 rounded-lg p-4 space-y-4">
+                      <p className="text-sm font-medium text-purple-300">
+                        Vídeo Legendado — opcional
+                      </p>
+                      <p className="text-[11px] text-slate-500 -mt-3">
+                        Se alguém reclamar da dublagem, cole aqui o link do legendado deste mesmo dorama. Aparece um botão "Dublado / Legendado" pra pessoa trocar, sem duplicar o card no catálogo.
+                      </p>
 
-                    <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">
-                        Bunny URL alternativo (STORE)
-                      </label>
-                      <input
-                        name="alt_bunny_url"
-                        value={formData.alt_bunny_url}
-                        onChange={handleInputChange}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
-                        placeholder="https://sua-pullzone.b-cdn.net/video-alt.mp4"
-                      />
-                    </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">
+                          Bunny URL Legendado (STORE)
+                        </label>
+                        <input
+                          name="alt_bunny_url"
+                          value={formData.alt_bunny_url}
+                          onChange={handleInputChange}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                          placeholder="https://sua-pullzone.b-cdn.net/video-legendado.mp4"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">
-                        Bunny Stream URL alternativo (iPhone)
-                      </label>
-                      <input
-                        name="alt_bunny_stream_url"
-                        value={formData.alt_bunny_stream_url}
-                        onChange={handleInputChange}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
-                        placeholder="Cole /play/ que vira /embed/ sozinho"
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">
+                          Bunny Stream URL Legendado (iPhone)
+                        </label>
+                        <input
+                          name="alt_bunny_stream_url"
+                          value={formData.alt_bunny_stream_url}
+                          onChange={handleInputChange}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                          placeholder="Cole /play/ que vira /embed/ sozinho"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* ✅ SINOPSE */}
                   <div>

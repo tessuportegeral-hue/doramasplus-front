@@ -242,8 +242,10 @@ export default function DoramaWatch() {
     (dorama?.alt_bunny_stream_url && String(dorama.alt_bunny_stream_url).trim())
   );
 
+  // ✅ O áudio alternativo é sempre a versão legendada (fallback pra quando
+  // a dublagem tem problema) — não um "oposto" genérico do language.
   const primaryAudioLabel = dorama?.language === "dublado" ? "Dublado" : "Legendado";
-  const altAudioLabel = dorama?.language === "dublado" ? "Legendado" : "Dublado";
+  const altAudioLabel = "Legendado";
 
   const handleSwitchAudio = (target) => {
     if (target === audioTrack) return;
