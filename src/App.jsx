@@ -16,6 +16,7 @@ import {
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
+import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import DoramasChat from '@/components/DoramasChat';
 import UpdateEmailGate from '@/components/UpdateEmailGate';
@@ -54,6 +55,9 @@ import Indicar from '@/pages/Indicar';
 
 // ✅ Minha Conta
 import MinhaConta from '@/pages/MinhaConta';
+
+// ✅ Meus Favoritos
+import Favoritos from '@/pages/Favoritos';
 
 // Admin
 import AdminLogin from '@/pages/AdminLogin';
@@ -361,6 +365,7 @@ function App() {
       </Helmet>
 
       <AuthProvider>
+        <FavoritesProvider>
         <Router>
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
@@ -477,6 +482,16 @@ function App() {
                   }
                 />
 
+                {/* ✅ Meus Favoritos */}
+                <Route
+                  path="/favoritos"
+                  element={
+                    <ProtectedRoute>
+                      <Favoritos />
+                    </ProtectedRoute>
+                  }
+                />
+
                 {/* Checkout */}
                 <Route
                   path="/checkout/sucesso"
@@ -562,6 +577,7 @@ function App() {
             </RequirePhoneGate>
           </DeviceGuard>
         </Router>
+        </FavoritesProvider>
       </AuthProvider>
 
       <Toaster />

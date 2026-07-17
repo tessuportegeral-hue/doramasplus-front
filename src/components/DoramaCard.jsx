@@ -1,8 +1,11 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Play, Calendar, Eye, ImageOff } from 'lucide-react';
+import { Play, Calendar, Eye, ImageOff, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useFavorites } from '@/contexts/FavoritesContext';
+import { toast } from '@/components/ui/use-toast';
 
 // Views fictícios determinísticos a partir do id (djb2), entre 1300 e 3500
 const generateViews = (id) => {
@@ -19,6 +22,32 @@ const generateViews = (id) => {
 
 const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false }) => {
   const linkTarget = dorama.slug ? `/dorama/${dorama.slug}` : `/dorama/${dorama.id}`;
+
+  const { isAuthenticated } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favorited = isFavorite(dorama.id);
+
+  const handleToggleFavorite = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAuthenticated) {
+      toast({
+        title: 'Faça login para favoritar',
+        description: 'Entre na sua conta para salvar doramas nos favoritos.',
+      });
+      return;
+    }
+
+    const ok = await toggleFavorite(dorama.id);
+    if (!ok) {
+      toast({
+        title: 'Não foi possível atualizar os favoritos',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const coverUrl = useMemo(() => {
     return (
@@ -87,6 +116,19 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
             DUBLADO
           </span>
         )}
+
+        <button
+          type="button"
+          onClick={handleToggleFavorite}
+          aria-label={favorited ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+          className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-slate-950/60 backdrop-blur-sm border border-slate-700/50 hover:bg-slate-950/90 transition-colors"
+        >
+          <Heart
+            className={`w-4 h-4 transition-colors ${
+              favorited ? 'text-red-500 fill-red-500' : 'text-white'
+            }`}
+          />
+        </button>
 
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
 

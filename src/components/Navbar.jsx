@@ -26,6 +26,7 @@ import {
   KeyRound,
   Trash2,
   UserCircle,
+  Heart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -534,6 +535,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
+                        onClick={() => navigate('/favoritos')}
+                        className="cursor-pointer focus:bg-slate-800"
+                      >
+                        <Heart className="w-4 h-4 text-red-400" />
+                        <span className="ml-2">Meus Favoritos</span>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
                         onClick={() => navigate('/indicar')}
                         className="cursor-pointer focus:bg-slate-800"
                       >
@@ -683,6 +692,13 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       className="flex items-center gap-2 text-slate-200 text-sm text-left"
                     >
                       <UserCircle className="w-4 h-4 text-purple-300" /> Minha Assinatura
+                    </button>
+
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); navigate('/favoritos'); }}
+                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
+                    >
+                      <Heart className="w-4 h-4 text-red-400" /> Meus Favoritos
                     </button>
 
                     <button

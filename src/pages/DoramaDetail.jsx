@@ -3,7 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Play, Heart } from 'lucide-react';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useFavorites } from '@/contexts/FavoritesContext';
+import { toast } from '@/components/ui/use-toast';
 
 // ✅ Converte as flags booleanas do dorama em lista de gêneros legíveis
 function buildGenres(dorama) {
@@ -39,6 +42,29 @@ export default function DoramaDetail() {
   const [dorama, setDorama] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  const { isAuthenticated } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favorited = dorama ? isFavorite(dorama.id) : false;
+
+  const handleToggleFavorite = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: 'Faça login para favoritar',
+        description: 'Entre na sua conta para salvar doramas nos favoritos.',
+      });
+      return;
+    }
+
+    const ok = await toggleFavorite(dorama.id);
+    if (!ok) {
+      toast({
+        title: 'Não foi possível atualizar os favoritos',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   useEffect(() => {
     try {
@@ -197,6 +223,20 @@ export default function DoramaDetail() {
               >
                 <Play className="w-6 h-6 mr-3" />
                 Assistir agora
+              </Button>
+
+              <Button
+                onClick={handleToggleFavorite}
+                variant="outline"
+                size="lg"
+                className={`w-full py-6 border-slate-700 ${
+                  favorited
+                    ? 'text-red-400 border-red-500/40 hover:bg-red-500/10'
+                    : 'text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Heart className={`w-5 h-5 mr-2 ${favorited ? 'fill-red-500 text-red-500' : ''}`} />
+                {favorited ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
               </Button>
             </div>
 
