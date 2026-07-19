@@ -24,24 +24,18 @@ const AdminLogin = () => {
     }
 
     try {
-      const { data, error: queryError } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('email', email)
-        .maybeSingle();
+      const { data, error: fnError } = await supabase.functions.invoke('admin-login', {
+        body: { email, password },
+      });
 
-      if (queryError || !data) {
+      if (fnError || !data?.ok) {
         setError('Credenciais inválidas');
         setLoading(false);
         return;
       }
 
-      if (password === data.senha_hash) {
-        localStorage.setItem('isAdmin', 'true');
-        navigate('/admin');
-      } else {
-        setError('Credenciais inválidas');
-      }
+      localStorage.setItem('isAdmin', 'true');
+      navigate('/admin');
     } catch (err) {
       setError('Ocorreu um erro. Tente novamente.');
       console.error('Admin login error:', err);
