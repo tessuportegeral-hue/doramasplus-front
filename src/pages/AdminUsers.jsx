@@ -675,7 +675,11 @@ const AdminUsers = () => {
             last_renewed_at: new Date().toISOString(),
           };
 
-          await supabase.from('subscriptions').upsert(upsertData, { onConflict: 'user_id' });
+          const { error: subUpsertError } = await supabase
+            .from('subscriptions')
+            .upsert(upsertData, { onConflict: 'user_id' });
+
+          if (subUpsertError) throw subUpsertError;
 
           // Se essa conta foi indicada por alguém, credita os 15 dias pro indicador
           try {
@@ -688,6 +692,11 @@ const AdminUsers = () => {
         }
       } catch (e) {
         console.error('[quick-create] assinatura manual falhou:', e);
+        toast({
+          title: 'Conta criada, mas a assinatura falhou',
+          description: 'A conta foi criada, mas não consegui liberar a assinatura. Adicione manualmente na tela do usuário.',
+          variant: 'destructive',
+        });
       }
 
       toast({
