@@ -494,7 +494,7 @@ Deno.serve(async (req) => {
       const amountCents =
         typeof row?.amount_cents === "number"
           ? row.amount_cents
-          : (plan === "quarterly" ? 4390 : 1590);
+          : (plan === "quarterly" ? 4790 : 1690);
 
       const eventIdForMeta =
         (row?.event_id && String(row.event_id).trim()) ? String(row.event_id).trim() : order_nsu;
@@ -522,6 +522,13 @@ Deno.serve(async (req) => {
       }
 
       // 2.4) libera assinatura (subscriptions)
+      // IMPORTANTE: se essa gravação falhar, NÃO pode seguir pro profiles
+      // update abaixo — senão profiles fica dizendo "assinante" pro usuário
+      // (e pro cache client-side) sem nenhuma linha real em subscriptions,
+      // que é a tabela que o gate de acesso de verdade consulta. Já
+      // aconteceu de verdade: 18 contas em ~1 mês ficaram com acesso
+      // "fantasma" por causa disso (corrigido retroativamente em 19/07).
+      let subscriptionOk = false;
       try {
         const baseSubscription = {
           user_id: userId,
@@ -535,7 +542,7 @@ Deno.serve(async (req) => {
           provider: "infinitepay",
           provider_ref: invoice_slug || transaction_nsu || order_nsu,
           order_nsu,
-          price_id: plan === "quarterly" ? "infinitepay_pix_4390" : "infinitepay_pix_1590",
+          price_id: plan === "quarterly" ? "infinitepay_pix_4790" : "infinitepay_pix_1690",
           is_manual: false,
           notes: `InfinitePay (cron) - ${planName}`,
           last_renewed_at: now.toISOString(),
@@ -549,9 +556,18 @@ Deno.serve(async (req) => {
           errors.push({ order_nsu, step: "subscriptions_upsert", error: subErr });
         } else {
           updated++;
+          subscriptionOk = true;
         }
       } catch (e) {
         errors.push({ order_nsu, step: "subscriptions_upsert_exception", error: String(e) });
+      }
+
+      if (!subscriptionOk) {
+        // Não atualiza profiles, não credita referral, não dispara Meta CAPI
+        // pra esse pagamento — pix_payments já ficou marcado "paid" acima,
+        // então a próxima rodada do cron não vai reprocessar do zero, mas
+        // também não vamos fingir que o acesso foi liberado quando não foi.
+        continue;
       }
 
       // 2.5) profiles update

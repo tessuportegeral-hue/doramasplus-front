@@ -636,8 +636,16 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
         } catch(e) { console.error("[grant create user]", String(e)); }
       }
       if (profileId) {
-        await supabase.from("profiles").update({ subscription_active_until: endAt }).eq("id", profileId);
-        await supabase.from("subscriptions").upsert({
+        // IMPORTANTE: subscriptions PRIMEIRO, e só mexe em profiles se der
+        // certo. Antes era profiles primeiro (sempre "funcionava" pro
+        // usuário) e subscriptions depois sem checar erro — se essa
+        // segunda gravação falhasse, profiles ficava dizendo "assinante"
+        // sem nenhuma linha real em subscriptions (que é o que o gate de
+        // acesso de verdade consulta). Isso aconteceu de verdade: 18
+        // contas em ~1 mês ficaram com acesso "fantasma" por causa desse
+        // padrão (corrigido retroativamente em 19/07, mesmo bug achado
+        // também em infinitepay-reconcile).
+        const { error: subErr } = await supabase.from("subscriptions").upsert({
           user_id: profileId, status: "active",
           start_at: now.toISOString(), end_at: endAt,
           current_period_start: now.toISOString(), current_period_end: endAt,
@@ -647,22 +655,28 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
           order_nsu: String(sessionData.order_nsu || ""),
         }, { onConflict: "user_id" });
 
-        // Referral - este pagamento foi confirmado por comprovante no bot,
-        // fora dos webhooks normais. Sem isso, indicacoes que passam por
-        // aqui nunca creditam o indicador.
-        try {
-          const referralResult = await creditReferralIfEligible(profileId);
-          console.log("[referral] resultado (whatsapp comprovante):", JSON.stringify(referralResult));
-        } catch (e) {
-          console.error("[referral] excecao:", e);
-        }
-        try {
-          const pendingResult = await resolvePendingReferralsForReferrer(profileId);
-          if (pendingResult.resolved > 0) {
-            console.log("[referral] pending resolvidos (whatsapp comprovante):", pendingResult.resolved, "para", profileId);
+        if (subErr) {
+          console.error("[grant sub] subscriptions upsert falhou, NAO atualizando profiles:", subErr);
+        } else {
+          await supabase.from("profiles").update({ active: true, subscription_active_until: endAt }).eq("id", profileId);
+
+          // Referral - este pagamento foi confirmado por comprovante no bot,
+          // fora dos webhooks normais. Sem isso, indicacoes que passam por
+          // aqui nunca creditam o indicador.
+          try {
+            const referralResult = await creditReferralIfEligible(profileId);
+            console.log("[referral] resultado (whatsapp comprovante):", JSON.stringify(referralResult));
+          } catch (e) {
+            console.error("[referral] excecao:", e);
           }
-        } catch (e) {
-          console.error("[referral] excecao ao resolver pending:", e);
+          try {
+            const pendingResult = await resolvePendingReferralsForReferrer(profileId);
+            if (pendingResult.resolved > 0) {
+              console.log("[referral] pending resolvidos (whatsapp comprovante):", pendingResult.resolved, "para", profileId);
+            }
+          } catch (e) {
+            console.error("[referral] excecao ao resolver pending:", e);
+          }
         }
       }
     } catch (e) { console.error("[grant sub]", String(e)); }
