@@ -159,6 +159,15 @@ export default function DoramaWatch() {
         }
 
         setDorama(data);
+
+        // ✅ Prioriza abrir dublado quando disponível — se o principal já é
+        // dublado, mantém "primary"; se o principal é legendado mas tem
+        // alternativo cadastrado (que pela convenção do admin é sempre o
+        // áudio oposto, ou seja, dublado), abre direto no "alt".
+        const dubladoIsAlt =
+          data.language !== "dublado" &&
+          !!(data.alt_bunny_url || data.alt_bunny_stream_url);
+        setAudioTrack(dubladoIsAlt ? "alt" : "primary");
       } catch (err) {
         console.error("Erro inesperado:", err);
         setError(true);
