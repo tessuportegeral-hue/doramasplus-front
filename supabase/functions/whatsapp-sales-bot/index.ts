@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { creditReferralIfEligible, resolvePendingReferralsForReferrer } from "../_shared/referral.ts";
+import { grantSubscriptionAndProfile } from "../_shared/grant-subscription.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -397,213 +399,6 @@ async function validateComprovanteWithClaude(base64: string, mimeType: string, p
   } catch (e) { console.error("[claude vision]", String(e)); return { valid: false, reason: "exception" }; }
 }
 
-type ReferralCreditResult =
-  | { credited: false; reason: string }
-  | { credited: true; referrerId: string; daysAdded: 15 };
-
-// Mesma logica usada em clever-worker, stripe-webhook, admin-credit-referral
-// e infinitepay-reconcile - mantenha as cinco em sincronia se o criterio de
-// elegibilidade mudar.
-async function creditReferralIfEligible(referredId: string): Promise<ReferralCreditResult> {
-  try {
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("id, referred_by")
-      .eq("id", referredId)
-      .maybeSingle();
-
-    if (profileErr) {
-      console.error("[referral] erro ao ler profile:", profileErr);
-      return { credited: false, reason: "profile_read_error" };
-    }
-    if (!profile?.referred_by) {
-      return { credited: false, reason: "no_referrer" };
-    }
-
-    const referrerId = profile.referred_by;
-    if (referrerId === referredId) {
-      return { credited: false, reason: "self_referral" };
-    }
-
-    const { data: existingReferral } = await supabase
-      .from("referrals")
-      .select("id")
-      .eq("referred_id", referredId)
-      .maybeSingle();
-    if (existingReferral?.id) {
-      return { credited: false, reason: "already_processed" };
-    }
-
-    const { count: pixCount, error: pixErr } = await supabase
-      .from("pix_payments")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", referredId)
-      .eq("status", "paid");
-    if (pixErr) {
-      console.error("[referral] erro ao checar pix_payments:", pixErr);
-      return { credited: false, reason: "pix_check_error" };
-    }
-    if ((pixCount ?? 0) > 1) {
-      return { credited: false, reason: "not_new_account_pix" };
-    }
-
-    const { count: subCount, error: subErr } = await supabase
-      .from("subscriptions")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", referredId);
-    if (subErr) {
-      console.error("[referral] erro ao checar subscriptions:", subErr);
-      return { credited: false, reason: "sub_check_error" };
-    }
-    if ((subCount ?? 0) > 1) {
-      return { credited: false, reason: "not_new_account_sub" };
-    }
-
-    const { data: referrerSub, error: refSubErr } = await supabase
-      .from("subscriptions")
-      .select("id, end_at, current_period_end")
-      .eq("user_id", referrerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (refSubErr) {
-      console.error("[referral] erro ao buscar sub do referrer:", refSubErr);
-      return { credited: false, reason: "referrer_sub_error" };
-    }
-
-    if (!referrerSub?.id) {
-      const { error: pendErr } = await supabase
-        .from("referrals")
-        .insert({ referrer_id: referrerId, referred_id: referredId, status: "pending" });
-      if (pendErr && !String(pendErr.message || "").toLowerCase().includes("duplicate")) {
-        console.error("[referral] erro ao inserir pending:", pendErr);
-      }
-      return { credited: false, reason: "referrer_has_no_subscription" };
-    }
-
-    const nowRef = new Date();
-    const currentEnd = referrerSub.end_at ? new Date(referrerSub.end_at) : null;
-    const base =
-      currentEnd && !Number.isNaN(currentEnd.getTime()) && currentEnd > nowRef
-        ? currentEnd
-        : nowRef;
-    const newEnd = new Date(base.getTime() + 15 * 24 * 60 * 60 * 1000);
-    const newEndIso = newEnd.toISOString();
-
-    const { error: refInsErr } = await supabase
-      .from("referrals")
-      .insert({
-        referrer_id: referrerId,
-        referred_id: referredId,
-        status: "credited",
-        credited_at: nowRef.toISOString(),
-      });
-    if (refInsErr) {
-      const msg = String(refInsErr.message || "").toLowerCase();
-      if (msg.includes("duplicate") || msg.includes("unique")) {
-        return { credited: false, reason: "race_duplicate" };
-      }
-      console.error("[referral] erro ao inserir referral:", refInsErr);
-      return { credited: false, reason: "referral_insert_error" };
-    }
-
-    const { error: updErr } = await supabase
-      .from("subscriptions")
-      .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
-      .eq("id", referrerSub.id);
-
-    if (updErr) {
-      console.error("[referral] erro ao atualizar sub do referrer:", updErr);
-      await supabase.from("referrals").delete().eq("referred_id", referredId);
-      return { credited: false, reason: "subscription_update_error" };
-    }
-
-    return { credited: true, referrerId, daysAdded: 15 };
-  } catch (e) {
-    console.error("[referral] excecao:", e);
-    return { credited: false, reason: "exception" };
-  }
-}
-
-type PendingResolveResult = { resolved: number };
-
-// Quando ESTE usuario (referrerId) acabou de ganhar/renovar uma assinatura,
-// verifica se ele tem indicacoes que ficaram 'pending' e credita agora.
-async function resolvePendingReferralsForReferrer(referrerId: string): Promise<PendingResolveResult> {
-  try {
-    const { data: pendingRows, error: pendErr } = await supabase
-      .from("referrals")
-      .select("id, referred_id")
-      .eq("referrer_id", referrerId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: true });
-
-    if (pendErr) {
-      console.error("[referral] erro ao buscar pending do referrer:", pendErr);
-      return { resolved: 0 };
-    }
-    if (!pendingRows?.length) return { resolved: 0 };
-
-    const { data: referrerSub, error: refSubErr } = await supabase
-      .from("subscriptions")
-      .select("id, end_at, current_period_end")
-      .eq("user_id", referrerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (refSubErr || !referrerSub?.id) return { resolved: 0 };
-
-    let currentEnd = referrerSub.end_at ? new Date(referrerSub.end_at) : null;
-    let resolved = 0;
-
-    for (const row of pendingRows) {
-      const now = new Date();
-      const base =
-        currentEnd && !Number.isNaN(currentEnd.getTime()) && currentEnd > now
-          ? currentEnd
-          : now;
-      const newEnd = new Date(base.getTime() + 15 * 24 * 60 * 60 * 1000);
-      const newEndIso = newEnd.toISOString();
-
-      const { data: updRefRow, error: updRefErr } = await supabase
-        .from("referrals")
-        .update({ status: "credited", credited_at: now.toISOString() })
-        .eq("id", row.id)
-        .eq("status", "pending")
-        .select("id")
-        .maybeSingle();
-
-      if (updRefErr || !updRefRow?.id) {
-        if (updRefErr) console.error("[referral] erro ao promover pending->credited:", updRefErr);
-        continue;
-      }
-
-      const { error: updSubErr } = await supabase
-        .from("subscriptions")
-        .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
-        .eq("id", referrerSub.id);
-
-      if (updSubErr) {
-        console.error("[referral] erro ao atualizar sub (resolve pending):", updSubErr);
-        await supabase
-          .from("referrals")
-          .update({ status: "pending", credited_at: null })
-          .eq("id", row.id);
-        continue;
-      }
-
-      currentEnd = newEnd;
-      resolved++;
-    }
-
-    return { resolved };
-  } catch (e) {
-    console.error("[referral] excecao em resolvePendingReferralsForReferrer:", e);
-    return { resolved: 0 };
-  }
-}
-
 async function grantAccessDirectly(fromE164: string, sessionData: any, receivingPhoneNumberId?: string | null) {
   const plan = String(sessionData.plan || "series") as "series" | "monthly" | "quarterly";
   const email = String(sessionData.email || generateFakeEmail(fromE164));
@@ -645,32 +440,30 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
         // contas em ~1 mês ficaram com acesso "fantasma" por causa desse
         // padrão (corrigido retroativamente em 19/07, mesmo bug achado
         // também em infinitepay-reconcile).
-        const { error: subErr } = await supabase.from("subscriptions").upsert({
-          user_id: profileId, status: "active",
+        const grantResult = await grantSubscriptionAndProfile(supabase, profileId, {
+          status: "active",
           start_at: now.toISOString(), end_at: endAt,
           current_period_start: now.toISOString(), current_period_end: endAt,
           plan_name: plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal",
           plan_interval: plan === "quarterly" ? "quarterly" : "monthly",
           is_manual: true, source: "whatsapp_comprovante", provider: "comprovante_validado",
           order_nsu: String(sessionData.order_nsu || ""),
-        }, { onConflict: "user_id" });
+        });
 
-        if (subErr) {
-          console.error("[grant sub] subscriptions upsert falhou, NAO atualizando profiles:", subErr);
+        if (!grantResult.ok) {
+          console.error("[grant sub] subscriptions upsert falhou, NAO atualizando profiles:", grantResult.error);
         } else {
-          await supabase.from("profiles").update({ active: true, subscription_active_until: endAt }).eq("id", profileId);
-
           // Referral - este pagamento foi confirmado por comprovante no bot,
           // fora dos webhooks normais. Sem isso, indicacoes que passam por
           // aqui nunca creditam o indicador.
           try {
-            const referralResult = await creditReferralIfEligible(profileId);
+            const referralResult = await creditReferralIfEligible(supabase, profileId);
             console.log("[referral] resultado (whatsapp comprovante):", JSON.stringify(referralResult));
           } catch (e) {
             console.error("[referral] excecao:", e);
           }
           try {
-            const pendingResult = await resolvePendingReferralsForReferrer(profileId);
+            const pendingResult = await resolvePendingReferralsForReferrer(supabase, profileId);
             if (pendingResult.resolved > 0) {
               console.log("[referral] pending resolvidos (whatsapp comprovante):", pendingResult.resolved, "para", profileId);
             }

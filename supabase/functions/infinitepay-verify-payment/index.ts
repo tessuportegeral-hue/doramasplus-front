@@ -1,5 +1,7 @@
 // infinitepay-verify-payment (Deno runtime)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { creditReferralIfEligible, resolvePendingReferralsForReferrer } from "../_shared/referral.ts";
+import { grantSubscriptionAndProfile } from "../_shared/grant-subscription.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,7 +26,7 @@ function maxDate(a?: Date | null, b?: Date | null) {
   return a > b ? a : b;
 }
 
-/** ✅ sha256 pra hash do email (CAPI) */
+/** sha256 pra hash do email (CAPI) */
 async function sha256Hex(input: string) {
   const enc = new TextEncoder().encode(input);
   const hash = await crypto.subtle.digest("SHA-256", enc);
@@ -33,7 +35,7 @@ async function sha256Hex(input: string) {
     .join("");
 }
 
-/** ✅ envia Purchase via Meta CAPI (não quebra o fluxo se falhar) */
+/** envia Purchase via Meta CAPI (nao quebra o fluxo se falhar) */
 async function sendMetaPurchase(opts: {
   pixelId: string;
   accessToken: string;
@@ -117,7 +119,7 @@ Deno.serve(async (req) => {
       Deno.env.get("INFINITEPAY_PAYMENTCHECK_TIMEOUT_MS") ?? "3500"
     );
 
-    // ✅ NOVO: polling (15s) + tempo máximo (pra não estourar timeout da Edge)
+    // polling (15s) + tempo maximo (pra nao estourar timeout da Edge)
     const pollIntervalMs = Number(
       Deno.env.get("INFINITEPAY_VERIFY_POLL_INTERVAL_MS") ?? "15000"
     );
@@ -125,7 +127,7 @@ Deno.serve(async (req) => {
       Deno.env.get("INFINITEPAY_VERIFY_MAX_WAIT_MS") ?? "45000"
     );
 
-    // ✅ Meta CAPI
+    // Meta CAPI
     const metaPixelId = Deno.env.get("META_PIXEL_ID") ?? "";
     const metaAccessToken = Deno.env.get("META_ACCESS_TOKEN") ?? "";
     const metaTestEventCode = Deno.env.get("META_TEST_EVENT_CODE") ?? "";
@@ -142,18 +144,18 @@ Deno.serve(async (req) => {
 
     if (!order_nsu) return json({ success: false, message: "order_nsu ausente" }, 400);
 
-    // order_nsu padrão: doramasplus|<USER_ID>|<trial3|monthly|quarterly>|<timestamp>
+    // order_nsu padrao: doramasplus|<USER_ID>|<trial3|monthly|quarterly>|<timestamp>
     const parts = order_nsu.split("|");
-    if (parts.length < 4) return json({ success: false, message: "order_nsu inválido" }, 400);
+    if (parts.length < 4) return json({ success: false, message: "order_nsu invalido" }, 400);
 
     const userIdFromOrder = parts[1];
     const plan = parts[2]; // trial3 | monthly | quarterly
     if (!userIdFromOrder) return json({ success: false, message: "user_id ausente" }, 400);
     if (plan !== "monthly" && plan !== "quarterly" && plan !== "trial3") {
-      return json({ success: false, message: "plano inválido" }, 400);
+      return json({ success: false, message: "plano invalido" }, 400);
     }
 
-    // ✅ valida usuário logado (anti-fraude)
+    // valida usuario logado (anti-fraude)
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader.startsWith("Bearer ")) {
       return json({ success: false, message: "Sem auth (Bearer)" }, 401);
@@ -165,13 +167,13 @@ Deno.serve(async (req) => {
 
     const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
     if (userErr || !userData?.user?.id) {
-      return json({ success: false, message: "Auth inválida" }, 401);
+      return json({ success: false, message: "Auth invalida" }, 401);
     }
     if (userData.user.id !== userIdFromOrder) {
-      return json({ success: false, message: "order_nsu não pertence ao usuário logado" }, 403);
+      return json({ success: false, message: "order_nsu nao pertence ao usuario logado" }, 403);
     }
 
-    // ✅ service role para updates
+    // service role para updates
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // tenta pegar invoice_slug/transaction_nsu/event_id do seu banco
@@ -179,6 +181,7 @@ Deno.serve(async (req) => {
     let transaction_nsu = "";
     let eventIdForMeta = order_nsu;
 
+    let alreadyProcessed = false;
     try {
       const { data: existing } = await supabase
         .from("pix_payments")
@@ -191,10 +194,41 @@ Deno.serve(async (req) => {
       if (existing?.event_id && String(existing.event_id).trim()) {
         eventIdForMeta = String(existing.event_id).trim();
       }
+      // idempotencia: esse order_nsu ja foi processado e ja liberou acesso antes.
+      // Sem essa trava, chamadas repetidas (retry de rede, duplo clique, polling)
+      // somam dias de acesso de novo a cada chamada bem-sucedida.
+      if (existing?.status === "paid") {
+        alreadyProcessed = true;
+      }
     } catch {}
 
-    // ✅ Confirma pagamento via payment_check (com timeout)
-    // ✅ NOVO: tenta várias vezes (a cada 15s) antes de desistir
+    if (alreadyProcessed) {
+      try {
+        const { data: currentSub } = await supabase
+          .from("subscriptions")
+          .select("end_at")
+          .eq("user_id", userIdFromOrder)
+          .eq("order_nsu", order_nsu)
+          .maybeSingle();
+        return json(
+          {
+            success: true,
+            message: "Pagamento ja havia sido confirmado anteriormente",
+            end_at: currentSub?.end_at ?? null,
+            already_processed: true,
+          },
+          200
+        );
+      } catch {
+        return json(
+          { success: true, message: "Pagamento ja havia sido confirmado anteriormente", already_processed: true },
+          200
+        );
+      }
+    }
+
+    // Confirma pagamento via payment_check (com timeout)
+    // tenta varias vezes (a cada 15s) antes de desistir
     let paid = false;
     let debugCheck: any = null;
 
@@ -231,7 +265,7 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // se ainda não pagou, espera 15s e tenta de novo (desde que ainda tenha tempo)
+        // se ainda nao pagou, espera 15s e tenta de novo (desde que ainda tenha tempo)
         const elapsed = Date.now() - startedAt;
         const remaining = maxWaitMs - elapsed;
         const shouldWait = i < tries - 1 && remaining > 0;
@@ -246,7 +280,7 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
-            message: "Pagamento ainda não confirmado",
+            message: "Pagamento ainda nao confirmado",
             debug: debugCheck ?? null,
             polled: true,
             poll_interval_ms: pollIntervalMs,
@@ -261,7 +295,7 @@ Deno.serve(async (req) => {
 
     // ====== acumular dias se ainda estiver ativo ======
     const now = new Date();
-    // ✅ dias por plano: trial3 = 3, monthly = 30, quarterly = 90
+    // dias por plano: trial3 = 1, monthly = 30, quarterly = 90
     const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 1 : 30;
     let baseDate = now;
 
@@ -298,15 +332,15 @@ Deno.serve(async (req) => {
         ? "DoramasPlus Trimestral"
         : plan === "trial3"
           ? "DoramasPlus Passe Teste"
-          : "DoramasPlus Padrão";
+          : "DoramasPlus Padrao";
     const planInterval = plan === "quarterly" ? "quarter" : plan === "trial3" ? "trial" : "month";
-    const amountCents = plan === "quarterly" ? 4390 : plan === "trial3" ? 299 : 1590;
+    const amountCents = plan === "quarterly" ? 4790 : plan === "trial3" ? 299 : 1690;
     const priceId =
       plan === "quarterly"
-        ? "infinitepay_pix_4390"
+        ? "infinitepay_pix_4790"
         : plan === "trial3"
           ? "infinitepay_pix_299"
-          : "infinitepay_pix_1590";
+          : "infinitepay_pix_1690";
 
     // marca/atualiza pix_payments como paid (idempotente)
     try {
@@ -329,12 +363,12 @@ Deno.serve(async (req) => {
       console.error("pix_payments upsert erro:", String(e));
     }
 
-    // libera assinatura
-    const baseSubscription = {
-      user_id: userIdFromOrder,
+    // libera assinatura (subscriptions primeiro, profiles só se der certo)
+    const grantResult = await grantSubscriptionAndProfile(supabase, userIdFromOrder, {
       status: "active",
       start_at: now.toISOString(),
       end_at: endAt.toISOString(),
+      current_period_start: now.toISOString(),
       current_period_end: endAt.toISOString(),
       plan_name: planName,
       plan_interval: planInterval,
@@ -346,31 +380,34 @@ Deno.serve(async (req) => {
       is_manual: false,
       notes: `InfinitePay (verify) - ${planName}`,
       last_renewed_at: now.toISOString(),
-    };
+    });
 
-    const { error: subErr } = await supabase
-      .from("subscriptions")
-      .upsert(baseSubscription, { onConflict: "user_id" });
-
-    if (subErr) {
-      return json({ success: false, message: "Pago, mas falhou liberar assinatura", error: subErr }, 500);
+    if (!grantResult.ok) {
+      return json({ success: false, message: "Pago, mas falhou liberar assinatura", error: grantResult.error }, 500);
     }
 
-    // atualiza profile
+    // Referral — este pagamento veio da tela de sucesso do site. Sem isso,
+    // indicações confirmadas por essa via nunca creditam o indicador.
+    if (plan !== "trial3") {
+      try {
+        const referralResult = await creditReferralIfEligible(supabase, userIdFromOrder);
+        console.log("[referral] resultado (verify-payment):", JSON.stringify(referralResult));
+      } catch (e) {
+        console.error("[referral] excecao:", e);
+      }
+    }
     try {
-      await supabase
-        .from("profiles")
-        .update({
-          active: true,
-          subscription_active_until: endAt.toISOString(),
-          updated_at: now.toISOString(),
-        })
-        .eq("id", userIdFromOrder);
-    } catch {}
+      const pendingResult = await resolvePendingReferralsForReferrer(supabase, userIdFromOrder);
+      if (pendingResult.resolved > 0) {
+        console.log("[referral] pending resolvidos (verify-payment):", pendingResult.resolved, "para", userIdFromOrder);
+      }
+    } catch (e) {
+      console.error("[referral] excecao ao resolver pending:", e);
+    }
 
     // =========================
-    // ✅✅✅ META CAPI PURCHASE (SEM DUPLICAR)
-    // Regra: se profiles.meta_purchase_sent = true => NÃO manda Purchase
+    // META CAPI PURCHASE (SEM DUPLICAR)
+    // Regra: se profiles.meta_purchase_sent = true => NAO manda Purchase
     // E trava por pagamento via pix_payments.meta_processing/meta_sent
     // =========================
     try {
@@ -399,7 +436,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!lockRow) {
-          console.log("META SKIP (já em processamento ou já enviado):", order_nsu);
+          console.log("META SKIP (ja em processamento ou ja enviado):", order_nsu);
         } else {
           // 2) pega email
           let userEmail: string | null = null;
@@ -446,11 +483,11 @@ Deno.serve(async (req) => {
           }
         }
       } else {
-        if (!shouldSendPurchase) console.log("Purchase SKIP (já enviado antes pro usuário):", userIdFromOrder);
+        if (!shouldSendPurchase) console.log("Purchase SKIP (ja enviado antes pro usuario):", userIdFromOrder);
         else console.log("META CAPI: pulado (META_PIXEL_ID/META_ACCESS_TOKEN ausentes)");
       }
     } catch (e) {
-      // ⚠️ nunca travar liberação por causa de pixel
+      // nunca travar liberacao por causa de pixel
       console.error("META block exception (ignored):", String(e));
     }
 
