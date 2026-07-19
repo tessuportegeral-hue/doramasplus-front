@@ -111,7 +111,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
           </div>
         )}
 
-        {dorama.language === 'dublado' && !hideDubladoBadge && (
+        {(dorama.language === 'dublado' || dorama.alt_bunny_url) && !hideDubladoBadge && (
           <span className="absolute top-2 left-2 z-10 px-2 py-0.5 text-[10px] font-bold tracking-wide bg-purple-600 text-white rounded shadow-md">
             DUBLADO
           </span>
