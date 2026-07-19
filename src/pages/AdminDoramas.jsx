@@ -197,7 +197,9 @@ export default function AdminDoramas() {
           query = query.eq('is_new', true);
           break;
         case 'dubbed':
-          query = query.eq('language', 'dublado');
+          // language='legendado' com alt_bunny_url preenchido também conta
+          // (áudio alternativo dublado cadastrado no mesmo dorama)
+          query = query.or('language.eq.dublado,alt_bunny_url.not.is.null');
           break;
         case 'baby':
           query = query.eq('is_baby_pregnancy', true);
@@ -1177,11 +1179,14 @@ export default function AdminDoramas() {
                                   <BadgeCheck className="w-3 h-3" /> Novo
                                 </span>
                               )}
-                              {dorama.language === 'dublado' ? (
+                              {/* alt_bunny_url preenchido = tem os dois áudios (é sempre
+                                  o oposto de `language`), então mostra os dois badges */}
+                              {(dorama.language === 'dublado' || dorama.alt_bunny_url) && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded flex items-center gap-1">
                                   <Globe className="w-3 h-3" /> Dublado
                                 </span>
-                              ) : (
+                              )}
+                              {(dorama.language === 'legendado' || dorama.alt_bunny_url) && (
                                 <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-slate-700/30 text-slate-400 border border-slate-700/50 rounded">
                                   Legendado
                                 </span>

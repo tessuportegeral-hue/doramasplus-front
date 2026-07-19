@@ -19,10 +19,13 @@ export default function DubbedDoramas() {
     setLoading(true);
     setError(false);
     try {
+      // alt_bunny_url preenchido = tem áudio alternativo cadastrado, que pela
+      // convenção do admin é sempre o oposto de `language` — então mesmo um
+      // dorama com language='legendado' entra aqui se tiver dublado como alt.
       const { data, error } = await supabase
         .from('doramas')
         .select('*')
-        .eq('language', 'dublado')
+        .or('language.eq.dublado,alt_bunny_url.not.is.null')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
