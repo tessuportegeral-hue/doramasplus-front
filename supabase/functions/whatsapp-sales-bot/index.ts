@@ -10,7 +10,7 @@ const DEFAULT_PHONE_NUMBER_ID = WHATSAPP_PHONE_NUMBER_ID_1499;
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "doramasplus_sales_verify";
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
 const DEFAULT_PASSWORD = "123456";
-const VIP_GROUP = "https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k";
+const VIP_GROUP = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 const ADMIN_EMAIL = "tessuportegeral@gmail.com";
 const SUPORTE_HUMANO = "https://wa.me/5518996796654";
 
@@ -31,7 +31,13 @@ const CB_PIX_PER_HOUR = 100;
 const CB_PAUSE_MIN = 60;
 
 const SERIES: { name: string; link: string }[] = [
-  { name: "O Amor que Deixei Escapar", link: "https://player.mediadelivery.net/play/624586/bc001156-66d6-49d2-8373-b3a25153949d" },
+  { name: "Luz apos a Traicao", link: "https://player.mediadelivery.net/play/688480/83fb731a-8d2f-430a-8906-2ec4620fa458" },
+  { name: "O Garoto de Programa que Conheci em Paris", link: "https://player.mediadelivery.net/play/688480/1cb00351-514f-4361-90f7-91526c9717aa" },
+  { name: "Para Sempre ao seu Lado", link: "https://player.mediadelivery.net/play/688480/5c46dc59-3c6f-4b90-b3ed-302f9cc9306a" },
+  { name: "No Aniversario do filho ela perdeu Tudo", link: "https://player.mediadelivery.net/play/688480/e2ed5e87-f729-4c33-afbb-de19091cdfdf" },
+  { name: "Amor a Mesa", link: "https://player.mediadelivery.net/play/688480/1dcf0ccf-2ec7-435d-938f-01d7842e2f5a" },
+  { name: "De Chefona a Aluna: Vinganca na Sala", link: "https://player.mediadelivery.net/play/688480/ecf9490a-ffc8-47f5-86cb-c3dfd405206e" },
+  { name: "Prefiro Morrer a te amar de Novo", link: "https://player.mediadelivery.net/play/688480/9c52b33b-1b80-46a0-b98f-3f040fe9db69" },
   { name: "Jogo do Destino", link: "https://player.mediadelivery.net/play/688480/64615a24-3f4a-424d-8fe3-1b5eb0cab035" },
   { name: "Sai da minha vida meu Primeiro amor Acabou", link: "https://player.mediadelivery.net/play/688480/f78df363-d92a-479e-a761-075086eee040" },
   { name: "Fiquei com o bebe e o coracao do bilionario", link: "https://player.mediadelivery.net/play/688480/e6532d6c-5c61-428d-be0a-a27a1ca781b1" },
@@ -43,29 +49,46 @@ const SERIES: { name: string; link: string }[] = [
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
-  // Conta 1499
+  // Conta 1499 - campanha jul/2026
+  "23859931352390792": "Luz apos a Traicao",
+  "23859931352380792": "O Garoto de Programa que Conheci em Paris",
+  "23859931352350792": "Para Sempre ao seu Lado",
+  "23859931733930792": "No Aniversario do filho ela perdeu Tudo",
+  "23859931733920792": "Amor a Mesa",
+  "23859931733940792": "De Chefona a Aluna: Vinganca na Sala",
+  "23859931862560792": "De Chefona a Aluna: Vinganca na Sala",
+  "23859931862550792": "De Chefona a Aluna: Vinganca na Sala",
+  "23859931862530792": "De Chefona a Aluna: Vinganca na Sala",
+  // Conta 1499 - campanhas anteriores
   "23859058018740792": "Jogo do Destino",
-  "23859058018750792": "O Amor que Deixei Escapar",
+  "23859058018750792": "Prefiro Morrer a te amar de Novo",
   "23859058018760792": "Sai da minha vida meu Primeiro amor Acabou",
   "23859254996260792": "Fiquei com o bebe e o coracao do bilionario",
   "23859254996240792": "Ossos marcados pela dor",
   "23859254996250792": "Seu marido e o rei da Tecnologia",
-  // Conta 8218 - campanha original
+  "23859373371630792": "Tirar as notas, Acertar as Contas",
+  "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
+  "23859373371660792": "Prefiro Morrer a te amar de Novo",
+  // Conta 8218 - campanha jul/2026
+  "120248362051280786": "Luz apos a Traicao",
+  "120248362051240786": "Amor a Mesa",
+  "120248362051250786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362227890786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362227850786": "O Garoto de Programa que Conheci em Paris",
+  "120248362227880786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362671150786": "Para Sempre ao seu Lado",
+  "120248362671160786": "De Chefona a Aluna: Vinganca na Sala",
+  "120248362671130786": "No Aniversario do filho ela perdeu Tudo",
+  // Conta 8218 - campanhas anteriores
   "120247300716450786": "Ossos marcados pela dor",
   "120247300716460786": "Seu marido e o rei da Tecnologia",
   "120247300716470786": "Fiquei com o bebe e o coracao do bilionario",
-  // Conta 8218 - campanha duplicada
   "120247501781450786": "Seu marido e o rei da Tecnologia",
   "120247501781460786": "Fiquei com o bebe e o coracao do bilionario",
   "120247501781480786": "Ossos marcados pela dor",
-  // Conta 8218 - nova campanha
   "120247509416850786": "Tirar as notas, Acertar as Contas",
   "120247509416860786": "Presa pelo Odio, Livre pelo Amor",
-  "120247509416870786": "O Amor que Deixei Escapar",
-  // Conta 1499 - nova campanha
-  "23859373371630792": "Tirar as notas, Acertar as Contas",
-  "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
-  "23859373371660792": "O Amor que Deixei Escapar",
+  "120247509416870786": "Prefiro Morrer a te amar de Novo",
 };
 const CAMPAIGN_SERIES_MAP: Record<string, string> = {
   "23858872800390792": "Quando o Destino assinou por Mim",
@@ -275,32 +298,40 @@ async function sha256hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 async function fireMetaCAPI(phone: string, plan: string, sessionData: any, receivingPhoneNumberId?: string|null) {
+  const account = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218 ? "8218" : "1499";
   try {
-    const token = receivingPhoneNumberId === WHATSAPP_PHONE_NUMBER_ID_8218
-      ? Deno.env.get("META_ACESS_TOKEN_WA_8218") || ""
+    const token = account === "8218"
+      ? Deno.env.get("META_ACCESS_TOKEN_WA_8218") || ""
       : Deno.env.get("META_ACCESS_TOKEN_WA") || "";
-    if (!token) return;
+    if (!token) { console.error("[meta capi] token vazio para conta", account); return; }
     const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
     const contentName = plan === "series" ? "DoramasPlus 1 Serie" : plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
     const hashedPhone = await sha256hex(digitsOnly(phone));
     const userData: Record<string, unknown> = { ph: [hashedPhone] };
     const ctwaClid = sessionData?.ctwa_clid ? String(sessionData.ctwa_clid) : null;
     if (ctwaClid) userData.ctwa_clid = ctwaClid;
-    await fetch(`https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`, {
+    console.log("[meta capi] disparando conta:", account, "plan:", plan, "ctwa_clid:", ctwaClid ? "sim" : "nao");
+    const res = await fetch(`https://graph.facebook.com/v18.0/${META_PIXEL_ID}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         data: [{
           event_name: "Purchase",
           event_time: Math.floor(Date.now() / 1000),
-          action_source: "other",
+          action_source: "chat",
           user_data: userData,
           custom_data: { currency: "BRL", value, content_name: contentName },
         }],
         access_token: token,
       }),
     });
-  } catch (e) { console.error("[meta capi]", String(e)); }
+    const resBody = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error("[meta capi] erro conta:", account, "status:", res.status, "body:", JSON.stringify(resBody));
+    } else {
+      console.log("[meta capi] ok conta:", account, "events_received:", (resBody as any)?.events_received);
+    }
+  } catch (e) { console.error("[meta capi] exception conta:", account, String(e)); }
 }
 
 async function downloadWhatsAppMedia(mediaId: string): Promise<{ base64: string; mimeType: string } | null> {
@@ -327,33 +358,250 @@ async function validateComprovanteWithClaude(base64: string, mimeType: string, p
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) { console.error("[claude vision] ANTHROPIC_API_KEY not set"); return { valid: false, reason: "no_key" }; }
   const minVal = plan === "quarterly" ? 47.00 : plan === "series" ? 10.00 : 16.00;
-  const maxVal = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
+  const maxVal = plan === "quarterly" ? 48.00 : plan === "series" ? 10.00 : 17.00;
   const nowBRT = new Date(Date.now() - 3 * 3600000);
   const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
-  const prompt = `Analise este comprovante de pagamento PIX brasileiro e responda SOMENTE com JSON valido:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nPara ser valido (valido=true), TODOS os criterios devem ser atendidos:\n1. Pagamento JA CONCLUIDO (nao agendamento, nao pendente, nao em processamento)\n2. Destinatario contem "Cavalcante" ou "Stefano" ou "streaming" (qualquer variacao)\n3. Valor entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}\n4. Data e hora do pagamento ha no maximo 15 minutos antes de agora\n\nSe qualquer criterio falhar ou nao puder ser verificado com clareza, valido=false.\nResponda APENAS o JSON.`;
-  try {
-    const isImage = mimeType.startsWith("image/");
-    const contentBlock = isImage
-      ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
-      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+
+  const buildPrompt = (lenient: boolean) =>
+    `Voce e um validador de comprovantes PIX brasileiro. Analise a imagem e responda SOMENTE com JSON:\n{"valido":true_ou_false,"motivo":"texto_curto"}\n\nAgora sao: ${nowStr}\n\nCRITERIOS:\n\n1. STATUS: Pagamento CONCLUIDO/REALIZADO/APROVADO/CONFIRMADO.\n   Invalido se: agendado, pendente, em processamento, aguardando.\n\n2. DESTINATARIO: Qualquer uma dessas opcoes e valida:\n   - Nome contem "Cavalcante" ou "Stefano" ou "Streaming" (qualquer caixa/variacao)\n   - Chave PIX e o CNPJ 66108496000120 (pode aparecer como 66.108.496/0001-20)\n   - Razao social associada a esse CNPJ\n   - Se a chave for um CNPJ ou CPF nao identificavel pelo nome, confira se os outros 3 criterios estao ok\n\n3. VALOR: Entre R$ ${minVal.toFixed(2)} e R$ ${maxVal.toFixed(2)}.\n\n4. DATA/HORA: Pagamento feito ha no maximo 30 minutos antes de agora.\n\nINSTRUCOES:\n- Bancos como Nubank (roxo), Itau, Bradesco, Caixa, Inter, C6, PicPay, BB tem layouts DIFERENTES — leia com atencao cada campo\n- A chave PIX do destinatario pode ser CPF, CNPJ, email ou telefone — nao e o nome\n- ${lenient ? "Se 3 dos 4 criterios estiverem claramente atendidos e o 4o nao estiver legivel por qualidade da imagem, considere valido=true." : "Todos os criterios devem estar claramente atendidos."}\n- Nao rejeite por baixa qualidade de screenshot se os dados principais estao visiveis\n\nResponda APENAS o JSON.`;
+
+  const isImage = mimeType.startsWith("image/");
+  const contentBlock = isImage
+    ? { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } }
+    : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
+
+  const callModel = async (model: string, lenient: boolean) => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 150,
-        messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }],
-      }),
+      body: JSON.stringify({ model, max_tokens: 200, messages: [{ role: "user", content: [contentBlock, { type: "text", text: buildPrompt(lenient) }] }] }),
     });
-    if (!r.ok) { const t = await r.text().catch(() => ""); console.error("[claude vision] api error", r.status, t); return { valid: false, reason: "api_error" }; }
+    if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error(`api_error ${r.status}: ${t}`); }
     const d = await r.json();
     const content = String(d?.content?.[0]?.text || "");
     const match = content.match(/\{[\s\S]*?\}/);
-    if (!match) { console.error("[claude vision] no json:", content); return { valid: false, reason: "parse_error" }; }
+    if (!match) throw new Error(`parse_error: ${content}`);
     const parsed = JSON.parse(match[0]);
-    console.log("[claude vision] result:", JSON.stringify(parsed));
     return { valid: !!parsed.valido, reason: String(parsed.motivo || "") };
+  };
+
+  try {
+    const r1 = await callModel("claude-haiku-4-5-20251001", false);
+    console.log("[claude vision] haiku:", JSON.stringify(r1));
+    if (r1.valid) return r1;
+    // Se o haiku reprovou, tenta com sonnet (mais capaz para imagens dificeis)
+    console.log("[claude vision] haiku reprovou, tentando sonnet:", r1.reason);
+    const r2 = await callModel("claude-sonnet-5", true);
+    console.log("[claude vision] sonnet:", JSON.stringify(r2));
+    return r2;
   } catch (e) { console.error("[claude vision]", String(e)); return { valid: false, reason: "exception" }; }
+}
+
+type ReferralCreditResult =
+  | { credited: false; reason: string }
+  | { credited: true; referrerId: string; daysAdded: 15 };
+
+// Mesma logica usada em clever-worker, stripe-webhook, admin-credit-referral
+// e infinitepay-reconcile - mantenha as cinco em sincronia se o criterio de
+// elegibilidade mudar.
+async function creditReferralIfEligible(referredId: string): Promise<ReferralCreditResult> {
+  try {
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("id, referred_by")
+      .eq("id", referredId)
+      .maybeSingle();
+
+    if (profileErr) {
+      console.error("[referral] erro ao ler profile:", profileErr);
+      return { credited: false, reason: "profile_read_error" };
+    }
+    if (!profile?.referred_by) {
+      return { credited: false, reason: "no_referrer" };
+    }
+
+    const referrerId = profile.referred_by;
+    if (referrerId === referredId) {
+      return { credited: false, reason: "self_referral" };
+    }
+
+    const { data: existingReferral } = await supabase
+      .from("referrals")
+      .select("id")
+      .eq("referred_id", referredId)
+      .maybeSingle();
+    if (existingReferral?.id) {
+      return { credited: false, reason: "already_processed" };
+    }
+
+    const { count: pixCount, error: pixErr } = await supabase
+      .from("pix_payments")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", referredId)
+      .eq("status", "paid");
+    if (pixErr) {
+      console.error("[referral] erro ao checar pix_payments:", pixErr);
+      return { credited: false, reason: "pix_check_error" };
+    }
+    if ((pixCount ?? 0) > 1) {
+      return { credited: false, reason: "not_new_account_pix" };
+    }
+
+    const { count: subCount, error: subErr } = await supabase
+      .from("subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", referredId);
+    if (subErr) {
+      console.error("[referral] erro ao checar subscriptions:", subErr);
+      return { credited: false, reason: "sub_check_error" };
+    }
+    if ((subCount ?? 0) > 1) {
+      return { credited: false, reason: "not_new_account_sub" };
+    }
+
+    const { data: referrerSub, error: refSubErr } = await supabase
+      .from("subscriptions")
+      .select("id, end_at, current_period_end")
+      .eq("user_id", referrerId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (refSubErr) {
+      console.error("[referral] erro ao buscar sub do referrer:", refSubErr);
+      return { credited: false, reason: "referrer_sub_error" };
+    }
+
+    if (!referrerSub?.id) {
+      const { error: pendErr } = await supabase
+        .from("referrals")
+        .insert({ referrer_id: referrerId, referred_id: referredId, status: "pending" });
+      if (pendErr && !String(pendErr.message || "").toLowerCase().includes("duplicate")) {
+        console.error("[referral] erro ao inserir pending:", pendErr);
+      }
+      return { credited: false, reason: "referrer_has_no_subscription" };
+    }
+
+    const nowRef = new Date();
+    const currentEnd = referrerSub.end_at ? new Date(referrerSub.end_at) : null;
+    const base =
+      currentEnd && !Number.isNaN(currentEnd.getTime()) && currentEnd > nowRef
+        ? currentEnd
+        : nowRef;
+    const newEnd = new Date(base.getTime() + 15 * 24 * 60 * 60 * 1000);
+    const newEndIso = newEnd.toISOString();
+
+    const { error: refInsErr } = await supabase
+      .from("referrals")
+      .insert({
+        referrer_id: referrerId,
+        referred_id: referredId,
+        status: "credited",
+        credited_at: nowRef.toISOString(),
+      });
+    if (refInsErr) {
+      const msg = String(refInsErr.message || "").toLowerCase();
+      if (msg.includes("duplicate") || msg.includes("unique")) {
+        return { credited: false, reason: "race_duplicate" };
+      }
+      console.error("[referral] erro ao inserir referral:", refInsErr);
+      return { credited: false, reason: "referral_insert_error" };
+    }
+
+    const { error: updErr } = await supabase
+      .from("subscriptions")
+      .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
+      .eq("id", referrerSub.id);
+
+    if (updErr) {
+      console.error("[referral] erro ao atualizar sub do referrer:", updErr);
+      await supabase.from("referrals").delete().eq("referred_id", referredId);
+      return { credited: false, reason: "subscription_update_error" };
+    }
+
+    return { credited: true, referrerId, daysAdded: 15 };
+  } catch (e) {
+    console.error("[referral] excecao:", e);
+    return { credited: false, reason: "exception" };
+  }
+}
+
+type PendingResolveResult = { resolved: number };
+
+// Quando ESTE usuario (referrerId) acabou de ganhar/renovar uma assinatura,
+// verifica se ele tem indicacoes que ficaram 'pending' e credita agora.
+async function resolvePendingReferralsForReferrer(referrerId: string): Promise<PendingResolveResult> {
+  try {
+    const { data: pendingRows, error: pendErr } = await supabase
+      .from("referrals")
+      .select("id, referred_id")
+      .eq("referrer_id", referrerId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    if (pendErr) {
+      console.error("[referral] erro ao buscar pending do referrer:", pendErr);
+      return { resolved: 0 };
+    }
+    if (!pendingRows?.length) return { resolved: 0 };
+
+    const { data: referrerSub, error: refSubErr } = await supabase
+      .from("subscriptions")
+      .select("id, end_at, current_period_end")
+      .eq("user_id", referrerId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (refSubErr || !referrerSub?.id) return { resolved: 0 };
+
+    let currentEnd = referrerSub.end_at ? new Date(referrerSub.end_at) : null;
+    let resolved = 0;
+
+    for (const row of pendingRows) {
+      const now = new Date();
+      const base =
+        currentEnd && !Number.isNaN(currentEnd.getTime()) && currentEnd > now
+          ? currentEnd
+          : now;
+      const newEnd = new Date(base.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const newEndIso = newEnd.toISOString();
+
+      const { data: updRefRow, error: updRefErr } = await supabase
+        .from("referrals")
+        .update({ status: "credited", credited_at: now.toISOString() })
+        .eq("id", row.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (updRefErr || !updRefRow?.id) {
+        if (updRefErr) console.error("[referral] erro ao promover pending->credited:", updRefErr);
+        continue;
+      }
+
+      const { error: updSubErr } = await supabase
+        .from("subscriptions")
+        .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
+        .eq("id", referrerSub.id);
+
+      if (updSubErr) {
+        console.error("[referral] erro ao atualizar sub (resolve pending):", updSubErr);
+        await supabase
+          .from("referrals")
+          .update({ status: "pending", credited_at: null })
+          .eq("id", row.id);
+        continue;
+      }
+
+      currentEnd = newEnd;
+      resolved++;
+    }
+
+    return { resolved };
+  } catch (e) {
+    console.error("[referral] excecao em resolvePendingReferralsForReferrer:", e);
+    return { resolved: 0 };
+  }
 }
 
 async function grantAccessDirectly(fromE164: string, sessionData: any, receivingPhoneNumberId?: string | null) {
@@ -398,14 +646,32 @@ async function grantAccessDirectly(fromE164: string, sessionData: any, receiving
           is_manual: true, source: "whatsapp_comprovante", provider: "comprovante_validado",
           order_nsu: String(sessionData.order_nsu || ""),
         }, { onConflict: "user_id" });
+
+        // Referral - este pagamento foi confirmado por comprovante no bot,
+        // fora dos webhooks normais. Sem isso, indicacoes que passam por
+        // aqui nunca creditam o indicador.
+        try {
+          const referralResult = await creditReferralIfEligible(profileId);
+          console.log("[referral] resultado (whatsapp comprovante):", JSON.stringify(referralResult));
+        } catch (e) {
+          console.error("[referral] excecao:", e);
+        }
+        try {
+          const pendingResult = await resolvePendingReferralsForReferrer(profileId);
+          if (pendingResult.resolved > 0) {
+            console.log("[referral] pending resolvidos (whatsapp comprovante):", pendingResult.resolved, "para", profileId);
+          }
+        } catch (e) {
+          console.error("[referral] excecao ao resolver pending:", e);
+        }
       }
     } catch (e) { console.error("[grant sub]", String(e)); }
-    await sendText(fromE164, buildAccessMsg(email), receivingPhoneNumberId);
+    await sendText(fromE164, buildAccessMsg(email, plan), receivingPhoneNumberId);
     const idSeries = await resolveIdentifiedSeries(fromE164, { data: sessionData });
     if (idSeries && findSeries(idSeries)) { const a = buildAnuncioDestaque(idSeries); if (a) await sendText(fromE164, a, receivingPhoneNumberId); }
     await updateSession(fromE164, "access_sent", { ...sessionData, email, name, plan });
   }
-  fireMetaCAPI(fromE164, plan, sessionData, receivingPhoneNumberId).catch(() => {});
+  await fireMetaCAPI(fromE164, plan, sessionData, receivingPhoneNumberId);
 }
 
 function detectPixJaPago(msg: string): boolean {
@@ -516,6 +782,16 @@ function detectPixProblem(msg: string): boolean {
     "dando erro", "deu erro", "deu problema",
     "nao aceita", "nao aceitou", "nao passou",
     "nao consigo", "n consigo",
+    // frases de "nao vai" / rejeicao do codigo
+    "nao vai", "essa nao vai", "esse nao vai", "nao ta indo", "vai nao",
+    "nao funciona essa", "esse nao funciona", "essa nao funciona",
+    "nao to conseguindo usar", "nao consigo usar", "nao usa",
+    "nao roda", "nao abre", "nao abriu",
+    "ta dando invalido", "diz que e invalido", "diz invalido",
+    "nao reconhece esse", "nao aceita esse", "nao aceita essa",
+    "esse codigo nao", "essa chave nao", "codigo nao funciona",
+    "chave nao funciona", "nao tá indo", "nao ta aceitando",
+    "nao ta deixando", "nao deixa", "nao to conseguindo pagar",
   ];
 
   return frasesIsoladas.some(f => m.includes(f));
@@ -640,8 +916,9 @@ async function createAsaasPix(userEmail: string, userName: string, plan: "monthl
   try{await supabase.from("pix_payments").insert({provider:"asaas",plan,amount_cents:amountCents,order_nsu:externalReference,status:"pending",raw:d2,source:"whatsapp_sales_bot",...(extra||{})});}catch{}
   return{copyPaste,externalReference,paymentId};
 }
-function buildAccessMsg(email: string): string {
-  return `🎉 Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo ✅\n⏳ Acesso valido por 30 dias\n\n📱 Acesse agora:\n👉 ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! 🔓\n\n🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\n📲 *Suporte oficial:* (18) 99679-6654\n\nQualquer duvida e so me chamar 😊\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
+function buildAccessMsg(email: string, plan?: string): string {
+  const dias = plan === "quarterly" ? "90 dias (3 meses)" : "30 dias";
+  return `🎉 Acesso liberado com sucesso!\nSeu cadastro na DoramasPlus ja esta ativo ✅\n⏳ Acesso valido por ${dias}\n\n📱 Acesse agora:\n👉 ${PUBLIC_BASE_URL}\n\nAperta em *Entrar* (no topo da tela) e usa os dados abaixo:\n\n👤 Login: ${email}\n🔑 Senha: ${DEFAULT_PASSWORD}\n\nDepois e so apertar em *Entrar* e ta dentro! 🔓\n\n🔔 Entre na nossa comunidade para receber novos doramas e avisos:\n${VIP_GROUP}\n\n📲 *Suporte oficial:* (18) 99679-6654\n\nQualquer duvida e so me chamar 😊\n*Ah, e adiciona meu numero pra voce ficar por dentro das novidades*`;
 }
 function buildPresenteMsg(seriesName: string): string {
   const hit = findSeries(seriesName);
@@ -699,7 +976,15 @@ async function processMessage(fromE164: string, messageText: string, displayName
   if (referral && typeof referral === "object") {
     const sid = identifySeriesFromReferral(referral);
     const patch: Record<string,unknown> = {};
-    if (sid && !sessionData.identified_series) patch.identified_series = sid;
+    if (sid) {
+      const sevenDays = 7 * 24 * 3600000;
+      const identifiedAt = sessionData.series_identified_at ? Number(sessionData.series_identified_at) : 0;
+      const isStale = !identifiedAt || (Date.now() - identifiedAt > sevenDays);
+      if (!sessionData.identified_series || isStale) {
+        patch.identified_series = sid;
+        patch.series_identified_at = Date.now();
+      }
+    }
     if (referral.ctwa_clid && !sessionData.ctwa_clid) patch.ctwa_clid = referral.ctwa_clid;
     if (referral.source_id && !sessionData.ad_source_id) patch.ad_source_id = referral.source_id;
     if (Object.keys(patch).length) { sessionData = { ...sessionData, ...patch }; try { await updateSession(fromE164, step, sessionData); } catch {} }
@@ -713,7 +998,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       const elapsed = Date.now() - updatedAt;
       const timeout = step==="waiting_payment" ? 86400000 : 21600000;
       if(elapsed > timeout){
-        const preserved = { identified_series: sessionData.identified_series||null, ctwa_clid: sessionData.ctwa_clid||null, ad_source_id: sessionData.ad_source_id||null };
+        const preserved = { identified_series: sessionData.identified_series||null, series_identified_at: sessionData.series_identified_at||null, ctwa_clid: sessionData.ctwa_clid||null, ad_source_id: sessionData.ad_source_id||null };
         await updateSession(fromE164, "start", preserved);
         sessionData = preserved;
         step = "start";
@@ -1034,7 +1319,7 @@ serve(async (req) => {
     const token=url.searchParams.get("hub.verify_token");
     const challenge=url.searchParams.get("hub.challenge");
     if(mode==="subscribe"&&token===WHATSAPP_VERIFY_TOKEN&&challenge)return new Response(challenge,{status:200});
-    return jsonRes(200,{ok:true,message:"whatsapp sales bot v101 (voltar hint + smarter plan change detection)"});
+    return jsonRes(200,{ok:true,message:"whatsapp sales bot v123 (15 series + 42 ad ids + pix problem detection)"});
   }
   if(req.method==="POST"&&url.pathname.endsWith("/followup")){
     const secret=req.headers.get("x-followup-secret")||"";
@@ -1063,12 +1348,12 @@ serve(async (req) => {
         else await sendText(toE164,buildGenericSeriesMsg());
         await updateSession(toE164,"series_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       } else {
-        await sendText(toE164,buildAccessMsg(email));
+        await sendText(toE164,buildAccessMsg(email, plan));
         const idSeries=await resolveIdentifiedSeries(toE164,sess);
         if(idSeries && findSeries(idSeries)){ const a=buildAnuncioDestaque(idSeries); if(a)await sendText(toE164,a); }
         await updateSession(toE164,"access_sent",{...(sess?.data||{}),email,name,plan,identified_series:idSeries});
       }
-      fireMetaCAPI(toE164, plan, sess?.data||{}, sess?.receiving_phone_number_id||null).catch(()=>{});
+      await fireMetaCAPI(toE164, plan, sess?.data||{}, sess?.receiving_phone_number_id||null);
       return jsonRes(200,{ok:true});
     }catch(e){return jsonRes(500,{ok:false,error:String(e)});}
   }

@@ -195,7 +195,8 @@ async function creditReferralIfEligible(
     const { count: pixCount, error: pixErr } = await supabase
       .from("pix_payments")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", referredId);
+      .eq("user_id", referredId)
+      .eq("status", "paid");
     if (pixErr) {
       console.error("[referral] erro ao checar pix_payments:", pixErr);
       return { credited: false, reason: "pix_check_error" };
@@ -266,7 +267,10 @@ async function creditReferralIfEligible(
 
     const { error: updErr } = await supabase
       .from("subscriptions")
-      .update({ end_at: newEndIso, current_period_end: newEndIso })
+      // status:'active' também — sem isso, um referrer com assinatura já
+      // vencida/cancelada ganha end_at no futuro mas o gate de acesso
+      // (que exige status active/trialing/paid) continua barrando ele.
+      .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
       .eq("id", referrerSub.id);
 
     if (updErr) {
@@ -279,6 +283,92 @@ async function creditReferralIfEligible(
   } catch (e) {
     console.error("[referral] excecao:", e);
     return { credited: false, reason: "exception" };
+  }
+}
+
+type PendingResolveResult = { resolved: number };
+
+// Quando ESTE usuário (referrerId) acabou de ganhar/renovar uma assinatura,
+// verifica se ele tem indicações que ficaram 'pending' (porque na hora em
+// que o indicado pagou, ele ainda não tinha assinatura) e credita agora.
+// Sem isso, uma referral 'pending' fica travada pra sempre: referred_id é
+// UNIQUE em `referrals`, então nada nunca revisita essa linha.
+async function resolvePendingReferralsForReferrer(
+  supabase: any,
+  referrerId: string,
+): Promise<PendingResolveResult> {
+  try {
+    const { data: pendingRows, error: pendErr } = await supabase
+      .from("referrals")
+      .select("id, referred_id")
+      .eq("referrer_id", referrerId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    if (pendErr) {
+      console.error("[referral] erro ao buscar pending do referrer:", pendErr);
+      return { resolved: 0 };
+    }
+    if (!pendingRows?.length) return { resolved: 0 };
+
+    const { data: referrerSub, error: refSubErr } = await supabase
+      .from("subscriptions")
+      .select("id, end_at, current_period_end")
+      .eq("user_id", referrerId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (refSubErr || !referrerSub?.id) return { resolved: 0 };
+
+    let currentEnd = referrerSub.end_at ? new Date(referrerSub.end_at) : null;
+    let resolved = 0;
+
+    for (const row of pendingRows) {
+      const now = new Date();
+      const base =
+        currentEnd && !Number.isNaN(currentEnd.getTime()) && currentEnd > now
+          ? currentEnd
+          : now;
+      const newEnd = new Date(base.getTime() + 15 * 24 * 60 * 60 * 1000);
+      const newEndIso = newEnd.toISOString();
+
+      // guarda otimista (.eq status=pending) pra evitar corrida com outro processo
+      const { data: updRefRow, error: updRefErr } = await supabase
+        .from("referrals")
+        .update({ status: "credited", credited_at: now.toISOString() })
+        .eq("id", row.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (updRefErr || !updRefRow?.id) {
+        if (updRefErr) console.error("[referral] erro ao promover pending->credited:", updRefErr);
+        continue;
+      }
+
+      const { error: updSubErr } = await supabase
+        .from("subscriptions")
+        .update({ end_at: newEndIso, current_period_end: newEndIso, status: "active" })
+        .eq("id", referrerSub.id);
+
+      if (updSubErr) {
+        console.error("[referral] erro ao atualizar sub (resolve pending):", updSubErr);
+        await supabase
+          .from("referrals")
+          .update({ status: "pending", credited_at: null })
+          .eq("id", row.id);
+        continue;
+      }
+
+      currentEnd = newEnd;
+      resolved++;
+    }
+
+    return { resolved };
+  } catch (e) {
+    console.error("[referral] excecao em resolvePendingReferralsForReferrer:", e);
+    return { resolved: 0 };
   }
 }
 
@@ -341,12 +431,12 @@ Deno.serve(async (req) => {
     const isSalesBot = parts[0] === "salesbot";
     const plan = parts[2];
 
-    // ✅ planos aceitos: trial3 (Passe Teste), monthly, quarterly
+    // planos aceitos: trial3 (Passe Teste), monthly, quarterly
     if (plan !== "monthly" && plan !== "quarterly" && plan !== "trial3") {
       return json({ success: false, message: "plano invalido" }, 400);
     }
 
-    // ✅ Sales bot: userId vem do telefone, não do parts[1]
+    // Sales bot: userId vem do telefone, nao do parts[1]
     let userId: string;
     let userPhone: string | null = null;
     let userName: string | null = null;
@@ -354,11 +444,11 @@ Deno.serve(async (req) => {
     let userPassword: string | null = null;
 
     if (isSalesBot) {
-      // parts[1] é o telefone
+      // parts[1] e o telefone
       const phoneDigits = parts[1];
       userPhone = phoneDigits.startsWith("55") ? phoneDigits : "55" + phoneDigits;
 
-      // Busca usuário pelo telefone
+      // Busca usuario pelo telefone
       const { data: profile } = await supabase
         .from("profiles")
         .select("id, name, email, phone")
@@ -454,7 +544,7 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date();
-    // ✅ dias por plano: trial3 = 3, monthly = 30, quarterly = 90
+    // dias por plano: trial3 = 1, monthly = 30, quarterly = 90
     const daysToAdd = plan === "quarterly" ? 90 : plan === "trial3" ? 1 : 30;
     let baseDate = now;
 
@@ -492,7 +582,7 @@ Deno.serve(async (req) => {
       plan === "quarterly"
         ? "infinitepay_pix_4790"
         : plan === "trial3"
-          ? "infinitepay_pix_590"
+          ? "infinitepay_pix_299"
           : "infinitepay_pix_1690";
 
     try {
@@ -551,7 +641,7 @@ Deno.serve(async (req) => {
       console.error("EXCEPTION ao atualizar profiles:", { userId, order_nsu, e });
     }
 
-    // Referral — NÃO credita indicação no Passe Teste (evita farm de 15 dias por R$5,90)
+    // Referral - NAO credita indicacao no Passe Teste (evita farm de 15 dias por R$5,90)
     if (plan !== "trial3") {
       try {
         const referralResult = await creditReferralIfEligible(supabase, userId);
@@ -563,7 +653,18 @@ Deno.serve(async (req) => {
       console.log("[referral] pulado (plano trial3)");
     }
 
-    // ✅ Sales bot: notifica acesso liberado via WhatsApp
+    // Referral - este usuario acabou de ganhar/renovar assinatura: se ele
+    // proprio for indicador de alguem com referral 'pending', credita agora.
+    try {
+      const pendingResult = await resolvePendingReferralsForReferrer(supabase, userId);
+      if (pendingResult.resolved > 0) {
+        console.log("[referral] pending resolvidos:", pendingResult.resolved, "para", userId);
+      }
+    } catch (e) {
+      console.error("[referral] excecao ao resolver pending:", e);
+    }
+
+    // Sales bot: notifica acesso liberado via WhatsApp
     if (isSalesBot && userPhone) {
       try {
         const notifyUrl = `${supabaseUrl}/functions/v1/whatsapp-sales-bot/notify-access`;

@@ -392,6 +392,15 @@ const AdminUsers = () => {
 
       if (upsertError) throw upsertError;
 
+      // Se essa conta foi indicada por alguém, credita os 15 dias pro indicador
+      try {
+        await supabase.functions.invoke('admin-credit-referral', {
+          body: { referred_id: userProfile.id },
+        });
+      } catch (e) {
+        console.error('[referral] credit-referral invoke falhou:', e);
+      }
+
       toast({
         title: 'Sucesso!',
         description: `Assinatura manual (${planName}) ativada/atualizada com sucesso.`,
@@ -667,6 +676,15 @@ const AdminUsers = () => {
           };
 
           await supabase.from('subscriptions').upsert(upsertData, { onConflict: 'user_id' });
+
+          // Se essa conta foi indicada por alguém, credita os 15 dias pro indicador
+          try {
+            await supabase.functions.invoke('admin-credit-referral', {
+              body: { referred_id: userId },
+            });
+          } catch (e) {
+            console.error('[referral] credit-referral invoke falhou:', e);
+          }
         }
       } catch (e) {
         console.error('[quick-create] assinatura manual falhou:', e);
