@@ -16,10 +16,22 @@
 // Se a checagem no Supabase falhar por qualquer motivo (timeout, etc.),
 // deixa passar normal — nunca bloqueia um usuário real por causa de uma
 // instabilidade momentânea na checagem.
+//
+// IMPORTANTE (perf, achado no relatório de Core Web Vitals de 20/07): a
+// checagem no Supabase é um fetch síncrono que atrasava o TTFB de TODO
+// visitante real em ~3s, mesmo quando o slug era válido — o benefício de
+// SEO (404/301 reais) só importa pra crawler, não pra humano. O React já
+// trata "não encontrado" client-side pra usuário real. Por isso só roda a
+// checagem quando o User-Agent é de bot/crawler conhecido; humano passa
+// direto, sem custo de latência extra.
 
 const SUPABASE_URL = "https://fbngdxhkaueaolnyswgn.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MTcsImV4cCI6MjA3OTQwMDkxN30.fm9MKpmmNadMpbPVekIpwyTuyW9cLO9KRyCbJIOQWSM";
+
+// Crawlers relevantes pra SEO / preview de link (não cobre usuário real).
+const BOT_UA_RE =
+  /bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|linkedinbot|pinterest|embedly|quora link preview|showyoubot|outbrain|w3c_validator|redditbot|applebot/i;
 
 function passThrough() {
   // Protocolo cru do Vercel Edge Middleware pra "continua o processamento
@@ -44,6 +56,9 @@ export default async function middleware(request) {
 
   const slug = decodeURIComponent(match[1]).trim().toLowerCase();
   if (!slug) return passThrough();
+
+  const ua = request.headers.get("user-agent") || "";
+  if (!BOT_UA_RE.test(ua)) return passThrough();
 
   try {
     const doramaRows = await supabaseSelect("doramas", "slug", slug, "id");

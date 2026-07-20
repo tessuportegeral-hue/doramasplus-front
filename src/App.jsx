@@ -4,7 +4,7 @@
 // Não muda lógica / rotas / auth / nada do funcionamento.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -26,57 +26,60 @@ import { supabase } from '@/lib/supabaseClient';
 import RequirePhoneGate from '@/components/RequirePhoneGate';
 
 // ============================================================
-// Páginas (mantido exatamente como está)
+// Páginas — lazy (code-splitting por rota, ver relatório de Core Web
+// Vitals de 20/07: um bundle único obrigava toda visita — inclusive
+// alguém só lendo a sinopse de um dorama — a baixar/executar o JS do
+// admin, checkout, chat etc. Isso sozinho custava ~2,4s de LCP no
+// mobile. Guards (ProtectedRoute/AdminRoute) continuam eager, são leves.
 // ============================================================
 
-// Páginas
-import Login from '@/pages/Login';
-import Signup from '@/pages/Signup';
-import Dashboard from '@/pages/Dashboard';
-import DoramaDetail from '@/pages/DoramaDetail';
-import DoramaWatch from '@/pages/DoramaWatch';
-import SubscriptionPlans from '@/pages/SubscriptionPlans';
-import CheckoutSuccess from '@/pages/CheckoutSuccess';
-import CheckoutCanceled from '@/pages/CheckoutCanceled';
-import TesteBunny from '@/pages/TesteBunny';
-import AdminDoramas from '@/pages/AdminDoramas';
+const Login = lazy(() => import('@/pages/Login'));
+const Signup = lazy(() => import('@/pages/Signup'));
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const DoramaDetail = lazy(() => import('@/pages/DoramaDetail'));
+const DoramaWatch = lazy(() => import('@/pages/DoramaWatch'));
+const SubscriptionPlans = lazy(() => import('@/pages/SubscriptionPlans'));
+const CheckoutSuccess = lazy(() => import('@/pages/CheckoutSuccess'));
+const CheckoutCanceled = lazy(() => import('@/pages/CheckoutCanceled'));
+const TesteBunny = lazy(() => import('@/pages/TesteBunny'));
+const AdminDoramas = lazy(() => import('@/pages/AdminDoramas'));
 import ProtectedRoute from '@/components/ProtectedRoute';
-import ExclusiveDoramas from '@/pages/ExclusiveDoramas';
-import NewDoramas from '@/pages/NewDoramas';
-import RecommendedDoramas from '@/pages/RecommendedDoramas';
-import DubbedDoramas from '@/pages/DubbedDoramas';
-import ResetPassword from '@/pages/ResetPassword';
+const ExclusiveDoramas = lazy(() => import('@/pages/ExclusiveDoramas'));
+const NewDoramas = lazy(() => import('@/pages/NewDoramas'));
+const RecommendedDoramas = lazy(() => import('@/pages/RecommendedDoramas'));
+const DubbedDoramas = lazy(() => import('@/pages/DubbedDoramas'));
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 
 // ✅ (ADICIONADO) Página do vídeo
-import ComoFunciona from '@/pages/ComoFunciona';
+const ComoFunciona = lazy(() => import('@/pages/ComoFunciona'));
 
 // ✅ Programa de indicação
-import Indicar from '@/pages/Indicar';
+const Indicar = lazy(() => import('@/pages/Indicar'));
 
 // ✅ Minha Conta
-import MinhaConta from '@/pages/MinhaConta';
+const MinhaConta = lazy(() => import('@/pages/MinhaConta'));
 
 // ✅ Meus Favoritos
-import Favoritos from '@/pages/Favoritos';
+const Favoritos = lazy(() => import('@/pages/Favoritos'));
 
 // Admin
-import AdminLogin from '@/pages/AdminLogin';
-import AdminAnalytics from '@/pages/AdminAnalytics';
-import AdminUsers from '@/pages/AdminUsers';
+const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
+const AdminAnalytics = lazy(() => import('@/pages/AdminAnalytics'));
+const AdminUsers = lazy(() => import('@/pages/AdminUsers'));
 import AdminRoute from '@/components/AdminRoute';
 
 // ✅ (NOVO) Painel de atendimento
-import AdminSupport from '@/pages/AdminSupport';
+const AdminSupport = lazy(() => import('@/pages/AdminSupport'));
 
 // ✅ (NOVO) Painel de monitoramento do Bot de Vendas (1499)
-import AdminBotVendas from '@/pages/AdminBotVendas';
+const AdminBotVendas = lazy(() => import('@/pages/AdminBotVendas'));
 
 // ✅ (NOVO) Painel de monitoramento/resposta da Dora (chat do site)
-import AdminDora from '@/pages/AdminDora';
+const AdminDora = lazy(() => import('@/pages/AdminDora'));
 
 // Landing
-import Landing from '@/pages/Landing';
-import Privacidade from '@/pages/Privacidade';
+const Landing = lazy(() => import('@/pages/Landing'));
+const Privacidade = lazy(() => import('@/pages/Privacidade'));
 
 // ============================================================
 // DeviceGuard (mantido exatamente como está)
@@ -349,6 +352,14 @@ function TrafficSourceTracker() {
 // App (mantido exatamente como está)
 // ============================================================
 
+// Fallback mínimo enquanto o chunk da rota baixa (code-splitting).
+// Cada página já tem seu próprio skeleton pro loading dos DADOS; isso aqui
+// só cobre o instante de download do JS, então fica neutro (sem "piscar"
+// texto/spinner) pra não competir com o skeleton da própria página.
+function RouteFallback() {
+  return <div className="min-h-screen bg-slate-950" />;
+}
+
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -374,6 +385,7 @@ function App() {
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
                 {/* 🔓 CATÁLOGO PÚBLICO */}
                 <Route
@@ -574,6 +586,7 @@ function App() {
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </Suspense>
             </RequirePhoneGate>
           </DeviceGuard>
         </Router>
