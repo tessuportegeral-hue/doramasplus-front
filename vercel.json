@@ -4,6 +4,10 @@
       "source": "/sitemap.xml",
       "destination": "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/sitemap"
     },
+    {
+      "source": "/r/:token",
+      "destination": "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/pay-redirect?token=:token"
+    },
     { "source": "/(.*)", "destination": "/" }
   ]
 }
