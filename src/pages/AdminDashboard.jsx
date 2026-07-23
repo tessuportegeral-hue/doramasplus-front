@@ -313,7 +313,7 @@ const AdminDashboard = () => {
       const { error } = await supabase.auth.resetPasswordForEmail(
         userProfile.email,
         {
-          redirectTo: 'https://www.doramasplus.com.br/reset-password',
+          redirectTo: 'https://doramasplus.com.br/reset-password',
         }
       );
 
