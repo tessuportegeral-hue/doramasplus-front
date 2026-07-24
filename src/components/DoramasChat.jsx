@@ -173,6 +173,8 @@ export default function DoramasChat() {
     setLoading(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
       const response = await fetch(
         'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-chat',
         {
@@ -180,14 +182,13 @@ export default function DoramasChat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+            access_token: session?.access_token || null,
           }),
         }
       );
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id || null;
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
@@ -217,6 +218,8 @@ export default function DoramasChat() {
     setMessages(newMessages);
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
       const response = await fetch(
         'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-chat',
         {
@@ -224,14 +227,13 @@ export default function DoramasChat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+            access_token: session?.access_token || null,
           }),
         }
       );
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id || null;
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
