@@ -44,7 +44,24 @@ Deno.serve(async (req) => {
       return json(200, { ok: false, error: "invalid_credentials" });
     }
 
-    return json(200, { ok: true });
+    // ✅ 25/07: a senha do admin_users só provava a identidade pro
+    // localStorage — nunca criava sessão real do Supabase Auth. Como as
+    // RLS de painéis como dora_conversations exigem auth.uid()/auth.email()
+    // de verdade, sem isso o painel carregava vazio pra quem só passasse
+    // por essa tela (sem também estar logado no site com a mesma conta).
+    // Gera um magic link e devolve o hashed_token pro front trocar por uma
+    // sessão real via supabase.auth.verifyOtp — sem precisar clicar em email.
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+
+    if (linkError || !linkData?.properties?.hashed_token) {
+      console.error("[admin-login] generateLink falhou:", linkError);
+      return json(200, { ok: true, token_hash: null });
+    }
+
+    return json(200, { ok: true, token_hash: linkData.properties.hashed_token });
   } catch (e) {
     console.error("[admin-login] fatal:", e);
     return json(500, { ok: false, error: "fatal" });

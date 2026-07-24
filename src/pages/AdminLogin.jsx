@@ -34,6 +34,19 @@ const AdminLogin = () => {
         return;
       }
 
+      // ✅ 25/07: a senha do admin_users só liberava a telinha (localStorage),
+      // sem sessão real do Supabase Auth — painéis com RLS mais estrita
+      // (ex: /admin/dora) carregavam vazio silenciosamente. Troca o
+      // token_hash (magic link gerado no backend) por uma sessão de verdade.
+      if (data?.token_hash) {
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          email,
+          token_hash: data.token_hash,
+          type: 'magiclink',
+        });
+        if (otpError) console.error('Admin login: verifyOtp falhou:', otpError);
+      }
+
       localStorage.setItem('isAdmin', 'true');
       navigate('/admin');
     } catch (err) {
