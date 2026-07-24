@@ -8,34 +8,39 @@
 // redirect mantém o link sempre em doramasplus.com.br e só troca de
 // domínio depois que a pessoa já clicou.
 //
-// O token é o link de pagamento real, codificado em base64url — sem
-// depender de tabela nenhuma. Só redireciona se o destino decodificado for
-// de um domínio confiável (evita virar open redirect).
+// O token é um código curto gravado em payment_redirects na hora que o
+// link é gerado (whatsapp-renewal-cron) — evita link gigante (a URL da
+// InfinityPay já vem longa por natureza) e só resolve o destino real
+// quando alguém clica.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const ALLOWED_HOST_SUFFIXES = ["infinitepay.io"];
 
-function base64UrlDecode(input: string): string | null {
-  try {
-    let b64 = input.replace(/-/g, "+").replace(/_/g, "/");
-    while (b64.length % 4) b64 += "=";
-    return atob(b64);
-  } catch {
-    return null;
-  }
-}
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-Deno.serve((req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const token = url.searchParams.get("token") || "";
-  const decoded = token ? base64UrlDecode(token) : null;
 
-  if (!decoded) {
+  if (!token) {
+    return new Response("Link inválido ou expirado.", { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("payment_redirects")
+    .select("target_url")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (error || !data?.target_url) {
     return new Response("Link inválido ou expirado.", { status: 400 });
   }
 
   let target: URL;
   try {
-    target = new URL(decoded);
+    target = new URL(data.target_url);
   } catch {
     return new Response("Link inválido ou expirado.", { status: 400 });
   }
