@@ -67,6 +67,12 @@ const TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "recomendar_doramas",
+    description:
+      "Busca recomendações de dorama baseadas no histórico real de quem assistiu (watch_history), não em listas fixas. Use quando a pessoa pedir recomendação/sugestão de forma GERAL, sem já ter dito uma categoria específica que prefere. Só funciona se a pessoa estiver logada e já tiver assistido algo — senão cai no fluxo normal de perguntar a preferência.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "analisar_comprovante_pix",
     description:
       "Chame SEMPRE que a pessoa enviar uma imagem de comprovante de pagamento PIX (você já está vendo a imagem nesta conversa). A ferramenta analisa a imagem de verdade (não confie no que você mesma 'acha' que viu) e libera o acesso automaticamente se tudo bater. Só funciona se a pessoa estiver logada.",
@@ -155,6 +161,77 @@ async function statusIndicacao(userId: string | null) {
   const creditados = rows.filter((r) => r.status === "credited" || r.credited_at).length;
   const pendentes = rows.length - creditados;
   return { total_indicados: rows.length, creditados, pendentes, dias_ganhos: creditados * 15 };
+}
+
+// ✅ 25/07: recomendação de verdade baseada no que a pessoa já assistiu
+// (watch_history), em vez das listas fixas coladas no prompt. Detecta a
+// categoria mais assistida entre os últimos títulos e sugere outros da
+// mesma categoria que ainda não foram vistos.
+const CATEGORIA_TRAITS = [
+  { col: "is_taboo_relationship", label: "relacionamento tabu" },
+  { col: "is_hidden_identity", label: "identidade escondida" },
+  { col: "is_bl_gl", label: "BL/GL" },
+  { col: "is_lobos_vampiros", label: "lobisomens e vampiros" },
+  { col: "is_anime", label: "anime" },
+  { col: "is_brasileiro", label: "brasileiro" },
+  { col: "is_baby_pregnancy", label: "gravidez/bebê" },
+] as const;
+
+async function recomendarDoramas(userId: string | null) {
+  if (!userId) return { nao_autenticado: true };
+
+  const { data: history } = await supabase
+    .from("watch_history")
+    .select("dorama_id")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(20);
+
+  const doramaIds = [...new Set((history || []).map((h) => h.dorama_id))];
+  if (doramaIds.length === 0) return { sem_historico: true };
+
+  const { data: watched } = await supabase
+    .from("doramas")
+    .select("id, " + CATEGORIA_TRAITS.map((t) => t.col).join(", "))
+    .in("id", doramaIds);
+
+  if (!watched || watched.length === 0) return { sem_historico: true };
+
+  const counts = CATEGORIA_TRAITS.map((t) => ({
+    ...t,
+    count: watched.filter((d: any) => d[t.col]).length,
+  })).sort((a, b) => b.count - a.count);
+
+  const topTrait = counts[0]?.count > 0 ? counts[0] : null;
+
+  const excludeList = `(${doramaIds.join(",")})`;
+  let recs: { title: string; slug: string }[] | null = null;
+
+  if (topTrait) {
+    const { data } = await supabase
+      .from("doramas")
+      .select("title, slug")
+      .eq(topTrait.col, true)
+      .not("id", "in", excludeList)
+      .limit(5);
+    recs = data;
+  }
+
+  if (!recs || recs.length === 0) {
+    const { data } = await supabase
+      .from("doramas")
+      .select("title, slug")
+      .eq("is_recommended", true)
+      .not("id", "in", excludeList)
+      .limit(5);
+    recs = data;
+  }
+
+  return {
+    assistidos: watched.length,
+    categoria_detectada: topTrait?.label || null,
+    recomendacoes: recs || [],
+  };
 }
 
 // ✅ 25/07: avisa o admin por email quando um caso de "paguei e não liberou"
@@ -750,6 +827,11 @@ Se já tem Netflix: "Conteúdo exclusivo! Por R$0,56/dia dá ter os dois 😊"
 Se pode cancelar: "Sim, sem problema! 😊 É só falar com nosso suporte: https://wa.me/5518996796654"
 
 RECOMENDAÇÃO
+Se a pessoa pedir recomendação/sugestão de forma GERAL (sem já dizer que categoria prefere): use a ferramenta recomendar_doramas ANTES de responder.
+- Se vier nao_autenticado ou sem_historico: ignora o resultado e segue pro fluxo normal de perguntar a preferência (abaixo), sem mencionar que tentou personalizar.
+- Se vier recomendacoes preenchido: é PERSONALIZADO de verdade, baseado no que a pessoa já assistiu. Comemora isso (ex: "Vi que você curte [categoria_detectada]! Baseado no que você já assistiu, separei esses pra você:") e lista os títulos reais com o link https://www.doramasplus.com.br/dorama/[slug] de cada um. Não invente título nem link fora do que veio na ferramenta.
+
+Se não rolou personalização (nao_autenticado/sem_historico), ou se a pessoa já disse o que prefere direto, pergunta/usa a lista fixa abaixo:
 "Me conta o que prefere:
 🎥 Dublados — português sem legenda, aba Dublados
 🔍 Identidade escondida — segredos e surpresas
@@ -852,6 +934,7 @@ COMPORTAMENTO GERAL
 - Sempre usa status_indicacao antes de falar quantos dias a pessoa já ganhou, nunca de memória
 - Sempre usa status_pagamento_pix quando a pessoa disser "paguei e não liberou" — nunca gera link novo se ela insistir que já pagou e o status ainda for pending (evita cobrança em dobro)
 - Sempre usa analisar_comprovante_pix quando a imagem enviada for claramente um comprovante/recibo de pagamento — nunca assume que toda imagem é comprovante; se for pôster de dorama, print de tela ou outra coisa, trata do assunto real da imagem (ex: busca no catálogo com buscar_dorama) em vez de falar de pagamento
+- Sempre usa recomendar_doramas antes de sugerir dorama de forma geral pra quem pode estar logado — só cai nas listas fixas do prompt se vier nao_autenticado ou sem_historico
 - Prioriza validar comprovante no próprio chat antes de escalar pro WhatsApp — só escala se a pessoa preferir ou a validação falhar
 - gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
 - Episódio faltando — tudo num único vídeo
@@ -979,6 +1062,8 @@ Deno.serve(async (req: Request) => {
           result = await gerarLinkPagamento(userId, plano, metodo);
         } else if (block.name === 'status_pagamento_pix') {
           result = await statusPagamentoPix(userId);
+        } else if (block.name === 'recomendar_doramas') {
+          result = await recomendarDoramas(userId);
         } else if (block.name === 'analisar_comprovante_pix') {
           const planoEsperado = block.input?.plano_esperado === 'monthly' || block.input?.plano_esperado === 'quarterly'
             ? block.input.plano_esperado
