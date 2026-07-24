@@ -9,6 +9,9 @@ const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.
 const INFINITEPAY_HANDLE = Deno.env.get("INFINITEPAY_HANDLE") || "";
 const INFINITEPAY_WEBHOOK_URL =
   Deno.env.get("INFINITEPAY_WEBHOOK_URL") || Deno.env.get("INIFITEPAY_WEBHOOK_URL") || "";
+const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
+const STRIPE_PRICE_ID_MENSAL = Deno.env.get("STRIPE_PRICE_ID_MENSAL") || "";
+const STRIPE_PRICE_ID_TRIMESTRAL = Deno.env.get("STRIPE_PRICE_ID_TRIMESTRAL") || "";
 
 // ✅ 25/07: primeira leva de tools reais da Dora — busca no catálogo,
 // status real da assinatura/indicação, e geração de link de pagamento
@@ -45,13 +48,14 @@ const TOOLS = [
   {
     name: "gerar_link_pagamento",
     description:
-      "Gera um link de pagamento real (PIX ou cartão via InfinityPay) pra pessoa ativar ou renovar o acesso. SÓ use quando a intenção de pagar/ativar/renovar estiver clara e a pessoa já tiver dito qual plano quer (mensal ou trimestral) — se não souber, pergunte antes. Só funciona se a pessoa estiver logada. Não use pra quem já é assinante Stripe ativo (cobrança automática já cuida disso).",
+      "Gera um link de pagamento real (PIX via InfinityPay, ou cartão via Stripe) pra pessoa ativar ou renovar o acesso, já com o plano certo preenchido. SÓ use quando a intenção de pagar/ativar/renovar estiver clara e a pessoa já tiver dito qual plano (mensal ou trimestral) E qual forma de pagamento (pix ou cartao) — pergunte antes se não souber os dois. Só funciona se a pessoa estiver logada. Não use pra quem já é assinante Stripe ativo (cobrança automática já cuida disso).",
     input_schema: {
       type: "object",
       properties: {
         plano: { type: "string", enum: ["monthly", "quarterly"], description: "Plano escolhido: monthly (mensal, R$16,90) ou quarterly (trimestral, R$47,90)" },
+        metodo: { type: "string", enum: ["pix", "cartao"], description: "Forma de pagamento escolhida" },
       },
-      required: ["plano"],
+      required: ["plano", "metodo"],
     },
   },
 ];
@@ -161,8 +165,7 @@ async function claimInfinitepaySlot(): Promise<void> {
   }
 }
 
-async function gerarLinkPagamento(userId: string | null, plano: "monthly" | "quarterly") {
-  if (!userId) return { nao_autenticado: true };
+async function gerarLinkPix(userId: string, plano: "monthly" | "quarterly") {
   if (!INFINITEPAY_HANDLE || !INFINITEPAY_WEBHOOK_URL) return { erro: "pagamento_indisponivel" };
 
   // Limite: no máximo 3 links gerados por pessoa por dia via chat, pra
@@ -226,9 +229,95 @@ async function gerarLinkPagamento(userId: string | null, plano: "monthly" | "qua
 
     return { link: `${PUBLIC_BASE_URL}/r/${token}` };
   } catch (e) {
-    console.error("[dora-chat] gerarLinkPagamento excecao:", String(e));
+    console.error("[dora-chat] gerarLinkPix excecao:", String(e));
     return { erro: "falha_ao_gerar_link" };
   }
+}
+
+// ✅ mesma lógica do create-checkout-session (Stripe), só que chamada
+// direto pela Dora com o plano já escolhido em vez de precisar a pessoa
+// abrir /plans e escolher tudo de novo.
+async function gerarLinkCartaoStripe(userId: string, plano: "monthly" | "quarterly") {
+  if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_ID_MENSAL || !STRIPE_PRICE_ID_TRIMESTRAL) {
+    return { erro: "pagamento_indisponivel" };
+  }
+
+  const priceId = plano === "quarterly" ? STRIPE_PRICE_ID_TRIMESTRAL : STRIPE_PRICE_ID_MENSAL;
+
+  const { data: userData } = await supabase.auth.admin.getUserById(userId);
+  const userEmail = userData?.user?.email || null;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("stripe_customer_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const buildParams = (useCustomer: boolean) => {
+    const params = new URLSearchParams();
+    params.append("success_url", `${PUBLIC_BASE_URL}/checkout/sucesso`);
+    params.append("cancel_url", `${PUBLIC_BASE_URL}/checkout/cancelado`);
+    params.append("line_items[0][price]", priceId);
+    params.append("line_items[0][quantity]", "1");
+    params.append("mode", "subscription");
+    params.append("client_reference_id", userId);
+    params.append("locale", "pt-BR");
+    params.append("metadata[user_id]", userId);
+    if (userEmail) params.append("metadata[email]", userEmail);
+    params.append("subscription_data[metadata][user_id]", userId);
+    if (userEmail) params.append("subscription_data[metadata][email]", userEmail);
+    if (useCustomer && profile?.stripe_customer_id) {
+      params.append("customer", profile.stripe_customer_id);
+    } else if (userEmail) {
+      params.append("customer_email", userEmail);
+    }
+    return params;
+  };
+
+  const callStripe = async (params: URLSearchParams) => {
+    const resp = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    return { resp, data };
+  };
+
+  try {
+    const useCustomer = !!profile?.stripe_customer_id;
+    let { resp, data } = await callStripe(buildParams(useCustomer));
+
+    // ✅ mesmo fallback do create-checkout-session: customer salvo pode ser
+    // de uma conta Stripe antiga (ver [[project-stripe-orphaned-sub-false-positive]]).
+    const msg = String(data?.error?.message || "");
+    const isMissingCustomer =
+      !resp.ok && useCustomer && (data?.error?.code === "resource_missing" || /no such customer/i.test(msg));
+    if (isMissingCustomer) {
+      ({ resp, data } = await callStripe(buildParams(false)));
+      try {
+        await supabase.from("profiles").update({ stripe_customer_id: null }).eq("id", userId);
+      } catch {}
+    }
+
+    if (!resp.ok || !data?.url) {
+      console.error("[dora-chat] Stripe checkout falhou:", resp.status, JSON.stringify(data));
+      return { erro: "falha_ao_gerar_link" };
+    }
+
+    return { link: data.url };
+  } catch (e) {
+    console.error("[dora-chat] gerarLinkCartaoStripe excecao:", String(e));
+    return { erro: "falha_ao_gerar_link" };
+  }
+}
+
+async function gerarLinkPagamento(userId: string | null, plano: "monthly" | "quarterly", metodo: "pix" | "cartao") {
+  if (!userId) return { nao_autenticado: true };
+  return metodo === "cartao" ? await gerarLinkCartaoStripe(userId, plano) : await gerarLinkPix(userId, plano);
 }
 
 const SYSTEM_PROMPT = `Você é a Dora, assistente virtual do DoramasPlus — plataforma brasileira de streaming de doramas e dramas asiáticos.
@@ -404,7 +493,7 @@ Use a ferramenta status_assinatura antes de responder — nunca chuta a data.
 - Se vier nao_autenticado: "Você não está logada na conta agora 😊 Entra em https://www.doramasplus.com.br/login que aí eu consigo ver certinho pra você!"
 - Se ativo e tem data: fala a data real que veio no resumo.
 - Se ativo sem data (Stripe recorrente): explica que renova sozinho, não precisa fazer nada.
-- Se não está ativo: usa a ferramenta gerar_link_pagamento (pergunta antes qual plano — mensal R$16,90 ou trimestral R$47,90 — se a pessoa não tiver dito) e manda o link que ela devolver.
+- Se não está ativo: pergunta o plano (mensal R$16,90 ou trimestral R$47,90) e a forma de pagamento (PIX ou cartão) se a pessoa não tiver dito os dois. Depois usa a ferramenta gerar_link_pagamento com plano+metodo e manda o link que ela devolver — funciona pros dois (PIX vai pela InfinityPay, cartão vai direto pra Stripe, já no plano certo).
 Lembra sempre de mencionar: indicando amigos ganha 15 dias grátis por cada um! doramasplus.com.br/indicar
 
 APP
@@ -450,7 +539,7 @@ COMPORTAMENTO GERAL
 - Sempre usa a ferramenta buscar_dorama antes de responder sobre um título específico, nunca de memória
 - Sempre usa status_assinatura antes de falar sobre vencimento/status de acesso, nunca de memória
 - Sempre usa status_indicacao antes de falar quantos dias a pessoa já ganhou, nunca de memória
-- gerar_link_pagamento: só com plano já escolhido e intenção clara de pagar/ativar/renovar; nunca pra quem já é Stripe ativo
+- gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
 - Episódio faltando — tudo num único vídeo
 - Nunca assuma que tem ou não tem conta
 - Nunca: assinar, assinatura, checkout, sessão, cache, browser, token
@@ -554,7 +643,8 @@ Deno.serve(async (req: Request) => {
           result = await statusIndicacao(userId);
         } else if (block.name === 'gerar_link_pagamento') {
           const plano = block.input?.plano === 'quarterly' ? 'quarterly' : 'monthly';
-          result = await gerarLinkPagamento(userId, plano);
+          const metodo = block.input?.metodo === 'cartao' ? 'cartao' : 'pix';
+          result = await gerarLinkPagamento(userId, plano, metodo);
         }
         toolResults.push({
           type: 'tool_result',
