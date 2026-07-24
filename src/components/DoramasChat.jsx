@@ -28,6 +28,7 @@ export default function DoramasChat() {
   );
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const proactiveFiredRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
   const lastAdminSeenRef = useRef(new Date().toISOString());
@@ -263,6 +264,66 @@ export default function DoramasChat() {
     }
   };
 
+  // Comprovante de pagamento (imagem) — a Dora analisa e libera acesso na hora
+  // se validar (ver dora-chat/analisar_comprovante_pix).
+  const sendImage = async (mimeType, base64, previewDataUrl) => {
+    if (loading) return;
+    const placeholderText = "📎 Comprovante de pagamento enviado";
+    const newMessages = [...messages, { role: "user", content: placeholderText, imageDataUrl: previewDataUrl }];
+    setMessages(newMessages);
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
+      const response = await fetch(
+        'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-chat',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+            access_token: session?.access_token || null,
+            image: { base64, mime_type: mimeType },
+          }),
+        }
+      );
+      const data = await response.json();
+      const reply = data?.content?.[0]?.text || "Desculpa, não consegui analisar agora. Tenta reenviar em instantes!";
+      const replyParts = splitAssistantReply(reply);
+      setMessages((prev) => [...prev, ...replyParts.map((part) => ({ role: "assistant", content: part }))]);
+      fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MTcsImV4cCI6MjA3OTQwMDkxN30.fm9MKpmmNadMpbPVekIpwyTuyW9cLO9KRyCbJIOQWSM',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZibmdkeGhrYXVlYW9sbnlzd2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MjQ5MTcsImV4cCI6MjA3OTQwMDkxN30.fm9MKpmmNadMpbPVekIpwyTuyW9cLO9KRyCbJIOQWSM',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify([
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: placeholderText },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
+        ])
+      });
+    } catch {
+      setMessages((prev) => [...prev, { role: "assistant", content: "Ops, tive um problema ao analisar a imagem. Tenta de novo em instantes! 😅" }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite selecionar o mesmo arquivo de novo depois
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const base64 = dataUrl.split(",")[1] || "";
+      if (base64) sendImage(file.type, base64, dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -491,6 +552,13 @@ export default function DoramasChat() {
                       wordBreak: "break-word",
                     }}
                   >
+                    {msg.imageDataUrl && (
+                      <img
+                        src={msg.imageDataUrl}
+                        alt="Comprovante enviado"
+                        style={{ maxWidth: "160px", borderRadius: "8px", display: "block", marginBottom: "6px" }}
+                      />
+                    )}
                     {renderText(msg.content)}
                   </div>
                 </div>
@@ -552,6 +620,35 @@ export default function DoramasChat() {
               background: "#0f0f0f",
             }}
           >
+            <input
+              type="file"
+              accept="image/*"
+              ref={fileInputRef}
+              onChange={handleFileSelected}
+              style={{ display: "none" }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+              title="Enviar comprovante de pagamento"
+              style={{
+                width: "38px",
+                height: "38px",
+                borderRadius: "50%",
+                background: "#1a1a1a",
+                border: "1px solid #2a2a2a",
+                cursor: loading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                transition: "all 0.15s",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
             <textarea
               ref={inputRef}
               className="chat-input"

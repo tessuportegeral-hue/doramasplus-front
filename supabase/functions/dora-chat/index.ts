@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { grantSubscriptionAndProfile } from "../_shared/grant-subscription.ts";
+import { creditReferralIfEligible } from "../_shared/referral.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -63,6 +65,22 @@ const TOOLS = [
     description:
       "Consulta o pagamento PIX mais recente da pessoa quando ela disser algo como 'paguei e não liberou o acesso'. Use SEMPRE nesse caso, antes de responder qualquer coisa. Só funciona se a pessoa estiver logada.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "analisar_comprovante_pix",
+    description:
+      "Chame SEMPRE que a pessoa enviar uma imagem de comprovante de pagamento PIX (você já está vendo a imagem nesta conversa). A ferramenta analisa a imagem de verdade (não confie no que você mesma 'acha' que viu) e libera o acesso automaticamente se tudo bater. Só funciona se a pessoa estiver logada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        plano_esperado: {
+          type: "string",
+          enum: ["monthly", "quarterly", "desconhecido"],
+          description: "Plano que a pessoa mencionou querer na conversa, se souber; 'desconhecido' se não foi dito (o sistema descobre pelo valor no comprovante)",
+        },
+      },
+      required: ["plano_esperado"],
+    },
   },
 ];
 
@@ -220,6 +238,179 @@ async function statusPagamentoPix(userId: string | null) {
     order_nsu: payment.order_nsu,
     whatsapp_link: `https://wa.me/5518996796654?text=${whatsappTexto}`,
   };
+}
+
+// ✅ 25/07: mesma lógica de validação por visão do whatsapp-sales-bot
+// (validateComprovanteWithClaude) — dois modelos (haiku rápido, sonnet
+// como segunda opinião se o haiku reprovar) checando status/destinatário/
+// valor/data no comprovante. Critérios idênticos aos já validados em
+// produção no bot de vendas, só sem a variante "series".
+async function validarComprovanteVisao(
+  base64: string,
+  mimeType: string
+): Promise<{ valido: boolean; motivo: string; valor?: number }> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return { valido: false, motivo: "sem_api_key" };
+
+  const nowBRT = new Date(Date.now() - 3 * 3600000);
+  const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
+
+  const buildPrompt = (lenient: boolean) =>
+    `Voce e um validador de comprovantes PIX brasileiro. Analise a imagem e responda SOMENTE com JSON:\n{"valido":true_ou_false,"motivo":"texto_curto","valor":numero_em_reais_ou_null}\n\nAgora sao: ${nowStr}\n\nCRITERIOS:\n\n1. STATUS: Pagamento CONCLUIDO/REALIZADO/APROVADO/CONFIRMADO.\n   Invalido se: agendado, pendente, em processamento, aguardando.\n\n2. DESTINATARIO: Qualquer uma dessas opcoes e valida:\n   - Nome contem "Cavalcante" ou "Stefano" ou "Streaming" (qualquer caixa/variacao)\n   - Chave PIX e o CNPJ 66108496000120 (pode aparecer como 66.108.496/0001-20)\n   - Razao social associada a esse CNPJ\n\n3. VALOR: entre R$ 16,00 e R$ 48,50 (mensal R$16,90 ou trimestral R$47,90).\n\n4. DATA/HORA: pagamento feito ha no maximo 30 minutos antes de agora.\n\nINSTRUCOES:\n- Bancos como Nubank (roxo), Itau, Bradesco, Caixa, Inter, C6, PicPay, BB tem layouts DIFERENTES — leia com atencao cada campo\n- ${lenient ? "Se 3 dos 4 criterios estiverem claramente atendidos e o 4o nao estiver legivel por qualidade da imagem, considere valido=true." : "Todos os criterios devem estar claramente atendidos."}\n- Nao rejeite por baixa qualidade de screenshot se os dados principais estao visiveis\n\nResponda APENAS o JSON.`;
+
+  const contentBlock = { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } };
+
+  const callModel = async (model: string, lenient: boolean) => {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model,
+        max_tokens: 200,
+        messages: [{ role: "user", content: [contentBlock, { type: "text", text: buildPrompt(lenient) }] }],
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(`api_error ${r.status}: ${t}`);
+    }
+    const d = await r.json();
+    const content = String(d?.content?.[0]?.text || "");
+    const match = content.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error(`parse_error: ${content}`);
+    const parsed = JSON.parse(match[0]);
+    return {
+      valido: !!parsed.valido,
+      motivo: String(parsed.motivo || ""),
+      valor: typeof parsed.valor === "number" ? parsed.valor : undefined,
+    };
+  };
+
+  try {
+    const r1 = await callModel("claude-haiku-4-5-20251001", false);
+    if (r1.valido) return r1;
+    const r2 = await callModel("claude-sonnet-5", true);
+    return r2;
+  } catch (e) {
+    console.error("[dora-chat] validarComprovanteVisao excecao:", String(e));
+    return { valido: false, motivo: "erro_ao_analisar" };
+  }
+}
+
+async function contarTentativasComprovanteHoje(userId: string): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(3, 0, 0, 0);
+  const { count } = await supabase
+    .from("whatsapp_renewal_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("kind", "dora_comprovante")
+    .gte("created_at", startOfDay.toISOString());
+  return count || 0;
+}
+
+async function logTentativaComprovante(userId: string, meta: unknown) {
+  try {
+    await supabase.from("whatsapp_renewal_logs").insert({ user_id: userId, kind: "dora_comprovante", meta });
+  } catch (e) {
+    console.error("[dora-chat] logTentativaComprovante falhou:", String(e));
+  }
+}
+
+// ✅ 25/07: trava contra crédito duplo. Se a pessoa pagou pelo checkout
+// normal (PIX InfinityPay) e o webhook ainda não confirmou quando ela manda
+// o comprovante pra Dora, o clever-worker eventualmente processa o mesmo
+// pagamento depois e SOMA mais dias em cima do que a Dora já liberou (ele
+// estende a partir do end_at ativo atual). Marcar a linha pending como paga
+// aqui faz o dedup do clever-worker (status='paid' + meta_sent=true) pular
+// o processamento quando o webhook real chegar.
+async function marcarPixPendenteComoConferido(userId: string) {
+  try {
+    const { data: pending } = await supabase
+      .from("pix_payments")
+      .select("order_nsu")
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!pending?.order_nsu) return;
+
+    await supabase
+      .from("pix_payments")
+      .update({ status: "paid", paid_at: new Date().toISOString(), meta_sent: true })
+      .eq("order_nsu", pending.order_nsu);
+  } catch (e) {
+    console.error("[dora-chat] marcarPixPendenteComoConferido falhou:", String(e));
+  }
+}
+
+// ✅ Liberação real de acesso quando o comprovante valida — mesma função
+// compartilhada usada por whatsapp-sales-bot, infinitepay-reconcile, etc.
+// (subscriptions primeiro, profiles só se subscriptions gravar — evita
+// acesso "fantasma", ver [[project-ghost-access-profiles-vs-subscriptions]]).
+async function analisarComprovantePix(
+  userId: string | null,
+  planoEsperado: "monthly" | "quarterly" | "desconhecido",
+  imageBase64: string | null,
+  imageMime: string | null
+) {
+  if (!userId) return { nao_autenticado: true };
+  if (!imageBase64 || !imageMime) return { erro: "sem_imagem" };
+
+  const tentativasHoje = await contarTentativasComprovanteHoje(userId);
+  if (tentativasHoje >= 5) return { erro: "limite_tentativas_atingido" };
+
+  const resultado = await validarComprovanteVisao(imageBase64, imageMime);
+
+  if (!resultado.valido) {
+    await logTentativaComprovante(userId, { valido: false, motivo: resultado.motivo });
+    return { valido: false, motivo: resultado.motivo };
+  }
+
+  // Determina o plano pelo valor identificado na imagem (mais confiável
+  // que o que a pessoa disse na conversa) — só usa o que ela disse como
+  // fallback se o valor não veio legível.
+  const valor = resultado.valor || 0;
+  let plano: "monthly" | "quarterly" | null = null;
+  if (valor >= 16 && valor <= 20) plano = "monthly";
+  else if (valor >= 45 && valor <= 50) plano = "quarterly";
+  if (!plano) plano = planoEsperado === "quarterly" ? "quarterly" : "monthly";
+
+  const now = new Date();
+  const dias = plano === "quarterly" ? 90 : 30;
+  const endAt = new Date(now.getTime() + dias * 86400000).toISOString();
+
+  const grantResult = await grantSubscriptionAndProfile(supabase, userId, {
+    status: "active",
+    start_at: now.toISOString(),
+    end_at: endAt,
+    current_period_start: now.toISOString(),
+    current_period_end: endAt,
+    plan_name: plano === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal",
+    plan_interval: plano,
+    is_manual: true,
+    source: "dora_chat_comprovante",
+    provider: "comprovante_validado",
+  });
+
+  if (!grantResult.ok) {
+    await logTentativaComprovante(userId, { valido: true, erro_ao_liberar: true });
+    return { valido: false, motivo: "erro_ao_liberar_acesso" };
+  }
+
+  await marcarPixPendenteComoConferido(userId);
+
+  try {
+    await creditReferralIfEligible(supabase, userId);
+  } catch (e) {
+    console.error("[dora-chat] creditReferralIfEligible excecao:", String(e));
+  }
+
+  await logTentativaComprovante(userId, { valido: true, plano, dias });
+
+  return { valido: true, plano, dias };
 }
 
 function sleep(ms: number) {
@@ -451,10 +642,11 @@ Se a pessoa disser que não está conseguindo pagar, que dá erro, que não apar
 |||
 66108496000120
 |||
-Depois de pagar, manda o comprovante (print da tela) pro nosso suporte que eles conferem e liberam seu acesso na hora! 👇
-https://wa.me/5518996796654?text=Oi!%20Fiz%20o%20pagamento%20com%20a%20Dora%20do%20DoramasPlus%20e%20vou%20te%20enviar%20o%20comprovante%20agora%2C%20pode%20ativar%20meu%20acesso%3F%20%F0%9F%99%8F"
+Depois de pagar, é só mandar o print/comprovante AQUI MESMO no chat (usa o botão de anexo 📎) que eu confiro e libero seu acesso na hora, sem precisar esperar! 🚀"
 
-Se MESMO ASSIM ela continuar com problema (a chave também não funcionou, ou ela pedir humano diretamente) — MANDA PRO WHATSAPP IMEDIATAMENTE:
+Se a pessoa mandar uma IMAGEM: veja a seção "COMPROVANTE DE PAGAMENTO (imagem)" mais abaixo — nunca peça pra mandar pro WhatsApp antes de tentar analisar aqui mesmo.
+
+Se MESMO ASSIM ela continuar com problema (a chave também não funcionou, comprovante não validou depois de tentar, ou ela pedir humano diretamente) — MANDA PRO WHATSAPP IMEDIATAMENTE:
 "Poxa, não quero que você fique sem assistir! 😊 Fala direto com o nosso suporte pelo WhatsApp que eles te ajudam a finalizar agora mesmo:
 https://wa.me/5518996796654 (seg–sáb 8h–20h)
 Eles resolvem rapidinho! 🎉"
@@ -599,9 +791,17 @@ Se a pessoa disser algo como "paguei e não liberou", "fiz o PIX e não ativou":
 - Se vier encontrado:false: "Não encontrei nenhum pagamento seu por aqui 😅 Confere se entrou com a conta certa (mesmo email de quando pagou)? Se sim, fala com o suporte: https://wa.me/5518996796654"
 - Se vier status:"pending": pergunta "Você já chegou a fazer o PIX pelo aplicativo do banco, ou ainda não pagou?"
   - Se ainda não pagou (ou o QR expirou): pergunta plano+método e usa gerar_link_pagamento normalmente (mesmo fluxo de renovação).
-  - Se insiste que já pagou pelo banco: isso não está confirmado no nosso sistema ainda (pode ser atraso de confirmação) — NÃO gera link novo (evita pagamento em dobro). Manda pro suporte: "Isso pode ser só um atraso na confirmação 😊 Fala com o suporte que eles conferem certinho: https://wa.me/5518996796654"
+  - Se insiste que já pagou pelo banco: isso não está confirmado no nosso sistema ainda (pode ser atraso de confirmação) — NÃO gera link novo (evita pagamento em dobro). Em vez disso, oferece: "Isso pode ser só um atraso na confirmação 😊 Me manda o print/comprovante aqui mesmo (botão de anexo 📎) que eu confiro e já libero na hora, sem precisar esperar!" — se a pessoa mandar a imagem, veja a seção "COMPROVANTE DE PAGAMENTO (imagem)". Só manda pro WhatsApp se ela preferir isso ou o comprovante não validar.
 - Se vier status:"paid_e_ativo": "Boas notícias, seu acesso já está ativo! 🎉 Se não tá aparecendo, tenta sair e entrar de novo na conta."
 - Se vier status:"paid_nao_ativado_confirmado": esse é um problema real confirmado. Peça desculpa, explica que já vai escalar, e manda o link que veio em whatsapp_link (já vem com a mensagem pronta) — não precisa reescrever o texto, só apresenta o link. Avisa que o time já foi avisado automaticamente também.
+
+COMPROVANTE DE PAGAMENTO (imagem)
+Se a pessoa enviar uma IMAGEM (ela aparece direto nesta conversa) — use a ferramenta analisar_comprovante_pix ANTES de responder qualquer coisa sobre ela. Nunca julgue a imagem sozinha "de olho" — a ferramenta faz a verificação de verdade e libera o acesso automaticamente se validar.
+- Se vier nao_autenticado: pede pra entrar na conta primeiro (a pessoa vai precisar reenviar a imagem depois de logar).
+- Se vier erro:"sem_imagem": peça pra reenviar a imagem, algo deu errado no envio.
+- Se vier erro:"limite_tentativas_atingido": "Já tentamos analisar algumas vezes hoje 😅 Pra não travar, vou te passar direto pro suporte: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
+- Se vier valido:true: 🎉 Comemora! Fala que o acesso já está ativo, o plano (mensal/trimestral) e por quantos dias (campo dias). Lembra da indicação: doramasplus.com.br/indicar
+- Se vier valido:false: explica com carinho que não deu pra confirmar automaticamente (não fale o "motivo" técnico cru — traduza pra algo simples, tipo "não consegui ver todos os dados direito" ou "o valor não bateu com nenhum plano"). Pergunta se pode tentar mandar de novo (foto mais nítida, ou o comprovante certo) ANTES de escalar pro suporte. Só manda pro WhatsApp se ela preferir ou já tiver tentado antes sem sucesso.
 
 APP
 "📱 Android: Chrome → 3 pontinhos → 'Adicionar à tela inicial'
@@ -647,6 +847,8 @@ COMPORTAMENTO GERAL
 - Sempre usa status_assinatura antes de falar sobre vencimento/status de acesso, nunca de memória
 - Sempre usa status_indicacao antes de falar quantos dias a pessoa já ganhou, nunca de memória
 - Sempre usa status_pagamento_pix quando a pessoa disser "paguei e não liberou" — nunca gera link novo se ela insistir que já pagou e o status ainda for pending (evita cobrança em dobro)
+- Sempre usa analisar_comprovante_pix quando a pessoa mandar uma imagem — nunca julga o comprovante de memória/olho
+- Prioriza validar comprovante no próprio chat antes de escalar pro WhatsApp — só escala se a pessoa preferir ou a validação falhar
 - gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
 - Episódio faltando — tudo num único vídeo
 - Nunca assuma que tem ou não tem conta
@@ -654,7 +856,7 @@ COMPORTAMENTO GERAL
 - Sempre: ativar acesso, liberar acesso, começar a assistir
 - PIX é gerado no site, não tem chave avulsa
 - CEP: jogar endereço no Google ou olhar na conta de luz, água ou internet
-- Se não consegue pagar — primeiro oferece a chave PIX CNPJ (66108496000120) + comprovante pro suporte; só escala pro WhatsApp puro se isso também não resolver
+- Se não consegue pagar — primeiro oferece a chave PIX CNPJ (66108496000120) + pede o comprovante NO PRÓPRIO CHAT (nunca manda direto pro suporte); só escala pro WhatsApp se isso também não resolver
 - Aceita PIX e cartão — libera acesso na hora
 - Indicação vale pra PIX e cartão
 - Pra indicar precisa ter conta E já ter pago pelo menos uma vez
@@ -679,7 +881,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { messages, access_token } = await req.json();
+    const { messages, access_token, image } = await req.json();
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API key not configured' }), {
@@ -700,6 +902,24 @@ Deno.serve(async (req: Request) => {
     ];
 
     const conversation = [...messages];
+
+    // ✅ 25/07: comprovante de pagamento — o front manda a imagem separada
+    // do histórico de texto (não fica reenviando base64 de turnos antigos).
+    // Injeta como bloco multimodal só na última mensagem (a atual).
+    if (image?.base64 && image?.mime_type && conversation.length > 0) {
+      const lastIdx = conversation.length - 1;
+      const last = conversation[lastIdx];
+      if (last?.role === 'user') {
+        const textContent = typeof last.content === 'string' ? last.content : '';
+        conversation[lastIdx] = {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: image.mime_type, data: image.base64 } },
+            { type: 'text', text: textContent || 'Aqui está meu comprovante de pagamento.' },
+          ],
+        };
+      }
+    }
     let data: any = null;
     let response: Response | null = null;
 
@@ -755,6 +975,11 @@ Deno.serve(async (req: Request) => {
           result = await gerarLinkPagamento(userId, plano, metodo);
         } else if (block.name === 'status_pagamento_pix') {
           result = await statusPagamentoPix(userId);
+        } else if (block.name === 'analisar_comprovante_pix') {
+          const planoEsperado = block.input?.plano_esperado === 'monthly' || block.input?.plano_esperado === 'quarterly'
+            ? block.input.plano_esperado
+            : 'desconhecido';
+          result = await analisarComprovantePix(userId, planoEsperado, image?.base64 || null, image?.mime_type || null);
         }
         toolResults.push({
           type: 'tool_result',
