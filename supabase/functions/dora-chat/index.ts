@@ -58,6 +58,12 @@ const TOOLS = [
       required: ["plano", "metodo"],
     },
   },
+  {
+    name: "status_pagamento_pix",
+    description:
+      "Consulta o pagamento PIX mais recente da pessoa quando ela disser algo como 'paguei e não liberou o acesso'. Use SEMPRE nesse caso, antes de responder qualquer coisa. Só funciona se a pessoa estiver logada.",
+    input_schema: { type: "object", properties: {} },
+  },
 ];
 
 async function buscarDorama(trecho: string) {
@@ -131,6 +137,89 @@ async function statusIndicacao(userId: string | null) {
   const creditados = rows.filter((r) => r.status === "credited" || r.credited_at).length;
   const pendentes = rows.length - creditados;
   return { total_indicados: rows.length, creditados, pendentes, dias_ganhos: creditados * 15 };
+}
+
+// ✅ 25/07: avisa o admin por email quando um caso de "paguei e não liberou"
+// é CONFIRMADO (pix_payments.status='paid' mas acesso não ativo) — reaproveita
+// a function admin-whatsapp-notify que já manda email+WhatsApp pro admin.
+async function alertarAdminPagamentoNaoAtivado(args: {
+  email: string | null;
+  phone: string | null;
+  order_nsu: string;
+  amount_cents: number;
+  plano: string;
+}) {
+  const valor = (args.amount_cents / 100).toFixed(2).replace(".", ",");
+  const text =
+    `🚨 PIX confirmado pago mas acesso NÃO ativado\n\n` +
+    `Email: ${args.email || "?"}\n` +
+    `Telefone: ${args.phone || "?"}\n` +
+    `Pedido: ${args.order_nsu}\n` +
+    `Valor: R$${valor} (${args.plano})\n\n` +
+    `Detectado pela Dora no chat — cliente reclamou "paguei e não liberou".`;
+
+  try {
+    await fetch("https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-whatsapp-notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-check-secret": "dp_admin_notify_h4t8w2" },
+      body: JSON.stringify({ message: text }),
+    });
+  } catch (e) {
+    console.error("[dora-chat] alertarAdminPagamentoNaoAtivado falhou:", String(e));
+  }
+}
+
+async function statusPagamentoPix(userId: string | null) {
+  if (!userId) return { nao_autenticado: true };
+
+  const { data: payments } = await supabase
+    .from("pix_payments")
+    .select("status, plan, amount_cents, order_nsu, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const payment = payments?.[0];
+  if (!payment) return { encontrado: false };
+
+  if (payment.status !== "paid") {
+    return { encontrado: true, status: payment.status, order_nsu: payment.order_nsu };
+  }
+
+  // status='paid' — confere se o acesso realmente reflete isso
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("status")
+    .eq("user_id", userId)
+    .order("end_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  const acessoAtivo = sub?.status === "active";
+  if (acessoAtivo) {
+    return { encontrado: true, status: "paid_e_ativo" };
+  }
+
+  // ✅ Confirmado: pagou de verdade, acesso não ativado — caso real, não achismo
+  const { data: profile } = await supabase.from("profiles").select("email, phone").eq("id", userId).maybeSingle();
+  const whatsappTexto = encodeURIComponent(
+    `Oi! Paguei o PIX (pedido ${payment.order_nsu}, R$${(payment.amount_cents / 100).toFixed(2)}) e meu acesso não foi liberado. Preciso de ajuda urgente 🙏`
+  );
+
+  await alertarAdminPagamentoNaoAtivado({
+    email: profile?.email || null,
+    phone: profile?.phone || null,
+    order_nsu: payment.order_nsu,
+    amount_cents: payment.amount_cents,
+    plano: payment.plan,
+  });
+
+  return {
+    encontrado: true,
+    status: "paid_nao_ativado_confirmado",
+    order_nsu: payment.order_nsu,
+    whatsapp_link: `https://wa.me/5518996796654?text=${whatsappTexto}`,
+  };
 }
 
 function sleep(ms: number) {
@@ -496,6 +585,16 @@ Use a ferramenta status_assinatura antes de responder — nunca chuta a data.
 - Se não está ativo: pergunta o plano (mensal R$16,90 ou trimestral R$47,90) e a forma de pagamento (PIX ou cartão) se a pessoa não tiver dito os dois. Depois de saber os dois, pergunta antes de gerar: "**Quer que eu já gere o link de pagamento? 💜**" — só chama a ferramenta gerar_link_pagamento depois que a pessoa confirmar. Funciona pros dois (PIX vai pela InfinityPay, cartão vai direto pra Stripe, já no plano certo).
 Lembra sempre de mencionar: indicando amigos ganha 15 dias grátis por cada um! doramasplus.com.br/indicar
 
+PAGUEI E NÃO LIBEROU (PIX)
+Se a pessoa disser algo como "paguei e não liberou", "fiz o PIX e não ativou": use a ferramenta status_pagamento_pix ANTES de responder qualquer coisa.
+- Se vier nao_autenticado: pede pra entrar na conta primeiro.
+- Se vier encontrado:false: "Não encontrei nenhum pagamento seu por aqui 😅 Confere se entrou com a conta certa (mesmo email de quando pagou)? Se sim, fala com o suporte: https://wa.me/5518996796654"
+- Se vier status:"pending": pergunta "Você já chegou a fazer o PIX pelo aplicativo do banco, ou ainda não pagou?"
+  - Se ainda não pagou (ou o QR expirou): pergunta plano+método e usa gerar_link_pagamento normalmente (mesmo fluxo de renovação).
+  - Se insiste que já pagou pelo banco: isso não está confirmado no nosso sistema ainda (pode ser atraso de confirmação) — NÃO gera link novo (evita pagamento em dobro). Manda pro suporte: "Isso pode ser só um atraso na confirmação 😊 Fala com o suporte que eles conferem certinho: https://wa.me/5518996796654"
+- Se vier status:"paid_e_ativo": "Boas notícias, seu acesso já está ativo! 🎉 Se não tá aparecendo, tenta sair e entrar de novo na conta."
+- Se vier status:"paid_nao_ativado_confirmado": esse é um problema real confirmado. Peça desculpa, explica que já vai escalar, e manda o link que veio em whatsapp_link (já vem com a mensagem pronta) — não precisa reescrever o texto, só apresenta o link. Avisa que o time já foi avisado automaticamente também.
+
 APP
 "📱 Android: Chrome → 3 pontinhos → 'Adicionar à tela inicial'
 🍎 iPhone: Safari → compartilhar → 'Adicionar à Tela de Início'"
@@ -539,6 +638,7 @@ COMPORTAMENTO GERAL
 - Sempre usa a ferramenta buscar_dorama antes de responder sobre um título específico, nunca de memória
 - Sempre usa status_assinatura antes de falar sobre vencimento/status de acesso, nunca de memória
 - Sempre usa status_indicacao antes de falar quantos dias a pessoa já ganhou, nunca de memória
+- Sempre usa status_pagamento_pix quando a pessoa disser "paguei e não liberou" — nunca gera link novo se ela insistir que já pagou e o status ainda for pending (evita cobrança em dobro)
 - gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
 - Episódio faltando — tudo num único vídeo
 - Nunca assuma que tem ou não tem conta
@@ -645,6 +745,8 @@ Deno.serve(async (req: Request) => {
           const plano = block.input?.plano === 'quarterly' ? 'quarterly' : 'monthly';
           const metodo = block.input?.metodo === 'cartao' ? 'cartao' : 'pix';
           result = await gerarLinkPagamento(userId, plano, metodo);
+        } else if (block.name === 'status_pagamento_pix') {
+          result = await statusPagamentoPix(userId);
         }
         toolResults.push({
           type: 'tool_result',
