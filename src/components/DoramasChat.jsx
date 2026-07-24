@@ -4,6 +4,13 @@ import { supabase } from "@/lib/supabaseClient";
 
 const WHATSAPP = "5518996796654"; // ex: 5511999999999
 
+// A Dora usa ||| sozinho numa linha pra marcar onde a resposta deve virar
+// balões separados (ex: chave PIX isolada, fácil de copiar sem pegar texto junto).
+const splitAssistantReply = (text) =>
+  String(text || "")
+    .split(/\n?\|\|\|\n?/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 
 export default function DoramasChat() {
   const location = useLocation();
@@ -188,7 +195,8 @@ export default function DoramasChat() {
       );
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const replyParts = splitAssistantReply(reply);
+      setMessages((prev) => [...prev, ...replyParts.map((part) => ({ role: "assistant", content: part }))]);
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
@@ -199,7 +207,7 @@ export default function DoramasChat() {
         },
         body: JSON.stringify([
           { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
-          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: reply }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
         ])
       });
     } catch {
@@ -233,7 +241,8 @@ export default function DoramasChat() {
       );
       const data = await response.json();
       const reply = data?.content?.[0]?.text || "Desculpa, não consegui responder agora. Tente novamente!";
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const replyParts = splitAssistantReply(reply);
+      setMessages((prev) => [...prev, ...replyParts.map((part) => ({ role: "assistant", content: part }))]);
       fetch('https://fbngdxhkaueaolnyswgn.supabase.co/rest/v1/dora_conversations', {
         method: 'POST',
         headers: {
@@ -244,7 +253,7 @@ export default function DoramasChat() {
         },
         body: JSON.stringify([
           { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
-          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: reply }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
         ])
       });
     } catch {
