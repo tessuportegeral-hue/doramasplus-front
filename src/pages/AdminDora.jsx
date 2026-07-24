@@ -129,7 +129,7 @@ export default function AdminDora() {
 
       const { data, error } = await supabase
         .from("dora_conversations")
-        .select("session_id,user_id,role,content,created_at")
+        .select("session_id,user_id,role,content,created_at,needs_human")
         .order("created_at", { ascending: false })
         .limit(PREVIEW_LIMIT);
 
@@ -303,6 +303,7 @@ export default function AdminDora() {
               role: newMsg.role,
               content: newMsg.content,
               created_at: newMsg.created_at,
+              needs_human: newMsg.needs_human,
             },
             ...prev,
           ]);
@@ -355,6 +356,7 @@ export default function AdminDora() {
           last_content: r.content,
           last_role: r.role,
           last_created_at: r.created_at,
+          needs_human: r.role === "assistant" && !!r.needs_human,
           count: 1,
         });
       } else {
@@ -367,6 +369,10 @@ export default function AdminDora() {
           existing.last_content = r.content;
           existing.last_role = r.role;
           existing.last_created_at = r.created_at;
+          // Flag "precisa de humano" só fica ativa enquanto a última
+          // mensagem da conversa for a escalada da Dora — some sozinha
+          // assim que alguém (admin ou a pessoa) responde depois dela.
+          existing.needs_human = r.role === "assistant" && !!r.needs_human;
         }
       }
     }
@@ -390,6 +396,9 @@ export default function AdminDora() {
         return hay.includes(q);
       })
       .sort((a, b) => {
+        const aH = a.needs_human ? 1 : 0;
+        const bH = b.needs_human ? 1 : 0;
+        if (bH !== aH) return bH - aH;
         const aU = (unread[a.session_id] || 0) > 0 ? 1 : 0;
         const bU = (unread[b.session_id] || 0) > 0 ? 1 : 0;
         return bU - aU;
@@ -400,6 +409,11 @@ export default function AdminDora() {
   const totalUnread = useMemo(
     () => conversations.filter((c) => (unread[c.session_id] || 0) > 0).length,
     [conversations, unread]
+  );
+
+  const totalNeedsHuman = useMemo(
+    () => conversations.filter((c) => c.needs_human).length,
+    [conversations]
   );
 
   const selectedConv = conversations.find((c) => c.session_id === selectedSessionId) || null;
@@ -417,17 +431,18 @@ export default function AdminDora() {
     btn: { padding: "8px 10px", borderRadius: 10, border: "1px solid #2a2a2a", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.92)", cursor: "pointer" },
     error: { marginTop: 10, fontSize: 12, color: "#ff6b6b" },
     listWrap: { overflowY: "auto", flex: 1 },
-    listItem: (active, hasUnread) => ({
+    listItem: (active, hasUnread, needsHuman) => ({
       padding: 12,
-      paddingLeft: hasUnread && !active ? 10 : 12,
+      paddingLeft: (hasUnread || needsHuman) && !active ? 10 : 12,
       borderBottom: "1px solid #1f1f1f",
-      borderLeft: hasUnread && !active ? "3px solid #2ecc71" : "3px solid transparent",
+      borderLeft: needsHuman && !active ? "3px solid #ff9f43" : hasUnread && !active ? "3px solid #2ecc71" : "3px solid transparent",
       cursor: "pointer",
-      background: active ? "rgba(255,255,255,0.06)" : hasUnread ? "rgba(46,204,113,0.05)" : "transparent",
+      background: active ? "rgba(255,255,255,0.06)" : needsHuman ? "rgba(255,159,67,0.08)" : hasUnread ? "rgba(46,204,113,0.05)" : "transparent",
       display: "flex",
       flexDirection: "column",
       gap: 8,
     }),
+    needsHumanBadge: { fontSize: 11, fontWeight: 800, color: "#ff9f43", border: "1px solid rgba(255,159,67,0.5)", borderRadius: 999, padding: "1px 8px", flexShrink: 0 },
     listTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" },
     name: { fontWeight: 800, letterSpacing: 0.2 },
     unreadBadge: { minWidth: 18, height: 18, borderRadius: 999, background: "#2ecc71", color: "#08260f", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 },
@@ -483,6 +498,9 @@ export default function AdminDora() {
           style={{ ...S.input, marginTop: 10 }}
         />
 
+        {totalNeedsHuman > 0 ? (
+          <div style={{ ...S.meta, marginTop: 8, color: "#ff9f43", fontWeight: 700 }}>🚨 {totalNeedsHuman} precisando de humano</div>
+        ) : null}
         {totalUnread > 0 ? <div style={{ ...S.meta, marginTop: 8 }}>{totalUnread} conversa(s) não lida(s)</div> : null}
         {error ? <div style={S.error}>{error}</div> : null}
       </div>
@@ -500,7 +518,7 @@ export default function AdminDora() {
             const unreadCount = unread[c.session_id] || 0;
             const idn = identity(c);
             return (
-              <div key={c.session_id} onClick={() => openChat(c.session_id)} style={S.listItem(active, unreadCount > 0)}>
+              <div key={c.session_id} onClick={() => openChat(c.session_id)} style={S.listItem(active, unreadCount > 0, c.needs_human)}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <div style={S.avatar}>{c.user_id ? "👤" : "🕵️"}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -509,6 +527,7 @@ export default function AdminDora() {
                         {idn.title}
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        {c.needs_human ? <div style={S.needsHumanBadge}>🚨 precisa de humano</div> : null}
                         {unreadCount > 0 ? <div style={S.unreadBadge}>{unreadCount}</div> : null}
                         <span style={{ ...S.meta, opacity: 0.7 }}>{fmtTime(c.last_created_at)}</span>
                       </div>

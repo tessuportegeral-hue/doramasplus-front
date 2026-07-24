@@ -12,6 +12,11 @@ const splitAssistantReply = (text) =>
     .map((part) => part.trim())
     .filter(Boolean);
 
+// Toda resposta que escala pro suporte humano inclui esse link — usa isso
+// pra sinalizar "precisa de humano" no painel /admin/dora sem precisar de
+// lógica extra no backend (ver [[project-admin-dora-chat-feature]]).
+const needsHuman = (text) => String(text || "").includes(`wa.me/${WHATSAPP}`);
+
 export default function DoramasChat() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -208,7 +213,7 @@ export default function DoramasChat() {
         },
         body: JSON.stringify([
           { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
-          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
     } catch {
@@ -254,7 +259,7 @@ export default function DoramasChat() {
         },
         body: JSON.stringify([
           { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
-          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
     } catch {
@@ -301,7 +306,7 @@ export default function DoramasChat() {
         },
         body: JSON.stringify([
           { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: placeholderText },
-          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n') }
+          { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
     } catch {
