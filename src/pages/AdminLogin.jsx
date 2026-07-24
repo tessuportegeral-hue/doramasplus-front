@@ -42,9 +42,14 @@ const AdminLogin = () => {
         const { error: otpError } = await supabase.auth.verifyOtp({
           email,
           token_hash: data.token_hash,
-          type: 'magiclink',
+          type: 'email',
         });
-        if (otpError) console.error('Admin login: verifyOtp falhou:', otpError);
+        if (otpError) {
+          console.error('Admin login: verifyOtp falhou:', otpError);
+          setError('Login parcial: painéis com dados sensíveis (ex: conversas da Dora) podem não carregar. Tenta de novo.');
+          setLoading(false);
+          return;
+        }
       }
 
       localStorage.setItem('isAdmin', 'true');
