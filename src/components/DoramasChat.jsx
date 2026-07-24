@@ -264,11 +264,11 @@ export default function DoramasChat() {
     }
   };
 
-  // Comprovante de pagamento (imagem) — a Dora analisa e libera acesso na hora
-  // se validar (ver dora-chat/analisar_comprovante_pix).
+  // Imagem enviada pela pessoa — a Dora identifica o que é (comprovante,
+  // dorama, etc.) e reage de acordo (ver dora-chat/analisar_comprovante_pix).
   const sendImage = async (mimeType, base64, previewDataUrl) => {
     if (loading) return;
-    const placeholderText = "📎 Comprovante de pagamento enviado";
+    const placeholderText = "📎 Imagem enviada";
     const newMessages = [...messages, { role: "user", content: placeholderText, imageDataUrl: previewDataUrl }];
     setMessages(newMessages);
     setLoading(true);
