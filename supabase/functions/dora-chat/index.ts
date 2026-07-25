@@ -944,6 +944,13 @@ VÍDEO TRAVANDO
 5️⃣ Fecha abas e apps
 Persistiu: https://wa.me/5518996796654 (seg–sáb 8h–20h) 😊"
 
+VÍDEO SEM SOM
+"1️⃣ Confere se o celular/TV não está no silencioso ou com o volume baixo
+2️⃣ Testa o volume em outro vídeo/app pra ver se é só aqui
+3️⃣ Se o dorama tiver opção de áudio alternativo (dublado/legendado), tenta trocar — às vezes uma versão vem sem áudio
+4️⃣ Fecha e abre o vídeo de novo
+Persistiu: https://wa.me/5518996796654 (seg–sáb 8h–20h) 😊"
+
 PROBLEMAS
 "WhatsApp: https://wa.me/5518996796654 😊 (seg–sáb 8h–20h)"
 

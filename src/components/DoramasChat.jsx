@@ -17,6 +17,20 @@ const splitAssistantReply = (text) =>
 // lógica extra no backend (ver [[project-admin-dora-chat-feature]]).
 const needsHuman = (text) => String(text || "").includes(`wa.me/${WHATSAPP}`);
 
+// ✅ 25/07: FAQ clicável (referência: widget da concorrência com lista de
+// artigos prontos). Em vez de respostas fixas separadas, cada clique só
+// manda a pergunta pra Dora responder normal (sendText) — assim a resposta
+// nunca fica desincronizada do que ela realmente sabe fazer (ex: renovação
+// consulta o status real da conta, não é texto genérico).
+const FAQ_QUESTIONS = [
+  { icon: "🔑", q: "Como eu ativo meu acesso?" },
+  { icon: "💳", q: "Quais as formas de pagamento?" },
+  { icon: "🔒", q: "Esqueci minha senha" },
+  { icon: "🔇", q: "O vídeo está sem som, o que eu faço?" },
+  { icon: "🔄", q: "Já sou assinante, como renovo?" },
+  { icon: "📲", q: "Como coloco o app na tela inicial?" },
+];
+
 export default function DoramasChat() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -568,28 +582,39 @@ export default function DoramasChat() {
                   </div>
                 </div>
                 {i === 0 && messages.length === 1 && (
-                  <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {["Quero ativar meu acesso", "Esqueci minha senha", "Tem dorama dublado?"].map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => sendText(q)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: "20px",
-                          border: "1px solid #333",
-                          background: "transparent",
-                          color: "#bbb",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                          fontFamily: "system-ui",
-                          transition: "all 0.15s",
-                        }}
-                        onMouseOver={(e) => { e.target.style.borderColor = "#e74c3c"; e.target.style.color = "#e74c3c"; }}
-                        onMouseOut={(e) => { e.target.style.borderColor = "#333"; e.target.style.color = "#bbb"; }}
-                      >
-                        {q}
-                      </button>
-                    ))}
+                  <div style={{ marginTop: "10px" }}>
+                    <div style={{ color: "#777", fontSize: "11px", fontFamily: "system-ui", marginBottom: "6px", paddingLeft: "2px" }}>
+                      Perguntas frequentes
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {FAQ_QUESTIONS.map((faq) => (
+                        <button
+                          key={faq.q}
+                          onClick={() => sendText(faq.q)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            border: "1px solid #2a2a2a",
+                            background: "#161616",
+                            color: "#ddd",
+                            fontSize: "12.5px",
+                            fontFamily: "system-ui",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                          onMouseOver={(e) => { e.currentTarget.style.borderColor = "#e74c3c"; e.currentTarget.style.background = "#1c1414"; }}
+                          onMouseOut={(e) => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.background = "#161616"; }}
+                        >
+                          <span style={{ fontSize: "16px", flexShrink: 0 }}>{faq.icon}</span>
+                          <span style={{ flex: 1 }}>{faq.q}</span>
+                          <span style={{ color: "#555", fontSize: "14px", flexShrink: 0 }}>›</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
