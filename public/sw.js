@@ -21,10 +21,13 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || '',
     icon: '/android-chrome-192x192.png',
-    // Sem "badge": o Android sempre mascara esse ícone pra monocromático
-    // (só usa a transparência) — como o logo é uma imagem cheia sem fundo
-    // transparente, virava uma bolinha genérica na barra de status. Sem
-    // essa propriedade o sistema usa um ícone neutro em vez disso.
+    // ✅ 25/07: badge próprio (só o símbolo "D", recortado do logo e
+    // convertido pra silhueta branca transparente via limiar de luminância)
+    // — o Android sempre mascara esse ícone pra monocromático (só usa a
+    // transparência), então uma imagem cheia sem fundo transparente virava
+    // bolinha genérica. Sem texto: ilegível no tamanho minúsculo da barra
+    // de status, só o símbolo sozinho.
+    badge: '/badge-192x192.png',
     data: { url: data.url || '/', log_id: data.log_id || null },
   };
 
