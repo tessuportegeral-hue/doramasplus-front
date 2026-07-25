@@ -100,3 +100,30 @@ export async function subscribeToPush(userId) {
     return { ok: false, reason: 'subscribe_error', detail: `${e?.name || ''}: ${e?.message || String(e)}` };
   }
 }
+
+// ✅ 25/07: trava contra corrida — o Supabase costuma disparar mais de um
+// evento de auth em sequência rápida no carregamento (ex: INITIAL_SESSION
+// + SIGNED_IN quase juntos). Sem isso, duas chamadas simultâneas de
+// sincronização silenciosa passavam pela checagem "já existe?" ANTES de
+// qualquer uma terminar de gravar, e as duas acabavam criando uma
+// assinatura nova cada uma. Guardando a Promise em andamento, a segunda
+// chamada só espera a primeira terminar em vez de duplicar o trabalho.
+let syncInFlight = null;
+
+export async function ensureSubscriptionSynced(userId) {
+  if (!isPushSupported() || !userId) return;
+  if (syncInFlight) return syncInFlight;
+
+  syncInFlight = (async () => {
+    try {
+      const already = await hasValidSubscription(userId);
+      if (already) return;
+      const result = await subscribeToPush(userId);
+      if (!result.ok) console.error('[push] sync silenciosa falhou:', result.reason, result.detail);
+    } finally {
+      syncInFlight = null;
+    }
+  })();
+
+  return syncInFlight;
+}
