@@ -88,6 +88,21 @@ const TOOLS = [
       required: ["plano_esperado"],
     },
   },
+  {
+    name: "gerar_link_suporte_whatsapp",
+    description:
+      "Gera o link do WhatsApp do suporte já com uma mensagem de contexto pré-preenchida, pra pessoa não precisar reexplicar tudo pro atendente. Use SEMPRE que for escalar pro suporte por um problema de PAGAMENTO que você não conseguiu resolver sozinha (chave CNPJ não funcionou, comprovante não validou depois de tentar, etc.). Não use pra assuntos que não são de pagamento (pedido de dorama, dúvida geral, senha, etc.) — nesses casos usa o link fixo normal.",
+    input_schema: {
+      type: "object",
+      properties: {
+        resumo: {
+          type: "string",
+          description: "Resumo curto (1-2 frases, em primeira pessoa como se fosse a própria pessoa escrevendo pro atendente) do que já foi tentado e qual o problema. Ex: 'Tentei pagar pela chave PIX (CNPJ) mas não consegui, já mandei o comprovante e não validou.'",
+        },
+      },
+      required: ["resumo"],
+    },
+  },
 ];
 
 async function buscarDorama(trecho: string) {
@@ -490,6 +505,16 @@ async function analisarComprovantePix(
   return { valido: true, plano, dias };
 }
 
+// ✅ 25/07: link de suporte com resumo pré-preenchido pros casos de
+// escalada por pagamento que ainda não tinham isso (chave CNPJ que não
+// funcionou, comprovante que não validou depois de tentar) — mesmo padrão
+// já usado em statusPagamentoPix, só que aqui o resumo vem da própria
+// Dora (ela tem o contexto da conversa), não é montado com dados fixos.
+function gerarLinkSuporteWhatsapp(resumo: string) {
+  const texto = encodeURIComponent(resumo?.trim() || "Preciso de ajuda com meu pagamento 🙏");
+  return { link: `https://wa.me/5518996796654?text=${texto}` };
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -725,9 +750,9 @@ Depois de pagar, é só mandar o print/comprovante AQUI MESMO no chat (usa o bot
 
 Se a pessoa mandar uma IMAGEM: veja a seção "IMAGEM ENVIADA PELA PESSOA" mais abaixo — nunca peça pra mandar pro WhatsApp antes de tentar analisar aqui mesmo (só se for mesmo um comprovante).
 
-Se MESMO ASSIM ela continuar com problema (a chave também não funcionou, comprovante não validou depois de tentar, ou ela pedir humano diretamente) — MANDA PRO WHATSAPP IMEDIATAMENTE:
-"Poxa, não quero que você fique sem assistir! 😊 Fala direto com o nosso suporte pelo WhatsApp que eles te ajudam a finalizar agora mesmo:
-https://wa.me/5518996796654 (seg–sáb 8h–20h)
+Se MESMO ASSIM ela continuar com problema (a chave também não funcionou, comprovante não validou depois de tentar, ou ela pedir humano diretamente) — use a ferramenta gerar_link_suporte_whatsapp com um resumo curto do que já foi tentado, e MANDA PRO WHATSAPP IMEDIATAMENTE:
+"Poxa, não quero que você fique sem assistir! 😊 Fala direto com o nosso suporte pelo WhatsApp que eles já vão saber do que se trata e te ajudam a finalizar agora mesmo:
+[link que veio da ferramenta] (seg–sáb 8h–20h)
 Eles resolvem rapidinho! 🎉"
 
 Se perguntar se pode pagar no cartão: "Sim! 😊 Aceitamos cartão de crédito e PIX. Pagou, acesso liberado na hora!"
@@ -897,7 +922,7 @@ Resultados de analisar_comprovante_pix (só depois de ter chamado a ferramenta):
 - Se vier erro:"sem_imagem": peça pra reenviar a imagem, algo deu errado no envio.
 - Se vier erro:"limite_tentativas_atingido": "Já tentamos analisar algumas vezes hoje 😅 Pra não travar, vou te passar direto pro suporte: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
 - Se vier valido:true: 🎉 Comemora! Fala que o acesso já está ativo, o plano (mensal/trimestral) e por quantos dias (campo dias). Lembra da indicação: doramasplus.com.br/indicar
-- Se vier valido:false: explica com carinho que não deu pra confirmar automaticamente (não fale o "motivo" técnico cru — traduza pra algo simples, tipo "não consegui ver todos os dados direito" ou "o valor não bateu com nenhum plano"). Pergunta se pode tentar mandar de novo (foto mais nítida, ou o comprovante certo) ANTES de escalar pro suporte. Só manda pro WhatsApp se ela preferir ou já tiver tentado antes sem sucesso.
+- Se vier valido:false: explica com carinho que não deu pra confirmar automaticamente (não fale o "motivo" técnico cru — traduza pra algo simples, tipo "não consegui ver todos os dados direito" ou "o valor não bateu com nenhum plano"). Pergunta se pode tentar mandar de novo (foto mais nítida, ou o comprovante certo) ANTES de escalar pro suporte. Só manda pro WhatsApp se ela preferir ou já tiver tentado antes sem sucesso — nesse caso, use gerar_link_suporte_whatsapp com um resumo do que já foi tentado antes de mandar o link.
 
 APP
 "📱 Android: Chrome → 3 pontinhos → 'Adicionar à tela inicial'
@@ -950,6 +975,7 @@ COMPORTAMENTO GERAL
 - Prioriza validar comprovante no próprio chat antes de escalar pro WhatsApp — só escala se a pessoa preferir ou a validação falhar
 - gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
 - Se gerar_link_pagamento retornar erro, segue a tabela de erros específica (seção RENOVAÇÃO) — nunca fala "deu um problema" genérico
+- Ao escalar pro suporte por problema de PAGAMENTO que você não resolveu sozinha, usa gerar_link_suporte_whatsapp com um resumo do que já foi tentado — nunca manda o link puro nesses casos, pra pessoa não ter que reexplicar tudo de novo pro atendente
 - Episódio faltando — tudo num único vídeo
 - Nunca assuma que tem ou não tem conta
 - Nunca: assinar, assinatura, checkout, sessão, cache, browser, token
@@ -1082,6 +1108,8 @@ Deno.serve(async (req: Request) => {
             ? block.input.plano_esperado
             : 'desconhecido';
           result = await analisarComprovantePix(userId, planoEsperado, image?.base64 || null, image?.mime_type || null);
+        } else if (block.name === 'gerar_link_suporte_whatsapp') {
+          result = gerarLinkSuporteWhatsapp(String(block.input?.resumo || ''));
         }
         toolResults.push({
           type: 'tool_result',
