@@ -36,13 +36,19 @@ export async function subscribeToPush(userId) {
     const registration = await registerServiceWorker();
     await navigator.serviceWorker.ready;
 
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+    // ✅ 25/07: nunca reaproveita uma subscription existente — depois de
+    // desinstalar/reinstalar o app, o Chrome às vezes mantém uma
+    // subscription "fantasma" (o FCM aceita o envio mas nunca entrega,
+    // sem devolver 404/410 pra gente saber). Descartar e pedir uma nova
+    // sempre garante um endpoint de verdade.
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      await existing.unsubscribe();
     }
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
 
     const json = subscription.toJSON();
     const { error } = await supabase.from('push_subscriptions').upsert(
