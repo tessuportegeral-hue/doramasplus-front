@@ -44,6 +44,23 @@ Deno.serve(async (req) => {
     });
 
     const body = await req.json().catch(() => ({}));
+
+    // ✅ modo "stats": só devolve quantos assinantes existem hoje + histórico
+    // de envios passados, sem mandar nada — pro admin ver antes de disparar.
+    if (body?.action === "stats") {
+      const { count: totalSubscribers } = await admin
+        .from("push_subscriptions")
+        .select("user_id", { count: "exact", head: true });
+
+      const { data: history } = await admin
+        .from("push_send_log")
+        .select("id, title, body, sent, total, created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      return json({ ok: true, total_subscribers: totalSubscribers || 0, history: history || [] });
+    }
+
     const title = String(body?.title || "").trim();
     const message = String(body?.body || "").trim();
     const url = String(body?.url || "/").trim() || "/";
@@ -51,6 +68,14 @@ Deno.serve(async (req) => {
     if (!title || !message) return json({ error: "missing_title_or_body" }, 400);
 
     const result = await sendPushToAll(admin, { title, body: message, url });
+
+    await admin.from("push_send_log").insert({
+      title,
+      body: message,
+      url,
+      sent: result.sent,
+      total: result.total,
+    });
 
     return json({ ok: true, ...result });
   } catch (e) {

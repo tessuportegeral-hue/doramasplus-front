@@ -1,7 +1,8 @@
 // src/pages/AdminPush.jsx
 // Painel simples pra disparar um push manual pra todo mundo assinado —
-// promoção, aviso pontual, etc. Sem histórico de envios por enquanto.
-import { useState } from "react";
+// promoção, aviso pontual, etc. Mostra quantos assinantes existem hoje
+// (antes de mandar) e o histórico dos envios anteriores (depois de mandar).
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminTabs from "@/components/AdminTabs";
 
@@ -13,12 +14,39 @@ export default function AdminPush() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  const [totalSubscribers, setTotalSubscribers] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  async function loadStats() {
+    setLoadingStats(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("admin-send-push", {
+        body: { action: "stats" },
+      });
+      if (!fnError && data?.ok) {
+        setTotalSubscribers(data.total_subscribers);
+        setHistory(data.history || []);
+      }
+    } finally {
+      setLoadingStats(false);
+    }
+  }
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
   async function handleSend() {
     if (!title.trim() || !body.trim()) {
       setError("Preenche o título e a mensagem.");
       return;
     }
-    if (!window.confirm(`Enviar essa notificação pra TODOS os assinantes agora?\n\n"${title}"\n${body}`)) {
+    if (
+      !window.confirm(
+        `Enviar essa notificação pra ${totalSubscribers ?? "?"} assinante(s) agora?\n\n"${title}"\n${body}`
+      )
+    ) {
       return;
     }
 
@@ -40,6 +68,7 @@ export default function AdminPush() {
       setTitle("");
       setBody("");
       setUrl("/");
+      loadStats();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -54,8 +83,11 @@ export default function AdminPush() {
         <h1 style={{ color: "#fff", fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
           Enviar aviso push 🔔
         </h1>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 24 }}>
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginBottom: 6 }}>
           Manda uma notificação pontual pra todo mundo que já assinou (promoção, aviso, etc).
+        </p>
+        <p style={{ color: "#c4b5fd", fontSize: 13, marginBottom: 24, fontWeight: 700 }}>
+          {loadingStats ? "Carregando..." : `📲 ${totalSubscribers ?? 0} pessoa(s) vão receber hoje`}
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -126,6 +158,40 @@ export default function AdminPush() {
           >
             {sending ? "Enviando..." : "Enviar pra todos"}
           </button>
+        </div>
+
+        <div style={{ marginTop: 40 }}>
+          <h2 style={{ color: "#fff", fontSize: 16, fontWeight: 800, marginBottom: 12 }}>
+            Histórico de envios
+          </h2>
+          {history.length === 0 ? (
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Nenhum envio manual ainda.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {history.map((h) => (
+                <div
+                  key={h.id}
+                  style={{
+                    background: "#111111",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: 10,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{h.title}</span>
+                    <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, whiteSpace: "nowrap" }}>
+                      {new Date(h.created_at).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                  <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, margin: "4px 0 6px" }}>{h.body}</p>
+                  <span style={{ color: "#86efac", fontSize: 11, fontWeight: 700 }}>
+                    {h.sent}/{h.total} entregues
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
