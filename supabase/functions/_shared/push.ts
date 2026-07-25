@@ -44,9 +44,15 @@ export async function sendPushToSubscription(
     return false;
   }
   try {
+    // ✅ 25/07: sem isso, o web-push manda com urgência/TTL padrão e o
+    // Google (FCM) pode segurar a entrega por tempo indefinido se o
+    // dispositivo estiver ocioso — confirmado hoje em testes onde o envio
+    // era aceito (sem 404/410) mas nunca chegava em nenhum aparelho.
+    // urgency "high" e TTL curto pedem entrega imediata, sem enfileirar.
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-      JSON.stringify(payload)
+      JSON.stringify(payload),
+      { TTL: 60, urgency: "high" }
     );
     return true;
   } catch (e) {
