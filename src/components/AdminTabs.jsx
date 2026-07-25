@@ -11,6 +11,7 @@ const TABS = [
   { path: "/admin/support", label: "Suporte" },
   { path: "/admin/bot-vendas", label: "Bot Vendas" },
   { path: "/admin/dora", label: "Dora" },
+  { path: "/admin/push", label: "Push" },
 ];
 
 export default function AdminTabs() {

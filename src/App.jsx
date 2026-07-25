@@ -78,6 +78,9 @@ const AdminBotVendas = lazy(() => import('@/pages/AdminBotVendas'));
 // ✅ (NOVO) Painel de monitoramento/resposta da Dora (chat do site)
 const AdminDora = lazy(() => import('@/pages/AdminDora'));
 
+// ✅ (NOVO) Disparo manual de push pra todos os assinantes
+const AdminPush = lazy(() => import('@/pages/AdminPush'));
+
 // Landing
 const Landing = lazy(() => import('@/pages/Landing'));
 const Privacidade = lazy(() => import('@/pages/Privacidade'));
@@ -580,6 +583,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminDora />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ (NOVO) ADMIN PUSH (disparo manual pra assinantes) */}
+                <Route
+                  path="/admin/push"
+                  element={
+                    <AdminRoute>
+                      <AdminPush />
                     </AdminRoute>
                   }
                 />
