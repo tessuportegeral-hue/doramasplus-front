@@ -28,6 +28,14 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/' },
   };
 
+  // Pôster do dorama em destaque (recomendação diária) — aparece grande
+  // na notificação, igual apps de streaming grandes fazem. IMPORTANTE: o
+  // Android só mostra a imagem e os botões de ação quando a notificação
+  // está EXPANDIDA (arrasta pra baixo / toca na setinha) — recolhida,
+  // mostra só ícone + título + texto, é comportamento normal do sistema.
+  if (data.image) options.image = data.image;
+  if (data.cta) options.actions = [{ action: 'open', title: data.cta }];
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

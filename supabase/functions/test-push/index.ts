@@ -19,19 +19,23 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();
-    if (!email) return new Response(JSON.stringify({ error: "missing_email" }), { status: 400 });
+    const userIdParam = String(body?.user_id || "").trim();
 
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (error || !profile?.id) {
-      return new Response(JSON.stringify({ error: "user_not_found" }), { status: 404 });
+    let targetUserId = userIdParam || null;
+    if (!targetUserId) {
+      if (!email) return new Response(JSON.stringify({ error: "missing_email_or_user_id" }), { status: 400 });
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+      if (error || !profile?.id) {
+        return new Response(JSON.stringify({ error: "user_not_found" }), { status: 404 });
+      }
+      targetUserId = profile.id;
     }
 
-    const result = await sendPushToUser(supabase, profile.id, {
+    const result = await sendPushToUser(supabase, targetUserId, {
       title: "DoramasPlus 💜",
       body: "Teste de notificação — se você tá vendo isso, funcionou! 🎉",
       url: "/",
