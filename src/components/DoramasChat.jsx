@@ -31,15 +31,16 @@ const FAQ_QUESTIONS = [
   { icon: "📲", q: "Como coloco o app na tela inicial?" },
 ];
 
+const GREETING = {
+  role: "assistant",
+  content: "Oi! Sou a **Dora**, sua assistente do DoramasPlus 🌸 Como posso te ajudar hoje?",
+};
+
 export default function DoramasChat() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: "Oi! Sou a **Dora**, sua assistente do DoramasPlus 🌸 Como posso te ajudar hoje?",
-    },
-  ]);
+  const [activeTab, setActiveTab] = useState("conversa"); // "conversa" | "artigos"
+  const [messages, setMessages] = useState([GREETING]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(
@@ -150,6 +151,51 @@ export default function DoramasChat() {
     };
 
     checkRecovery();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ✅ 25/07: recupera o histórico de conversa dos últimos 30 dias pra quem
+  // está logado — sem isso, a conversa começava do zero toda vez que a
+  // pessoa fechava e reabria o site, mesmo tendo falado com a Dora recente.
+  // Só funciona logado (dora_conversations.user_id) — anônimo continua com
+  // sessão nova a cada visita, sem identidade estável pra buscar histórico.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const resp = await fetch(
+          "https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/dora-load-history",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session.access_token}`,
+            },
+          }
+        );
+        const data = await resp.json();
+        const msgs = Array.isArray(data?.messages) ? data.messages : [];
+        if (cancelled || !msgs.length) return;
+
+        setMessages(
+          msgs.map((m) => ({
+            role: m.role === "admin" ? "assistant" : m.role,
+            content: m.content,
+            fromAdmin: m.role === "admin",
+          }))
+        );
+      } catch {
+        // silencioso — sem histórico carregado, fica só a saudação padrão
+      }
+    };
+
+    loadHistory();
     return () => {
       cancelled = true;
     };
@@ -527,208 +573,249 @@ export default function DoramasChat() {
             </div>
           </div>
 
-          {/* Messages */}
+          {/* Tabs: Conversação / Artigos */}
           <div
             style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "16px",
               display: "flex",
-              flexDirection: "column",
-              gap: "12px",
+              borderBottom: "1px solid #2a2a2a",
+              background: "#0f0f0f",
+              flexShrink: 0,
             }}
           >
-            {messages.map((msg, i) => (
-              <div key={i}>
-                <div
-                  className="chat-msg"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: msg.role === "user" ? "flex-end" : "flex-start",
-                  }}
-                >
-                  {msg.fromAdmin && (
-                    <div style={{ fontSize: "10px", color: "#2ecc71", marginBottom: "3px", fontFamily: "system-ui" }}>
-                      Atendimento DoramasPlus
-                    </div>
-                  )}
-                  <div
+            {[
+              { key: "conversa", label: "💬 Conversação" },
+              { key: "artigos", label: "📖 Artigos" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  flex: 1,
+                  padding: "10px 8px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === tab.key ? "2px solid #e74c3c" : "2px solid transparent",
+                  color: activeTab === tab.key ? "#fff" : "#777",
+                  fontSize: "12.5px",
+                  fontWeight: activeTab === tab.key ? "700" : "500",
+                  fontFamily: "system-ui",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "artigos" ? (
+            /* Artigos: FAQ sempre acessível, separado da conversa */
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+              <div style={{ color: "#999", fontSize: "12px", fontFamily: "system-ui", marginBottom: "12px" }}>
+                Perguntas frequentes — toque pra ver a resposta da Dora
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {FAQ_QUESTIONS.map((faq) => (
+                  <button
+                    key={faq.q}
+                    onClick={() => {
+                      setActiveTab("conversa");
+                      sendText(faq.q);
+                    }}
                     style={{
-                      maxWidth: "82%",
-                      padding: "10px 14px",
-                      borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                      background: msg.role === "user"
-                        ? "linear-gradient(135deg, #e74c3c, #c0392b)"
-                        : msg.fromAdmin
-                        ? "#123a24"
-                        : "#1e1e1e",
-                      color: "#fff",
-                      fontSize: "13.5px",
-                      lineHeight: "1.5",
-                      fontFamily: "system-ui, -apple-system, sans-serif",
-                      border: msg.role === "assistant" ? (msg.fromAdmin ? "1px solid #2ecc71" : "1px solid #2a2a2a") : "none",
-                      wordBreak: "break-word",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "10px 12px",
+                      borderRadius: "12px",
+                      border: "1px solid #2a2a2a",
+                      background: "#161616",
+                      color: "#ddd",
+                      fontSize: "12.5px",
+                      fontFamily: "system-ui",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = "#e74c3c"; e.currentTarget.style.background = "#1c1414"; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.background = "#161616"; }}
+                  >
+                    <span style={{ fontSize: "16px", flexShrink: 0 }}>{faq.icon}</span>
+                    <span style={{ flex: 1 }}>{faq.q}</span>
+                    <span style={{ color: "#555", fontSize: "14px", flexShrink: 0 }}>›</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Messages */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className="chat-msg"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: msg.role === "user" ? "flex-end" : "flex-start",
                     }}
                   >
-                    {msg.imageDataUrl && (
-                      <img
-                        src={msg.imageDataUrl}
-                        alt="Comprovante enviado"
-                        style={{ maxWidth: "160px", borderRadius: "8px", display: "block", marginBottom: "6px" }}
-                      />
+                    {msg.fromAdmin && (
+                      <div style={{ fontSize: "10px", color: "#2ecc71", marginBottom: "3px", fontFamily: "system-ui" }}>
+                        Atendimento DoramasPlus
+                      </div>
                     )}
-                    {renderText(msg.content)}
-                  </div>
-                </div>
-                {i === 0 && messages.length === 1 && (
-                  <div style={{ marginTop: "10px" }}>
-                    <div style={{ color: "#777", fontSize: "11px", fontFamily: "system-ui", marginBottom: "6px", paddingLeft: "2px" }}>
-                      Perguntas frequentes
+                    <div
+                      style={{
+                        maxWidth: "82%",
+                        padding: "10px 14px",
+                        borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                        background: msg.role === "user"
+                          ? "linear-gradient(135deg, #e74c3c, #c0392b)"
+                          : msg.fromAdmin
+                          ? "#123a24"
+                          : "#1e1e1e",
+                        color: "#fff",
+                        fontSize: "13.5px",
+                        lineHeight: "1.5",
+                        fontFamily: "system-ui, -apple-system, sans-serif",
+                        border: msg.role === "assistant" ? (msg.fromAdmin ? "1px solid #2ecc71" : "1px solid #2a2a2a") : "none",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {msg.imageDataUrl && (
+                        <img
+                          src={msg.imageDataUrl}
+                          alt="Comprovante enviado"
+                          style={{ maxWidth: "160px", borderRadius: "8px", display: "block", marginBottom: "6px" }}
+                        />
+                      )}
+                      {renderText(msg.content)}
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {FAQ_QUESTIONS.map((faq) => (
-                        <button
-                          key={faq.q}
-                          onClick={() => sendText(faq.q)}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            border: "1px solid #2a2a2a",
-                            background: "#161616",
-                            color: "#ddd",
-                            fontSize: "12.5px",
-                            fontFamily: "system-ui",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            transition: "all 0.15s",
-                          }}
-                          onMouseOver={(e) => { e.currentTarget.style.borderColor = "#e74c3c"; e.currentTarget.style.background = "#1c1414"; }}
-                          onMouseOut={(e) => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.background = "#161616"; }}
-                        >
-                          <span style={{ fontSize: "16px", flexShrink: 0 }}>{faq.icon}</span>
-                          <span style={{ flex: 1 }}>{faq.q}</span>
-                          <span style={{ color: "#555", fontSize: "14px", flexShrink: 0 }}>›</span>
-                        </button>
-                      ))}
+                  </div>
+                ))}
+
+                {loading && (
+                  <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        borderRadius: "16px 16px 16px 4px",
+                        background: "#1e1e1e",
+                        border: "1px solid #2a2a2a",
+                      }}
+                    >
+                      <div className="dot-pulse">
+                        <span /><span /><span />
+                      </div>
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
-            ))}
 
-            {loading && (
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                <div
+              {/* Input area */}
+              <div
+                style={{
+                  padding: "12px 16px",
+                  borderTop: "1px solid #2a2a2a",
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "flex-end",
+                  background: "#0f0f0f",
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  onChange={handleFileSelected}
+                  style={{ display: "none" }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading}
+                  title="Enviar comprovante de pagamento"
                   style={{
-                    padding: "12px 16px",
-                    borderRadius: "16px 16px 16px 4px",
-                    background: "#1e1e1e",
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "50%",
+                    background: "#1a1a1a",
                     border: "1px solid #2a2a2a",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "all 0.15s",
                   }}
                 >
-                  <div className="dot-pulse">
-                    <span /><span /><span />
-                  </div>
-                </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                </button>
+                <textarea
+                  ref={inputRef}
+                  className="chat-input"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKey}
+                  placeholder="Digite sua dúvida..."
+                  rows={1}
+                  style={{
+                    flex: 1,
+                    background: "#1a1a1a",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: "12px",
+                    padding: "10px 14px",
+                    color: "#fff",
+                    fontSize: "13.5px",
+                    fontFamily: "system-ui, -apple-system, sans-serif",
+                    resize: "none",
+                    lineHeight: "1.4",
+                    maxHeight: "80px",
+                    overflowY: "auto",
+                  }}
+                  onInput={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height = Math.min(e.target.scrollHeight, 80) + "px";
+                  }}
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim() || loading}
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "50%",
+                    background: input.trim() && !loading ? "linear-gradient(135deg, #e74c3c, #c0392b)" : "#2a2a2a",
+                    border: "none",
+                    cursor: input.trim() && !loading ? "pointer" : "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input area */}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid #2a2a2a",
-              display: "flex",
-              gap: "8px",
-              alignItems: "flex-end",
-              background: "#0f0f0f",
-            }}
-          >
-            <input
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleFileSelected}
-              style={{ display: "none" }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              title="Enviar comprovante de pagamento"
-              style={{
-                width: "38px",
-                height: "38px",
-                borderRadius: "50%",
-                background: "#1a1a1a",
-                border: "1px solid #2a2a2a",
-                cursor: loading ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                transition: "all 0.15s",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <textarea
-              ref={inputRef}
-              className="chat-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Digite sua dúvida..."
-              rows={1}
-              style={{
-                flex: 1,
-                background: "#1a1a1a",
-                border: "1px solid #2a2a2a",
-                borderRadius: "12px",
-                padding: "10px 14px",
-                color: "#fff",
-                fontSize: "13.5px",
-                fontFamily: "system-ui, -apple-system, sans-serif",
-                resize: "none",
-                lineHeight: "1.4",
-                maxHeight: "80px",
-                overflowY: "auto",
-              }}
-              onInput={(e) => {
-                e.target.style.height = "auto";
-                e.target.style.height = Math.min(e.target.scrollHeight, 80) + "px";
-              }}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || loading}
-              style={{
-                width: "38px",
-                height: "38px",
-                borderRadius: "50%",
-                background: input.trim() && !loading ? "linear-gradient(135deg, #e74c3c, #c0392b)" : "#2a2a2a",
-                border: "none",
-                cursor: input.trim() && !loading ? "pointer" : "not-allowed",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                transition: "all 0.15s",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
-          </div>
+            </>
+          )}
         </div>
       )}
     </>
