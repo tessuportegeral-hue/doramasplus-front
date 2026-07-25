@@ -44,6 +44,37 @@ export default function PushPermissionPrompt() {
     };
   }, []);
 
+  // ✅ 25/07: quando a permissão do navegador JÁ está concedida (ex: app
+  // reinstalado, mas o Android guarda a permissão fora do storage do app),
+  // a telinha de pedido nunca aparece de novo — sem isso a assinatura antiga
+  // morre junto com a reinstalação e ninguém percebe que parou de chegar
+  // notificação. Renova em silêncio, sem UI, sempre que houver sessão.
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    if (getNotificationPermission() !== 'granted') return;
+
+    const trySilentSync = (uid) => {
+      if (!uid) return;
+      subscribeToPush(uid).then((result) => {
+        if (!result.ok) console.error('[push] sync silenciosa falhou:', result.reason, result.detail);
+      });
+    };
+
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted) trySilentSync(session?.user?.id);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      trySilentSync(session?.user?.id);
+    });
+
+    return () => {
+      mounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, '1');
     setVisible(false);
