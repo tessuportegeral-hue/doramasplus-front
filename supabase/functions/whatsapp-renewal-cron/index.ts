@@ -410,6 +410,24 @@ serve(async (req) => {
 
   if (req.method === "HEAD") return new Response(null, { status: 200 });
 
+  // ✅ 25/07: debug — testa resolveRenewalLink pra um user_id específico
+  // sem mandar nada de verdade, só pra conferir se o link vem certo com o
+  // plano da assinatura real da pessoa.
+  const testLinkFor = new URL(req.url).searchParams.get("test_link_for");
+  if (testLinkFor) {
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("provider, plan_name")
+      .eq("user_id", testLinkFor)
+      .order("end_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!sub) return new Response(JSON.stringify({ ok: false, error: "no_subscription" }), { status: 404 });
+    const link = await resolveRenewalLink(testLinkFor, sub.provider || "", sub.plan_name);
+    return new Response(JSON.stringify({ ok: true, provider: sub.provider, plan_name: sub.plan_name, link }), { status: 200 });
+  }
+
   // ✅ 23/07: cada kind roda numa chamada separada (cron externo dispara duas
   // vezes) pra um batch lento nunca mais consumir o tempo do outro em silêncio
   // — foi exatamente isso que zerou o renew_1d a partir de 17/07. Sem ?kind=

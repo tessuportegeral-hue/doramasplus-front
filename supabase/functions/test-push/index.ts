@@ -36,9 +36,9 @@ Deno.serve(async (req) => {
     }
 
     const result = await sendPushToUser(supabase, targetUserId, {
-      title: "DoramasPlus 💜",
-      body: "Teste de notificação — se você tá vendo isso, funcionou! 🎉",
-      url: "/",
+      title: body?.title || "DoramasPlus 💜",
+      body: body?.body || "Teste de notificação — se você tá vendo isso, funcionou! 🎉",
+      url: body?.url || "/",
     });
 
     return new Response(JSON.stringify({ ok: true, ...result }), { status: 200 });
