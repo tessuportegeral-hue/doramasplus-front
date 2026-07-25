@@ -372,16 +372,37 @@ limit 500
     // Só dispara aqui (não duplica em email-renewal-reminder) pra não mandar
     // 2 push do mesmo aviso pro mesmo dia; se a pessoa não tiver assinatura
     // de push, sendPushToUser só retorna sent:0 sem erro.
+    const pushTitle = kind === "renew_1d" ? "Seu acesso vence HOJE! ⚠️" : "Seu acesso vence em 3 dias! 💜";
+    const pushBody =
+      kind === "renew_1d"
+        ? "Não perca seus doramas — renove agora mesmo."
+        : "Renove agora e continue maratonando sem interrupção.";
+    const pushUrl = link.startsWith("http") ? link : `https://${link}`;
+
     try {
-      const pushTitle = kind === "renew_1d" ? "Seu acesso vence HOJE! ⚠️" : "Seu acesso vence em 3 dias! 💜";
-      const pushBody =
-        kind === "renew_1d"
-          ? "Não perca seus doramas — renove agora mesmo."
-          : "Renove agora e continue maratonando sem interrupção.";
-      const pushUrl = link.startsWith("http") ? link : `https://${link}`;
       await sendPushToUser(supabase, userId, { title: pushTitle, body: pushBody, url: pushUrl });
     } catch (e) {
       console.error("[renewal-push] falha ao enviar push:", String(e));
+    }
+
+    // ✅ 25/07: terceiro canal — deixa a mensagem no histórico de chat da
+    // Dora (dora_conversations), pra pessoa ver quando abrir o app/site,
+    // graças ao carregamento de 30 dias já implementado no widget
+    // (dora-load-history). role="assistant" (não "admin") pra não disparar
+    // o trigger de push de resposta do admin — o push já foi mandado acima.
+    try {
+      const doraMensagem =
+        kind === "renew_1d"
+          ? `Oi! Sou a Dora 🌸 Passando pra lembrar que seu acesso vence HOJE! Não perca seus doramas — dá uma olhada aqui: ${pushUrl}`
+          : `Oi! Sou a Dora 🌸 Passando pra lembrar que seu acesso vence em 3 dias! Quer renovar já? ${pushUrl}`;
+      await supabase.from("dora_conversations").insert({
+        session_id: crypto.randomUUID(),
+        user_id: userId,
+        role: "assistant",
+        content: doraMensagem,
+      });
+    } catch (e) {
+      console.error("[renewal-dora-msg] falha ao registrar mensagem:", String(e));
     }
 
     try {
