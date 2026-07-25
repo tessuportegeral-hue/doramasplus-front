@@ -53,13 +53,16 @@ export default function PushPermissionPrompt() {
     setLoading(true);
     const result = await subscribeToPush(userId);
     setLoading(false);
-    // Se a pessoa clicou "Bloquear" na permissão nativa, respeitamos e não
-    // insistimos de novo (só o navegador consegue reverter isso agora).
+    if (!result.ok) {
+      // ⚠️ 25/07: alert temporário pra diagnosticar o rollout inicial —
+      // sem isso não tem como saber o motivo da falha em quem testa pelo
+      // celular (sem acesso a devtools). Remover depois que confirmar.
+      console.error('[push] assinatura não concluída:', result.reason, result.detail);
+      window.alert(`Não deu pra ativar as notificações 😕\n\nMotivo: ${result.reason}\n${result.detail || ''}`);
+      return;
+    }
     localStorage.setItem(DISMISS_KEY, '1');
     setVisible(false);
-    if (!result.ok) {
-      console.error('[push] assinatura não concluída:', result.reason);
-    }
   };
 
   if (!visible) return null;

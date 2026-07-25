@@ -58,12 +58,12 @@ export async function subscribeToPush(userId) {
 
     if (error) {
       console.error('[push] falha ao salvar subscription:', error);
-      return { ok: false, reason: 'db_error' };
+      return { ok: false, reason: 'db_error', detail: error.message || JSON.stringify(error) };
     }
 
     return { ok: true };
   } catch (e) {
     console.error('[push] falha ao assinar:', e);
-    return { ok: false, reason: 'subscribe_error' };
+    return { ok: false, reason: 'subscribe_error', detail: `${e?.name || ''}: ${e?.message || String(e)}` };
   }
 }
