@@ -25,6 +25,33 @@ async function registerServiceWorker() {
   return navigator.serviceWorker.register('/sw.js');
 }
 
+// ✅ 25/07: checagem barata (só um SELECT) pra saber se já existe uma
+// assinatura válida e salva — sem isso, a sincronização silenciosa (que
+// roda a cada evento de auth) chamava subscribeToPush toda vez, e como
+// subscribeToPush sempre descarta e recria (ver comentário abaixo), cada
+// evento de auth gerava uma linha nova no banco. Em rajadas de eventos
+// (múltiplas abas, refresh de token, etc.) isso lotou a tabela de lixo.
+export async function hasValidSubscription(userId) {
+  if (!isPushSupported() || !userId) return false;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (!registration) return false;
+    const existing = await registration.pushManager.getSubscription();
+    if (!existing) return false;
+
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('endpoint', existing.endpoint)
+      .maybeSingle();
+
+    return !error && !!data;
+  } catch {
+    return false;
+  }
+}
+
 export async function subscribeToPush(userId) {
   if (!isPushSupported()) return { ok: false, reason: 'unsupported' };
   if (!userId) return { ok: false, reason: 'not_authenticated' };

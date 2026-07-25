@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, X } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { isPushSupported, getNotificationPermission, subscribeToPush } from '@/lib/pushNotifications';
+import { isPushSupported, getNotificationPermission, subscribeToPush, hasValidSubscription } from '@/lib/pushNotifications';
 
 const DISMISS_KEY = 'dp_push_prompt_dismissed';
 
@@ -53,11 +53,16 @@ export default function PushPermissionPrompt() {
     if (!isPushSupported()) return;
     if (getNotificationPermission() !== 'granted') return;
 
-    const trySilentSync = (uid) => {
+    const trySilentSync = async (uid) => {
       if (!uid) return;
-      subscribeToPush(uid).then((result) => {
-        if (!result.ok) console.error('[push] sync silenciosa falhou:', result.reason, result.detail);
-      });
+      // ✅ 25/07: checa antes de mexer em qualquer coisa — sem isso, cada
+      // evento de auth (refresh de token, múltiplas abas, etc.) chamava
+      // subscribeToPush de novo, que sempre descarta e recria a assinatura,
+      // gerando uma linha nova no banco a cada disparo (loop de lixo).
+      const alreadyValid = await hasValidSubscription(uid);
+      if (alreadyValid) return;
+      const result = await subscribeToPush(uid);
+      if (!result.ok) console.error('[push] sync silenciosa falhou:', result.reason, result.detail);
     };
 
     let mounted = true;
