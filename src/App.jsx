@@ -18,6 +18,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
+import PushPermissionPrompt from '@/components/PushPermissionPrompt';
 import DoramasChat from '@/components/DoramasChat';
 import UpdateEmailGate from '@/components/UpdateEmailGate';
 import { supabase } from '@/lib/supabaseClient';
@@ -595,6 +596,7 @@ function App() {
 
       <Toaster />
       <InstallAppBanner />
+      <PushPermissionPrompt />
     </>
   );
 }
