@@ -20,7 +20,11 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'DoramasPlus';
   const options = {
     body: data.body || '',
-    icon: '/android-chrome-192x192.png',
+    // ✅ 25/07: play button roxo só na sugestão de dorama (push-new-doramas-digest
+    // manda data.icon) — gatilho visual pra pessoa associar com "tem vídeo
+    // esperando" e clicar mais fácil. Nos outros pushes (renovação, admin,
+    // Dora), continua o logo padrão.
+    icon: data.icon || '/android-chrome-192x192.png',
     // ✅ 25/07: badge próprio (só o símbolo "D", recortado do logo e
     // convertido pra silhueta branca transparente via limiar de luminância)
     // — o Android sempre mascara esse ícone pra monocromático (só usa a

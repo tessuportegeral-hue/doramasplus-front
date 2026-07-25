@@ -109,6 +109,9 @@ Deno.serve(async (req) => {
         body,
         url: `/dorama/${dorama.slug}`,
         image: dorama.cover_url || undefined,
+        // ✅ 25/07: play button roxo no lugar do logo, só nesse push — gatilho
+        // visual pra pessoa associar com "tem vídeo esperando".
+        icon: '/notification-icon-192.png',
         cta: 'Assistir Agora ▶',
       });
       sent += result.sent;

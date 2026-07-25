@@ -21,6 +21,7 @@ export type PushPayload = {
   body: string;
   url?: string;
   image?: string;
+  icon?: string;
   cta?: string;
   log_id?: string;
 };
