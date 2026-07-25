@@ -21,7 +21,10 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || '',
     icon: '/android-chrome-192x192.png',
-    badge: '/android-chrome-192x192.png',
+    // Sem "badge": o Android sempre mascara esse ícone pra monocromático
+    // (só usa a transparência) — como o logo é uma imagem cheia sem fundo
+    // transparente, virava uma bolinha genérica na barra de status. Sem
+    // essa propriedade o sistema usa um ícone neutro em vez disso.
     data: { url: data.url || '/' },
   };
 
