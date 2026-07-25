@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
 
       const { data: history } = await admin
         .from("push_send_log")
-        .select("id, title, body, segment, sent, total, created_at")
+        .select("id, title, body, segment, sent, total, clicked, created_at")
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -120,20 +120,26 @@ Deno.serve(async (req) => {
 
     const userIds = await getSegmentUserIds(admin, segment);
 
+    // ✅ 25/07: grava o log ANTES de mandar pra já ter um id pra colocar
+    // no payload — assim o clique (registrado por push-click, chamado pelo
+    // sw.js) sabe em qual envio incrementar o contador.
+    const { data: logRow, error: logError } = await admin
+      .from("push_send_log")
+      .insert({ title, body: message, url, segment, sent: 0, total: userIds.length })
+      .select("id")
+      .single();
+
+    if (logError || !logRow?.id) {
+      return json({ ok: false, error: "falha_ao_criar_log" }, 500);
+    }
+
     let sent = 0;
     for (const userId of userIds) {
-      const r = await sendPushToUser(admin, userId, { title, body: message, url });
+      const r = await sendPushToUser(admin, userId, { title, body: message, url, log_id: logRow.id });
       sent += r.sent;
     }
 
-    await admin.from("push_send_log").insert({
-      title,
-      body: message,
-      url,
-      segment,
-      sent,
-      total: userIds.length,
-    });
+    await admin.from("push_send_log").update({ sent }).eq("id", logRow.id);
 
     return json({ ok: true, sent, total: userIds.length, segment });
   } catch (e) {

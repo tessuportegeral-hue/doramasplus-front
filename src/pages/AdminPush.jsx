@@ -208,9 +208,12 @@ export default function AdminPush() {
                     </span>
                   </div>
                   <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, margin: "4px 0 6px" }}>{h.body}</p>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ color: "#86efac", fontSize: 11, fontWeight: 700 }}>
                       {h.sent}/{h.total} entregues
+                    </span>
+                    <span style={{ color: "#fbbf24", fontSize: 11, fontWeight: 700 }}>
+                      👆 {h.clicked || 0} clicou(aram){h.sent ? ` (${Math.round(((h.clicked || 0) / h.sent) * 100)}%)` : ""}
                     </span>
                     {h.segment && h.segment !== "all" && (
                       <span style={{ color: "#c4b5fd", fontSize: 11, fontWeight: 700 }}>
