@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendPushToUser } from "../_shared/push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -366,6 +367,22 @@ limit 500
     if (dup) { skipped_already_sent++; continue; }
 
     const link = await resolveRenewalLink(userId, provider, planName);
+
+    // ✅ 25/07: push como canal extra, junto do WhatsApp — mesmo link direto.
+    // Só dispara aqui (não duplica em email-renewal-reminder) pra não mandar
+    // 2 push do mesmo aviso pro mesmo dia; se a pessoa não tiver assinatura
+    // de push, sendPushToUser só retorna sent:0 sem erro.
+    try {
+      const pushTitle = kind === "renew_1d" ? "Seu acesso vence HOJE! ⚠️" : "Seu acesso vence em 3 dias! 💜";
+      const pushBody =
+        kind === "renew_1d"
+          ? "Não perca seus doramas — renove agora mesmo."
+          : "Renove agora e continue maratonando sem interrupção.";
+      const pushUrl = link.startsWith("http") ? link : `https://${link}`;
+      await sendPushToUser(supabase, userId, { title: pushTitle, body: pushBody, url: pushUrl });
+    } catch (e) {
+      console.error("[renewal-push] falha ao enviar push:", String(e));
+    }
 
     try {
       const providerResponse = await sendTemplate(e164, template, name, link);
