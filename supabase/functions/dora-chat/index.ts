@@ -523,24 +523,10 @@ function sleep(ms: number) {
 // crons de renovação — a InfinityPay libera só 5 chamadas/45s. Reservar
 // slot aqui evita que o chat compita com os crons e reabra o mesmo bug.
 async function claimInfinitepaySlot(): Promise<void> {
-  const sql = `
-    with cur as (
-      select next_allowed_at from infinitepay_link_pacer where id = 1 for update
-    ), calc as (
-      select greatest(cur.next_allowed_at, now()) as my_slot from cur
-    )
-    update infinitepay_link_pacer
-    set next_allowed_at = (select my_slot from calc) + interval '9 seconds'
-    where id = 1
-    returning (select my_slot from calc) as my_slot;
-  `;
   try {
-    const { data, error } = await supabase.rpc("exec_sql", { q: sql });
-    if (error) return;
-    const rows = Array.isArray(data) ? data : (data as any)?.rows || [];
-    const mySlot = rows?.[0]?.my_slot;
-    if (!mySlot) return;
-    const waitMs = new Date(mySlot).getTime() - Date.now();
+    const { data: mySlot, error } = await supabase.rpc("claim_infinitepay_slot");
+    if (error || !mySlot) return;
+    const waitMs = new Date(mySlot as string).getTime() - Date.now();
     if (waitMs > 0) await sleep(waitMs);
   } catch (e) {
     console.error("[dora-chat] pacer error:", String(e));
