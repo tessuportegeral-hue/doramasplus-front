@@ -2,7 +2,7 @@
 // já usado em admin-analytics (JWT do chamador validado contra ADMIN_ID,
 // depois service role pra fazer o trabalho pesado).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPushToAll } from "../_shared/push.ts";
+import { sendPushToUser } from "../_shared/push.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +18,50 @@ function json(data: unknown, status = 200) {
 }
 
 const ADMIN_ID = "094e70c6-0671-4401-89fe-31aa5242348a";
+
+type Segment = "all" | "active" | "expired";
+
+// ✅ 25/07: segmentação por status de assinatura — pra promoção de
+// reativação fazer sentido (ex: só quem venceu), não faz sentido mandar
+// promoção genérica pra todo mundo, inclusive quem já tá ativo.
+const SEGMENT_SQL: Record<Exclude<Segment, "all">, string> = {
+  active: `
+    with latest_sub as (
+      select distinct on (s.user_id) s.user_id, s.status
+      from public.subscriptions s
+      order by s.user_id, s.end_at desc nulls last, s.created_at desc nulls last
+    )
+    select distinct ps.user_id
+    from public.push_subscriptions ps
+    join latest_sub ls on ls.user_id = ps.user_id
+    where ls.status = 'active'
+  `,
+  expired: `
+    with latest_sub as (
+      select distinct on (s.user_id) s.user_id, s.status
+      from public.subscriptions s
+      order by s.user_id, s.end_at desc nulls last, s.created_at desc nulls last
+    )
+    select distinct ps.user_id
+    from public.push_subscriptions ps
+    join latest_sub ls on ls.user_id = ps.user_id
+    where ls.status <> 'active'
+  `,
+};
+
+async function getSegmentUserIds(admin: any, segment: Segment): Promise<string[]> {
+  if (segment === "all") {
+    const { data } = await admin.from("push_subscriptions").select("user_id");
+    return [...new Set((data || []).map((r: any) => r.user_id))];
+  }
+  const { data, error } = await admin.rpc("exec_sql", { q: SEGMENT_SQL[segment] });
+  if (error) {
+    console.error("[admin-send-push] falha ao segmentar:", error);
+    return [];
+  }
+  const rows: { user_id: string }[] = Array.isArray(data) ? data : (data as any)?.rows || [];
+  return rows.map((r) => r.user_id);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -45,39 +89,53 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
 
-    // ✅ modo "stats": só devolve quantos assinantes existem hoje + histórico
-    // de envios passados, sem mandar nada — pro admin ver antes de disparar.
+    // ✅ modo "stats": devolve quantos assinantes existem em cada segmento +
+    // histórico de envios passados, sem mandar nada — pro admin ver antes.
     if (body?.action === "stats") {
-      const { count: totalSubscribers } = await admin
-        .from("push_subscriptions")
-        .select("user_id", { count: "exact", head: true });
+      const [all, active, expired] = await Promise.all([
+        getSegmentUserIds(admin, "all"),
+        getSegmentUserIds(admin, "active"),
+        getSegmentUserIds(admin, "expired"),
+      ]);
 
       const { data: history } = await admin
         .from("push_send_log")
-        .select("id, title, body, sent, total, created_at")
+        .select("id, title, body, segment, sent, total, created_at")
         .order("created_at", { ascending: false })
         .limit(20);
 
-      return json({ ok: true, total_subscribers: totalSubscribers || 0, history: history || [] });
+      return json({
+        ok: true,
+        counts: { all: all.length, active: active.length, expired: expired.length },
+        history: history || [],
+      });
     }
 
     const title = String(body?.title || "").trim();
     const message = String(body?.body || "").trim();
     const url = String(body?.url || "/").trim() || "/";
+    const segment: Segment = ["all", "active", "expired"].includes(body?.segment) ? body.segment : "all";
 
     if (!title || !message) return json({ error: "missing_title_or_body" }, 400);
 
-    const result = await sendPushToAll(admin, { title, body: message, url });
+    const userIds = await getSegmentUserIds(admin, segment);
+
+    let sent = 0;
+    for (const userId of userIds) {
+      const r = await sendPushToUser(admin, userId, { title, body: message, url });
+      sent += r.sent;
+    }
 
     await admin.from("push_send_log").insert({
       title,
       body: message,
       url,
-      sent: result.sent,
-      total: result.total,
+      segment,
+      sent,
+      total: userIds.length,
     });
 
-    return json({ ok: true, ...result });
+    return json({ ok: true, sent, total: userIds.length, segment });
   } catch (e) {
     return json({ ok: false, error: String(e) }, 500);
   }
