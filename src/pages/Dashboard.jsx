@@ -925,21 +925,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
 
   // Carrossel de banners no topo da home (alterna a cada 5s)
+  // ✅ 27/07: slide do app (Android) / Dora (iPhone) vem primeiro agora —
+  // era o último, pedido pra dar mais destaque pro app.
   const homeBanners = [
-    {
-      icon: ExternalLink,
-      title: "💬 Entre no Grupo VIP do Whatsapp",
-      subtitle: "Séries em alta, novidades e promoções exclusivas",
-      onClick: goCommunity,
-    },
-    {
-      icon: Gift,
-      title: "🎁 Indique e ganhe 15 dias grátis",
-      subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
-      note: "Necessário ter assinado pelo menos uma vez",
-      onClick: () =>
-        navigate(user ? "/indicar" : "/login?redirect=/indicar"),
-    },
     isAndroidDevice
       ? {
           icon: Smartphone,
@@ -954,6 +942,20 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           subtitle: "Nossa assistente virtual responde na hora, qualquer horário",
           onClick: () => window.dispatchEvent(new Event("open-dora-chat")),
         },
+    {
+      icon: ExternalLink,
+      title: "💬 Entre no Grupo VIP do Whatsapp",
+      subtitle: "Séries em alta, novidades e promoções exclusivas",
+      onClick: goCommunity,
+    },
+    {
+      icon: Gift,
+      title: "🎁 Indique e ganhe 15 dias grátis",
+      subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
+      note: "Necessário ter assinado pelo menos uma vez",
+      onClick: () =>
+        navigate(user ? "/indicar" : "/login?redirect=/indicar"),
+    },
   ];
 
   const [bannerIndex, setBannerIndex] = useState(0);
