@@ -3,6 +3,9 @@
   "target": {
     "namespace": "android_app",
     "package_name": "br.com.doramasplus.twa",
-    "sha256_cert_fingerprints": ["A7:06:84:B3:A0:F7:C2:F4:CC:B7:51:41:C0:BF:CA:54:4C:55:BA:8D:BD:F6:44:B7:E5:B3:1D:E4:D6:14:A0:3E"]
+    "sha256_cert_fingerprints": [
+      "05:8D:B2:87:3F:D7:43:77:47:C8:6E:06:2F:0E:C5:DA:3E:BC:92:73:E3:F6:50:FE:57:98:58:4B:C3:36:8B:2D",
+      "A7:06:84:B3:A0:F7:C2:F4:CC:B7:51:41:C0:BF:CA:54:4C:55:BA:8D:BD:F6:44:B7:E5:B3:1D:E4:D6:14:A0:3E"
+    ]
   }
 }]
