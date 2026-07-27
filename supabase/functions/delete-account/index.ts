@@ -46,19 +46,23 @@ Deno.serve(async (req: Request) => {
 
     // Deleta dados do usuário em todas as tabelas com FK para auth.users
     // (profiles tem ON DELETE CASCADE, não precisa deletar manualmente;
-    // as demais abaixo são NO ACTION e bloqueiam o deleteUser se não forem limpas antes)
-    await adminClient.from('watch_history').delete().eq('user_id', userId);
-    await adminClient.from('active_sessions').delete().eq('user_id', userId);
-    await adminClient.from('subscriptions').delete().eq('user_id', userId);
-    await adminClient.from('pix_payments').delete().eq('user_id', userId);
-    await adminClient.from('subscriptions_snapshot').delete().eq('user_id', userId);
-    await adminClient.from('dora_conversations').delete().eq('user_id', userId);
-    await adminClient.from('daily_active_users').delete().eq('user_id', userId);
-    await adminClient.from('referrals').delete().eq('referrer_id', userId);
-    await adminClient.from('referrals').delete().eq('referred_id', userId);
-    // Perfis de terceiros que foram indicados por este usuário: limpa a referência
-    // (não pode deletar o perfil de outra pessoa, só desvincular)
-    await adminClient.from('profiles').update({ referred_by: null }).eq('referred_by', userId);
+    // as demais abaixo são NO ACTION e bloqueiam o deleteUser se não forem limpas antes).
+    // ✅ 26/07: isso rodava como 9 chamadas HTTP separadas sem checar erro em
+    // nenhuma — uma falha no meio (rede, timeout) apagava subscriptions/
+    // pix_payments/etc mas nunca chegava no deleteUser, deixando a conta
+    // "zumbi" (login e profile vivos, assinatura sumida pra sempre, sem
+    // aviso). Agora roda tudo dentro de uma única transação no Postgres
+    // (delete_user_account_data): se qualquer delete falhar, reverte tudo
+    // e a conta fica intacta pra tentar de novo.
+    const { error: cleanupError } = await adminClient.rpc('delete_user_account_data', {
+      target_user_id: userId,
+    });
+    if (cleanupError) {
+      return new Response(JSON.stringify({ error: 'Erro ao limpar dados da conta: ' + cleanupError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Deleta o usuário do auth
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
