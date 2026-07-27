@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
 const LS_KEY = "selected_tester_modal_shown";
+
+function isAndroidMobile() {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
 
 export default function SelectedTesterModal() {
   const { user } = useAuth();
@@ -15,6 +19,7 @@ export default function SelectedTesterModal() {
 
     async function check() {
       if (!user?.id) return;
+      if (!isAndroidMobile()) return;
 
       // Já foi exibido antes neste dispositivo → nunca mostra de novo
       try {
@@ -23,14 +28,8 @@ export default function SelectedTesterModal() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("is_selected_tester")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (cancelled || error) return;
-      if (data?.is_selected_tester === true) setOpen(true);
+      if (cancelled) return;
+      setOpen(true);
     }
 
     check();
@@ -117,7 +116,7 @@ export default function SelectedTesterModal() {
             WebkitTextFillColor: "transparent",
           }}
         >
-          🎉 Você foi selecionado(a)!
+          📱 Temos um app oficial!
         </div>
 
         {/* Corpo */}
@@ -129,8 +128,7 @@ export default function SelectedTesterModal() {
             marginBottom: 12,
           }}
         >
-          Você é um dos nossos usuários mais fiéis, por isso te convidamos para o
-          time de testes do nosso novo app oficial no Google Play!
+          O DoramasPlus já tem app oficial disponível na Google Play!
         </p>
         <p
           style={{
