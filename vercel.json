@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/app",
+      "destination": "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/sitemap.xml",
