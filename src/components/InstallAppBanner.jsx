@@ -39,11 +39,13 @@ export default function InstallAppBanner() {
       return;
     }
 
-    // ✅ 27/07: Android de celular/tablet não mostra mais o banner do rodapé
-    // — o convite pra Play Store já aparece no carrossel do topo (Dashboard).
-    // PC/desktop continua com o beforeinstallprompt original (não pediram
-    // pra tirar de lá, e é o único jeito de instalar como app no PC).
-    if (isAndroidMobile()) return;
+    // ✅ 27/07: Android de celular/tablet manda direto pra Play Store (app
+    // oficial, assetlinks.json corrigido). PC/desktop usa o beforeinstallprompt
+    // do Chrome — instala como app no computador, não tem Play Store lá.
+    if (isAndroidMobile()) {
+      setShowAndroid(true);
+      return;
+    }
 
     const handler = (e) => {
       e.preventDefault();
@@ -57,6 +59,22 @@ export default function InstallAppBanner() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
+  const visible = showAndroid || showIOS;
+
+  // ✅ 27/07: o botão flutuante da Dora (bottom:24px, zIndex:9999) ficava por
+  // cima/colado nesse banner (bottom:0, ~64px de altura, zIndex:9990) — os
+  // dois são "position: fixed" independentes, sem noção um do outro. Em vez
+  // de acoplar os componentes, o banner publica sua altura numa CSS var
+  // global; DoramasChat.jsx soma essa var no próprio "bottom". Zera a var
+  // quando o banner não está visível.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--dp-install-banner-h",
+      visible ? "64px" : "0px"
+    );
+    return () => document.documentElement.style.setProperty("--dp-install-banner-h", "0px");
+  }, [visible]);
+
   function dismiss() {
     setShowAndroid(false);
     setShowIOS(false);
@@ -64,9 +82,14 @@ export default function InstallAppBanner() {
   }
 
   async function handleInstallAndroid() {
-    // Esse botão só aparece pra desktop agora (Android não mostra mais o
-    // banner do rodapé). Usa o prompt nativo do Chrome (beforeinstallprompt)
-    // — se por algum motivo não disparou ainda, cai pra Play Store.
+    // Android de celular/tablet: sempre Play Store, não tem prompt nativo.
+    if (isAndroidMobile()) {
+      window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // Desktop: usa o prompt nativo do Chrome (beforeinstallprompt) — se por
+    // algum motivo não disparou ainda, cai pra Play Store como alternativa.
     if (!deferredPrompt) {
       window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
       return;
@@ -78,7 +101,7 @@ export default function InstallAppBanner() {
     setShowAndroid(false);
   }
 
-  if (!showAndroid && !showIOS) return null;
+  if (!visible) return null;
 
   return (
     <>
@@ -105,7 +128,9 @@ export default function InstallAppBanner() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>DoramasPlus</div>
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 1 }}>
-            Adicione à tela inicial para acesso rápido
+            {showAndroid && isAndroidMobile()
+              ? "Baixe o app oficial no Google Play"
+              : "Adicione à tela inicial para acesso rápido"}
           </div>
         </div>
 
