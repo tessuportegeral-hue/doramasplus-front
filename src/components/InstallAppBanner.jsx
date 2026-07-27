@@ -39,16 +39,11 @@ export default function InstallAppBanner() {
       return;
     }
 
-    // ✅ 27/07: Android de celular de verdade manda direto pra Play Store
-    // (app oficial, assetlinks.json já corrigido). PC/desktop NÃO deve cair
-    // aqui — Play Store não instala nada útil num navegador de computador.
-    // Regressão encontrada no mesmo dia: antes do fix anterior, PC caía
-    // nesse mesmo caminho e perdia a opção de instalar (funcionava via
-    // beforeinstallprompt). Agora desktop volta a usar esse fluxo original.
-    if (isAndroidMobile()) {
-      setShowAndroid(true);
-      return;
-    }
+    // ✅ 27/07: Android de celular/tablet não mostra mais o banner do rodapé
+    // — o convite pra Play Store já aparece no carrossel do topo (Dashboard).
+    // PC/desktop continua com o beforeinstallprompt original (não pediram
+    // pra tirar de lá, e é o único jeito de instalar como app no PC).
+    if (isAndroidMobile()) return;
 
     const handler = (e) => {
       e.preventDefault();
@@ -69,14 +64,9 @@ export default function InstallAppBanner() {
   }
 
   async function handleInstallAndroid() {
-    // Android de celular: sempre manda pra Play Store, não tem prompt nativo.
-    if (isAndroidMobile()) {
-      window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    // Desktop: usa o prompt nativo do Chrome (beforeinstallprompt) — se por
-    // algum motivo não disparou ainda, cai pra Play Store como alternativa.
+    // Esse botão só aparece pra desktop agora (Android não mostra mais o
+    // banner do rodapé). Usa o prompt nativo do Chrome (beforeinstallprompt)
+    // — se por algum motivo não disparou ainda, cai pra Play Store.
     if (!deferredPrompt) {
       window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
       return;
