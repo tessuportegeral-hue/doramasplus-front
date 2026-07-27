@@ -16,8 +16,10 @@ function isInStandaloneMode() {
   );
 }
 
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
+
 export default function InstallAppBanner() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showAndroid, setShowAndroid] = useState(false);
   const [showIOS, setShowIOS] = useState(false);
   const [iosModalOpen, setIosModalOpen] = useState(false);
@@ -31,16 +33,12 @@ export default function InstallAppBanner() {
       return;
     }
 
-    const handler = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowAndroid(true);
-    };
-
-    window.addEventListener("beforeinstallprompt", handler);
-    window.addEventListener("appinstalled", () => setShowAndroid(false));
-
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    // ✅ 27/07: manda direto pra Play Store em vez do beforeinstallprompt do
+    // Chrome — aquele fluxo instalava um PWA genérico gerado pelo navegador,
+    // diferente do app de verdade publicado na loja (br.com.doramasplus.twa,
+    // com o assetlinks.json corrigido). Não depende de evento nenhum, então
+    // mostra direto pra qualquer Android que não seja iOS/já instalado.
+    setShowAndroid(true);
   }, []);
 
   function dismiss() {
@@ -49,13 +47,8 @@ export default function InstallAppBanner() {
     setIosModalOpen(false);
   }
 
-  async function handleInstallAndroid() {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") dismiss();
-    setDeferredPrompt(null);
-    setShowAndroid(false);
+  function handleInstallAndroid() {
+    window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
   }
 
   if (!showAndroid && !showIOS) return null;

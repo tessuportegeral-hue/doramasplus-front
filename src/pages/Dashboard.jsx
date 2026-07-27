@@ -32,6 +32,7 @@ import {
   ExternalLink,
   Gift,
   Bot,
+  Smartphone,
 } from "lucide-react";
 
 const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
@@ -914,6 +915,15 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     window.open(communityLink, "_blank", "noopener,noreferrer");
   };
 
+  // ✅ 27/07: no Android, troca o slide da Dora por "baixar o app oficial"
+  // (Play Store, agora com o assetlinks.json corrigido) — no iPhone não tem
+  // Play Store, então mantém a Dora normal ali. O rodapé (InstallAppBanner)
+  // não muda pro iOS, continua só a instrução de tela de início.
+  const isAndroidDevice =
+    typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+  const PLAY_STORE_URL =
+    "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
+
   // Carrossel de banners no topo da home (alterna a cada 5s)
   const homeBanners = [
     {
@@ -930,12 +940,20 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       onClick: () =>
         navigate(user ? "/indicar" : "/login?redirect=/indicar"),
     },
-    {
-      icon: Bot,
-      title: "🤖 Dúvidas? Fale com a Dora",
-      subtitle: "Nossa assistente virtual responde na hora, qualquer horário",
-      onClick: () => window.dispatchEvent(new Event("open-dora-chat")),
-    },
+    isAndroidDevice
+      ? {
+          icon: Smartphone,
+          title: "📲 Baixe o app oficial",
+          subtitle: "Mais rápido e direto na tela inicial, sem passar pelo navegador",
+          onClick: () =>
+            window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer"),
+        }
+      : {
+          icon: Bot,
+          title: "🤖 Dúvidas? Fale com a Dora",
+          subtitle: "Nossa assistente virtual responde na hora, qualquer horário",
+          onClick: () => window.dispatchEvent(new Event("open-dora-chat")),
+        },
   ];
 
   const [bannerIndex, setBannerIndex] = useState(0);
