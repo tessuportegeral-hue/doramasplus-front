@@ -8,6 +8,11 @@ function isIOS() {
   );
 }
 
+function isAndroidMobile() {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 function isInStandaloneMode() {
   if (typeof window === "undefined") return false;
   return (
@@ -20,6 +25,7 @@ const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
 
 export default function InstallAppBanner() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showAndroid, setShowAndroid] = useState(false);
   const [showIOS, setShowIOS] = useState(false);
   const [iosModalOpen, setIosModalOpen] = useState(false);
@@ -33,12 +39,27 @@ export default function InstallAppBanner() {
       return;
     }
 
-    // ✅ 27/07: manda direto pra Play Store em vez do beforeinstallprompt do
-    // Chrome — aquele fluxo instalava um PWA genérico gerado pelo navegador,
-    // diferente do app de verdade publicado na loja (br.com.doramasplus.twa,
-    // com o assetlinks.json corrigido). Não depende de evento nenhum, então
-    // mostra direto pra qualquer Android que não seja iOS/já instalado.
-    setShowAndroid(true);
+    // ✅ 27/07: Android de celular de verdade manda direto pra Play Store
+    // (app oficial, assetlinks.json já corrigido). PC/desktop NÃO deve cair
+    // aqui — Play Store não instala nada útil num navegador de computador.
+    // Regressão encontrada no mesmo dia: antes do fix anterior, PC caía
+    // nesse mesmo caminho e perdia a opção de instalar (funcionava via
+    // beforeinstallprompt). Agora desktop volta a usar esse fluxo original.
+    if (isAndroidMobile()) {
+      setShowAndroid(true);
+      return;
+    }
+
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowAndroid(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", () => setShowAndroid(false));
+
+    return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   function dismiss() {
@@ -47,8 +68,24 @@ export default function InstallAppBanner() {
     setIosModalOpen(false);
   }
 
-  function handleInstallAndroid() {
-    window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
+  async function handleInstallAndroid() {
+    // Android de celular: sempre manda pra Play Store, não tem prompt nativo.
+    if (isAndroidMobile()) {
+      window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // Desktop: usa o prompt nativo do Chrome (beforeinstallprompt) — se por
+    // algum motivo não disparou ainda, cai pra Play Store como alternativa.
+    if (!deferredPrompt) {
+      window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") dismiss();
+    setDeferredPrompt(null);
+    setShowAndroid(false);
   }
 
   if (!showAndroid && !showIOS) return null;
