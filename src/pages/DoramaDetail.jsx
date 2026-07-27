@@ -140,7 +140,8 @@ export default function DoramaDetail() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
             <div className="md:col-span-1 space-y-6">
               <div className="aspect-[2/3] rounded-2xl border border-slate-800 max-w-sm mx-auto bg-slate-900" />
-              <div className="h-14 w-full bg-slate-900 rounded-md" />
+              <div className="h-12 w-full bg-slate-900 rounded-md" />
+              <div className="h-12 w-full bg-slate-900 rounded-md" />
             </div>
 
             <div className="md:col-span-2 space-y-8">
