@@ -933,6 +933,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           icon: Smartphone,
           title: "📲 Baixe o app oficial",
           subtitle: "Mais rápido e direto na tela inicial, sem passar pelo navegador",
+          gradient: "from-blue-600 via-indigo-600 to-purple-600",
+          glow: "from-blue-600 via-indigo-500 to-purple-600",
           onClick: () =>
             window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer"),
         }
@@ -940,12 +942,16 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           icon: Bot,
           title: "🤖 Dúvidas? Fale com a Dora",
           subtitle: "Nossa assistente virtual responde na hora, qualquer horário",
+          gradient: "from-blue-600 via-indigo-600 to-purple-600",
+          glow: "from-blue-600 via-indigo-500 to-purple-600",
           onClick: () => window.dispatchEvent(new Event("open-dora-chat")),
         },
     {
       icon: ExternalLink,
       title: "💬 Entre no Grupo VIP do Whatsapp",
       subtitle: "Séries em alta, novidades e promoções exclusivas",
+      gradient: "from-green-700 via-green-600 to-lime-500",
+      glow: "from-green-700 via-green-500 to-lime-500",
       onClick: goCommunity,
     },
     {
@@ -953,6 +959,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       title: "🎁 Indique e ganhe 15 dias grátis",
       subtitle: "A cada amigo que assinar pelo seu link, você ganha +15 dias",
       note: "Necessário ter assinado pelo menos uma vez",
+      gradient: "from-pink-600 via-red-500 to-orange-500",
+      glow: "from-pink-600 via-red-500 to-orange-500",
       onClick: () =>
         navigate(user ? "/indicar" : "/login?redirect=/indicar"),
     },
@@ -1044,10 +1052,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
         {!normalizedQuery && (
           <div className="mb-4 md:mb-6">
             <div className="group relative w-full rounded-xl">
-              {/* brilho pulsante atrás do banner */}
+              {/* brilho pulsante atrás do banner — muda de cor com o slide atual */}
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 opacity-70 blur-lg animate-pulse"
+                className={`pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r ${homeBanners[bannerIndex].glow || "from-purple-600 via-fuchsia-500 to-pink-500"} opacity-70 blur-lg animate-pulse transition-colors duration-500`}
               />
 
               {/* conteúdo (alterna entre os banners) */}
@@ -1065,7 +1073,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -12 }}
                         transition={{ duration: 0.4, ease: "easeInOut" }}
-                        className="absolute inset-0 flex items-center gap-3 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 px-4 py-3 md:px-5 md:py-4 text-left ring-1 ring-white/20 shadow-lg shadow-fuchsia-500/30 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/60"
+                        className={`absolute inset-0 flex items-center gap-3 rounded-xl bg-gradient-to-r ${banner.gradient || "from-purple-600 via-fuchsia-600 to-pink-600"} px-4 py-3 md:px-5 md:py-4 text-left ring-1 ring-white/20 shadow-lg shadow-black/20 focus:outline-none focus:ring-2 focus:ring-white/40`}
                       >
                         <span className="flex-1 min-w-0">
                           <span className="block font-bold text-white text-base md:text-lg truncate">
@@ -1088,22 +1096,6 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                 </AnimatePresence>
               </div>
 
-              {/* indicadores de paginação (bolinhas) */}
-              <div className="relative flex items-center justify-center gap-2 mt-2.5">
-                {homeBanners.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`Ir para o banner ${i + 1}`}
-                    onClick={() => setBannerIndex(i)}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      i === bannerIndex
-                        ? "w-5 bg-fuchsia-500"
-                        : "w-2 bg-white/30 hover:bg-white/50"
-                    }`}
-                  />
-                ))}
-              </div>
             </div>
           </div>
         )}
