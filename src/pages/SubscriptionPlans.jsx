@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import PixCheckoutModal from '@/components/PixCheckoutModal';
+import { useNavigate } from 'react-router-dom';
 
 // ✅ email de teste: sempre vê o Passe Teste e passa direto pelo gate (validação antes do lançamento)
 const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
@@ -15,14 +17,19 @@ const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
 // ✅ metadados dos planos (nome + valor exibido no InitiateCheckout)
 const PLAN_META = {
   trial3: { name: 'DoramasPlus Passe Teste', value: 2.99 },
-  monthly: { name: 'DoramasPlus Padrão', value: 16.9 },
+  monthly: { name: 'DoramasPlus Padrão', value: 17.9 },
   quarterly: { name: 'DoramasPlus Trimestral', value: 47.9 },
 };
 
 const SubscriptionPlans = () => {
   const { toast } = useToast();
   const { isPremium, user } = useAuth();
+  const navigate = useNavigate();
   const [loadingPlan, setLoadingPlan] = useState(null);
+
+  // ✅ 28/07: dados do Pix (Asaas) pra abrir o modal de QR/copia-e-cola
+  const [pixCheckout, setPixCheckout] = useState(null);
+  const [pixModalOpen, setPixModalOpen] = useState(false);
 
   // ✅ Passe Teste não aparece para contas criadas por indicação
   const [wasReferred, setWasReferred] = useState(false);
@@ -317,7 +324,7 @@ const SubscriptionPlans = () => {
 
       // ✅ header manual (evita race do SDK usar token desatualizado logo após refresh)
       const { data, error } = await supabase.functions.invoke(
-        'infinitepay-create-checkout',
+        'asaas-create-checkout',
         {
           body: {
             plan: planType,
@@ -334,7 +341,7 @@ const SubscriptionPlans = () => {
       );
 
       if (error) {
-        console.error('[infinitepay-create-checkout] error object:', error);
+        console.error('[asaas-create-checkout] error object:', error);
         const msg = getInvokeErrorMessage(
           error,
           'Erro ao comunicar com o servidor (Pix)'
@@ -342,12 +349,13 @@ const SubscriptionPlans = () => {
         throw new Error(msg);
       }
 
-      if (!data?.url) {
-        console.error('[infinitepay-create-checkout] data sem url:', data);
-        throw new Error('URL do Pix não retornada');
+      if (!data?.copy_paste) {
+        console.error('[asaas-create-checkout] data sem copy_paste:', data);
+        throw new Error('Código Pix não retornado');
       }
 
-      window.location.href = data.url;
+      setPixCheckout(data);
+      setPixModalOpen(true);
     } catch (err) {
       console.error('PIX ERRO FINAL:', err);
       toast({
@@ -446,7 +454,7 @@ const SubscriptionPlans = () => {
 
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-bold text-purple-400">
-                  R$ 16,90
+                  R$ 17,90
                 </span>
                 <span className="text-slate-400">/mês</span>
               </div>
@@ -600,6 +608,13 @@ const SubscriptionPlans = () => {
           </motion.div>
         </div>
       </div>
+
+      <PixCheckoutModal
+        open={pixModalOpen}
+        checkout={pixCheckout}
+        onClose={() => setPixModalOpen(false)}
+        onConfirmed={() => navigate('/checkout/sucesso?gateway=asaas')}
+      />
     </>
   );
 };
