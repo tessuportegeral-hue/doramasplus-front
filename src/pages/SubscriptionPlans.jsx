@@ -582,25 +582,6 @@ const SubscriptionPlans = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="mt-12 max-w-3xl mx-auto bg-gradient-to-b from-emerald-600/20 to-slate-900 border border-emerald-500/70 rounded-2xl px-6 py-8 text-center"
-          >
-            <p className="text-xs font-bold tracking-widest text-emerald-300 mb-2 uppercase">
-              Pagamento via Pix disponível
-            </p>
-
-            <h3 className="text-2xl sm:text-3xl font-bold text-emerald-100 mb-3">
-              💸 Pague via Pix (automático)
-            </h3>
-
-            <p className="text-sm sm:text-base text-emerald-50 mb-6">
-              Clique em um dos botões de Pix acima. Assim que o pagamento for confirmado, sua assinatura é liberada automaticamente.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.45 }}
             className="mt-6 max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl px-6 py-6 text-center"
           >
