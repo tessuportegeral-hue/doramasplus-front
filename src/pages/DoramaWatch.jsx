@@ -603,6 +603,10 @@ export default function DoramaWatch() {
     if (prev >= 30 && !hasAppliedResumeRef.current && s < 30) return;
 
     const dur = Math.floor(durationMaybe || 0);
+    // duration é NOT NULL no banco; sem duração ainda (metadata do vídeo não
+    // carregou), não tem o que salvar — tentar com null só gera erro de
+    // constraint a cada tick (achado 27/07, repetindo a cada 5s nos logs).
+    if (dur <= 0) return;
 
     const { error: upsertError } = await supabase.from(WATCH_TABLE).upsert(
       {
@@ -610,7 +614,7 @@ export default function DoramaWatch() {
         dorama_id: dorama.id,
         episode: EPISODE_DEFAULT,
         current_time: s,
-        duration: dur > 0 ? dur : null,
+        duration: dur,
         finished: false,
         updated_at: new Date().toISOString(),
       },
