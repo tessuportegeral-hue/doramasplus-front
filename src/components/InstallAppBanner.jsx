@@ -21,6 +21,20 @@ function isInStandaloneMode() {
   );
 }
 
+// ✅ 28/07: navegador comum não sabe que o app já tá instalado no aparelho
+// (isso só é visível de dentro do app, via isInStandaloneMode). Usa a API
+// do Chrome/Android que consulta o pacote declarado em related_applications
+// do manifest.json contra o Google Play de verdade.
+async function isRelatedAppInstalled() {
+  if (typeof navigator === "undefined" || !navigator.getInstalledRelatedApps) return false;
+  try {
+    const apps = await navigator.getInstalledRelatedApps();
+    return apps.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
 
@@ -31,6 +45,8 @@ export default function InstallAppBanner() {
   const [iosModalOpen, setIosModalOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     // Não mostra se já está instalado (standalone)
     if (isInStandaloneMode()) return;
 
@@ -43,8 +59,13 @@ export default function InstallAppBanner() {
     // oficial, assetlinks.json corrigido). PC/desktop usa o beforeinstallprompt
     // do Chrome — instala como app no computador, não tem Play Store lá.
     if (isAndroidMobile()) {
-      setShowAndroid(true);
-      return;
+      isRelatedAppInstalled().then((alreadyInstalled) => {
+        if (cancelled || alreadyInstalled) return;
+        setShowAndroid(true);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
 
     const handler = (e) => {
@@ -52,11 +73,15 @@ export default function InstallAppBanner() {
       setDeferredPrompt(e);
       setShowAndroid(true);
     };
+    const onInstalled = () => setShowAndroid(false);
 
     window.addEventListener("beforeinstallprompt", handler);
-    window.addEventListener("appinstalled", () => setShowAndroid(false));
+    window.addEventListener("appinstalled", onInstalled);
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   const visible = showAndroid || showIOS;
