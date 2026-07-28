@@ -91,11 +91,24 @@ export default function DoramaDetail() {
         // maybeSingle (não single): com 0 linhas, single() retorna ERRO
         // (PGRST116) em vez de data:null, o que pulava a checagem de
         // slug_redirects logo abaixo e caía direto em "não encontrado".
-        const { data, error: queryError } = await supabase
-          .from('doramas')
-          .select('*')
-          .eq('slug', normalizedSlug)
-          .maybeSingle();
+        //
+        // Retry: uma instabilidade momentânea no banco (timeout, pico de
+        // carga) não pode virar "dorama não encontrado" + noindex pro
+        // Google — isso tira conteúdo real do índice (achado 27/07: doramas
+        // recém-criados marcados como noindex mesmo existindo no banco).
+        let data = null;
+        let queryError = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const res = await supabase
+            .from('doramas')
+            .select('*')
+            .eq('slug', normalizedSlug)
+            .maybeSingle();
+          data = res.data;
+          queryError = res.error;
+          if (!queryError && data) break;
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
 
         if (queryError) {
           console.error('Supabase error:', queryError);
