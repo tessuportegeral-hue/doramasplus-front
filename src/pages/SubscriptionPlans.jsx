@@ -178,11 +178,12 @@ const SubscriptionPlans = () => {
         return;
       }
 
-      // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita duplicação / preflight estranho)
+      // ✅ header manual (evita race do SDK usar token desatualizado logo após refresh)
       const { data, error } = await supabase.functions.invoke(
         'create-checkout-session',
         {
           body: { plan: planType },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
@@ -314,7 +315,7 @@ const SubscriptionPlans = () => {
         } catch {}
       }
 
-      // ✅ CHAMA A FUNCTION SEM HEADER MANUAL (evita erro 400 por header/timeout)
+      // ✅ header manual (evita race do SDK usar token desatualizado logo após refresh)
       const { data, error } = await supabase.functions.invoke(
         'infinitepay-create-checkout',
         {
@@ -328,6 +329,7 @@ const SubscriptionPlans = () => {
             utm_content,
             fbclid,
           },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
