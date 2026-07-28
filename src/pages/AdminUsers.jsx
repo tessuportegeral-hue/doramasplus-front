@@ -116,6 +116,10 @@ const AdminUsers = () => {
       return { text: 'Ativo (InfinityPay)', color: 'blue' };
     }
 
+    if (provider.includes('asaas') || type.includes('asaas')) {
+      return { text: 'Ativo (Asaas PIX)', color: 'blue' };
+    }
+
     return { text: 'Ativo (Stripe)', color: 'green' };
   };
 
@@ -972,22 +976,24 @@ const AdminUsers = () => {
 
                       const isManual = type === 'manual' || sub.is_manual === true;
                       const isInfinity = provider.includes('infinite') || type.includes('infinite');
+                      const isAsaas = provider.includes('asaas') || type.includes('asaas');
+                      const isPix = isManual || isInfinity || isAsaas;
 
                       return (
                         <div
                           key={sub.id}
                           className={`p-4 rounded-lg border text-sm ${
-                            isManual || isInfinity
+                            isPix
                               ? 'bg-blue-950/50 border-blue-500/30'
                               : 'bg-slate-900 border-slate-800'
                           }`}
                         >
                           <div className="flex justify-between items-start mb-3">
                             <h3 className="font-semibold text-slate-100 flex items-center gap-2">
-                              {isManual || isInfinity ? (
+                              {isPix ? (
                                 <>
                                   <Droplet size={16} className="text-blue-400" />
-                                  {isManual ? 'Manual (PIX)' : 'InfinityPay (PIX)'}
+                                  {isManual ? 'Manual (PIX)' : isAsaas ? 'Asaas (PIX)' : 'InfinityPay (PIX)'}
                                 </>
                               ) : (
                                 <>

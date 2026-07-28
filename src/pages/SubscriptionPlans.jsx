@@ -230,7 +230,7 @@ const SubscriptionPlans = () => {
     }
   };
 
-  // ✅ INFINITEPAY PIX (novo, sem quebrar Stripe)
+  // ✅ ASAAS PIX (inline no site, sem quebrar Stripe)
   const handlePix = async (planType) => {
     if (loadingPlan) return;
 

@@ -25,7 +25,7 @@ export default function Privacidade() {
             <li><strong>E-mail e nome</strong> — fornecidos no cadastro e usados para identificação da conta.</li>
             <li><strong>Número de WhatsApp</strong> — coletado para suporte e comunicação com o usuário.</li>
             <li><strong>Histórico de visualização</strong> — títulos assistidos e progresso em cada episódio, para oferecer a funcionalidade "continuar assistindo".</li>
-            <li><strong>Dados de pagamento</strong> — processados por terceiros (Stripe e InfinityPay). Não armazenamos dados de cartão de crédito em nossos servidores.</li>
+            <li><strong>Dados de pagamento</strong> — processados por terceiros (Stripe e Asaas). Não armazenamos dados de cartão de crédito em nossos servidores.</li>
             <li><strong>Dados técnicos</strong> — informações de sessão, endereço IP e dispositivo, coletados automaticamente para segurança e controle de acesso.</li>
           </ul>
         </Section>
@@ -58,8 +58,8 @@ export default function Privacidade() {
               </a>.
             </li>
             <li>
-              <strong>InfinityPay</strong> — processamento de pagamentos via PIX.
-              Os dados de pagamento são tratados diretamente pela InfinityPay.
+              <strong>Asaas</strong> — processamento de pagamentos via PIX.
+              Os dados de pagamento são tratados diretamente pela Asaas.
             </li>
             <li>
               <strong>Meta (Facebook Pixel)</strong> — utilizado para mensurar conversões e alcance de campanhas publicitárias.
