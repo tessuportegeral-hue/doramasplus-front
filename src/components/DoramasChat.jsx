@@ -49,7 +49,6 @@ export default function DoramasChat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
-  const proactiveFiredRef = useRef(false);
   const sessionIdRef = useRef(crypto.randomUUID());
   const lastAdminSeenRef = useRef(new Date().toISOString());
   const [hasUnreadAdmin, setHasUnreadAdmin] = useState(false);
@@ -209,28 +208,20 @@ export default function DoramasChat() {
     return () => window.removeEventListener("open-dora-chat", openChat);
   }, []);
 
-  // Dora proativa em /plans: abre o chat após 15s parado na página
+  // Um modal crítico (ex: PixCheckoutModal em /plans) pode pedir pra Dora
+  // se esconder completamente enquanto está aberto — evita ela flutuar por
+  // cima de botões de pagamento (ver [[feedback-dora-atrapalha-pagamento]]).
+  const [suppressed, setSuppressed] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!window.location.pathname.includes("/plans")) return;
-    if (proactiveFiredRef.current) return;
-    if (open) return;
-
-    const timer = setTimeout(() => {
-      if (proactiveFiredRef.current) return;
-      proactiveFiredRef.current = true;
-      setOpen(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Oi! Posso te ajudar a escolher o melhor plano? 😊",
-        },
-      ]);
-    }, 15000);
-
-    return () => clearTimeout(timer);
-  }, [open]);
+    const onSuppress = (e) => {
+      const shouldHide = !!e.detail;
+      setSuppressed(shouldHide);
+      if (shouldHide) setOpen(false);
+    };
+    window.addEventListener("dora-chat-suppress", onSuppress);
+    return () => window.removeEventListener("dora-chat-suppress", onSuppress);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -437,6 +428,12 @@ export default function DoramasChat() {
 
   // Esconde o chat da Dora nas telas do player (/watch)
   if ((location.pathname || "").includes("/watch")) {
+    return null;
+  }
+
+  // Esconde a Dora por completo enquanto um modal crítico pediu supressão
+  // (ex: pagamento Pix em andamento) — sem isso ela sobrepõe o modal.
+  if (suppressed) {
     return null;
   }
 

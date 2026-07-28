@@ -31,6 +31,15 @@ const SubscriptionPlans = () => {
   const [pixCheckout, setPixCheckout] = useState(null);
   const [pixModalOpen, setPixModalOpen] = useState(false);
 
+  // ✅ 28/07: Dora flutua com z-index acima do modal e sobrepõe o botão de
+  // copiar Pix — some ela enquanto o pagamento tá aberto (ver [[feedback-dora-atrapalha-pagamento]])
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('dora-chat-suppress', { detail: pixModalOpen }));
+    return () => {
+      if (pixModalOpen) window.dispatchEvent(new CustomEvent('dora-chat-suppress', { detail: false }));
+    };
+  }, [pixModalOpen]);
+
   // ✅ Passe Teste não aparece para contas criadas por indicação
   const [wasReferred, setWasReferred] = useState(false);
 
