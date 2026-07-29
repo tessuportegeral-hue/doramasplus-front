@@ -385,26 +385,6 @@ limit 500
       console.error("[renewal-push] falha ao enviar push:", String(e));
     }
 
-    // ✅ 25/07: terceiro canal — deixa a mensagem no histórico de chat da
-    // Dora (dora_conversations), pra pessoa ver quando abrir o app/site,
-    // graças ao carregamento de 30 dias já implementado no widget
-    // (dora-load-history). role="assistant" (não "admin") pra não disparar
-    // o trigger de push de resposta do admin — o push já foi mandado acima.
-    try {
-      const doraMensagem =
-        kind === "renew_1d"
-          ? `Oi! Sou a Dora 🌸 Passando pra lembrar que seu acesso vence HOJE! Não perca seus doramas — dá uma olhada aqui: ${pushUrl}`
-          : `Oi! Sou a Dora 🌸 Passando pra lembrar que seu acesso vence em 3 dias! Quer renovar já? ${pushUrl}`;
-      await supabase.from("dora_conversations").insert({
-        session_id: crypto.randomUUID(),
-        user_id: userId,
-        role: "assistant",
-        content: doraMensagem,
-      });
-    } catch (e) {
-      console.error("[renewal-dora-msg] falha ao registrar mensagem:", String(e));
-    }
-
     try {
       const providerResponse = await sendTemplate(e164, template, name, link);
       await logRow({ user_id: userId, kind, provider: provider || null, sent_to: e164, template_name: template, meta: { reason: "sent", end_at: endAt, link, provider_response: providerResponse } });
