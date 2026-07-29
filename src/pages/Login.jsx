@@ -12,6 +12,12 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = null;
 
+// ✅ 29/07 — testando modelo "Netflix" (login livre em vários dispositivos,
+// trava só na hora de assistir via claim-playback). Exclui só essa conta
+// da trava de sessão única por enquanto — todo mundo continua protegido
+// normalmente. Espelhar em SupabaseAuthContext.jsx e DoramaWatch.jsx.
+const SINGLE_SESSION_EXCLUDE_EMAIL = "tesagencia@gmail.com";
+
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -53,6 +59,7 @@ const Login = () => {
   };
 
   const shouldCheckSingleSession = (email) => {
+    if (email === SINGLE_SESSION_EXCLUDE_EMAIL) return false;
     if (!SINGLE_SESSION_TEST_EMAIL) return true; // null = todos
     return email === SINGLE_SESSION_TEST_EMAIL;
   };

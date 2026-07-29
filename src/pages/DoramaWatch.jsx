@@ -12,6 +12,11 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = null;
 
+// ✅ 29/07 — testando modelo "Netflix" (login livre, trava só no vídeo via
+// claim-playback). Exclui só essa conta do session guard por enquanto.
+// Espelhar em Login.jsx e SupabaseAuthContext.jsx.
+const SINGLE_SESSION_EXCLUDE_EMAIL = "tesagencia@gmail.com";
+
 // ✅ ROLLOUT GATEADO — quando != null, só este email chama a edge function
 // get-stream-url; os demais ficam no caminho legado (lê bunny_url direto
 // da row). Com null, TODOS os usuários autenticados passam pela edge e
@@ -29,8 +34,8 @@ export default function DoramaWatch() {
 
   // ✅ Trava de sessão única — só ativa para o email de teste
   // Quando SINGLE_SESSION_TEST_EMAIL = null, protege todos os usuários
-  const shouldGuard = !SINGLE_SESSION_TEST_EMAIL ||
-    user?.email === SINGLE_SESSION_TEST_EMAIL;
+  const shouldGuard = user?.email !== SINGLE_SESSION_EXCLUDE_EMAIL &&
+    (!SINGLE_SESSION_TEST_EMAIL || user?.email === SINGLE_SESSION_TEST_EMAIL);
   useSessionGuard(shouldGuard);
 
   const [dorama, setDorama] = useState(null);
