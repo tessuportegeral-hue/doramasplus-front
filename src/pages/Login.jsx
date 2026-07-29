@@ -12,13 +12,6 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 // Para ativar pra TODOS: mude para null
 const SINGLE_SESSION_TEST_EMAIL = null;
 
-// ✅ NOVO 29/07 — trava mais forte: revoga de verdade (auth.refresh_tokens)
-// o token do dispositivo antigo no momento do login, em vez de só trocar
-// o UUID em active_sessions e esperar o outro dispositivo perceber sozinho
-// via Realtime/polling. Em teste só pra tesagencia; pra abrir geral, mudar
-// pra null. Espelhar esse valor em supabase/functions/get-stream-url.
-const DEVICE_LOCK_HARD_TEST_EMAIL = "tesagencia@gmail.com";
-
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -64,16 +57,6 @@ const Login = () => {
     return email === SINGLE_SESSION_TEST_EMAIL;
   };
 
-  // ⚠️ DESATIVADO 29/07 — testando com tesagencia, o segundo dispositivo
-  // parou de conseguir logar de vez depois dessa revogação (só 1 sessão
-  // válida sobrava no banco, o outro nunca criava sessão nova). Causa exata
-  // ainda não confirmada — suspeita de conflito com o duplo
-  // signInWithPassword do fluxo do modal (handleLogin faz login, detecta
-  // conflito, desloga; evictAndLogin loga de novo). Desligado até investigar
-  // com calma; o resto da trava (modal de conta ativa + claim-playback)
-  // continua funcionando normal sem essa parte.
-  const shouldHardRevoke = (_email) => false;
-
   // ✅ FIX: grava o UUID deste device IMEDIATAMENTE no banco
   // Isso garante que o device novo tem prioridade antes do contexto inicializar
   const registerSessionImmediate = async (userId, email) => {
@@ -105,19 +88,6 @@ const Login = () => {
 
     // Grava no localStorage para o contexto encontrar depois
     try { window.localStorage.setItem(`dp_sv_${userId}`, newVersion); } catch {}
-
-    // ✅ NOVO 29/07 — revogação de verdade: derruba o refresh token de
-    // qualquer OUTRO dispositivo logado nessa conta agora mesmo, no
-    // servidor. A função exclui a sessão atual (a que acabou de logar),
-    // então nunca se auto-derruba. Não bloqueia o login se falhar
-    // (fail-open, igual ao resto da trava de sessão).
-    if (shouldHardRevoke(email)) {
-      try {
-        await supabase.rpc("revoke_other_sessions", { p_user_id: userId });
-      } catch (e) {
-        console.error("[login] revoke_other_sessions falhou:", e);
-      }
-    }
 
     return newVersion;
   };

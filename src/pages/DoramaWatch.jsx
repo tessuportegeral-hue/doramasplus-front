@@ -25,7 +25,7 @@ export default function DoramaWatch() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { user, isAuthenticated, isPremium, checkingPremium, loading, forceSignOut } = useAuth();
+  const { user, isAuthenticated, isPremium, checkingPremium, loading } = useAuth();
 
   // ✅ Trava de sessão única — só ativa para o email de teste
   // Quando SINGLE_SESSION_TEST_EMAIL = null, protege todos os usuários
@@ -215,13 +215,6 @@ export default function DoramaWatch() {
     }
     let cancelled = false;
     (async () => {
-      // ✅ Manda a versão de sessão local — a get-stream-url usa isso pra
-      // recusar assinar um vídeo NOVO se este dispositivo já foi
-      // substituído por outro login (reforço extra da trava de sessão).
-      const mySessionVersion = user?.id
-        ? (() => { try { return window.localStorage.getItem(`dp_sv_${user.id}`) || ""; } catch { return ""; } })()
-        : "";
-
       const { data, error: fnErr } = await supabase.functions.invoke(
         "get-stream-url",
         {
@@ -230,23 +223,12 @@ export default function DoramaWatch() {
             mode: isIphoneMode ? "iphone" : "normal",
             free_trial: !user?.id,
             audio: audioTrack,
-            session_version: mySessionVersion,
           },
         }
       );
       if (cancelled) return;
       if (fnErr || !data?.url) {
         console.error("[DoramaWatch] get-stream-url falhou:", fnErr);
-        // ✅ Sessão substituída por outro dispositivo — desloga com a
-        // mesma tela clara de "Você foi desconectado", em vez de deixar
-        // o player travado sem explicação nenhuma. O corpo do erro vem
-        // dentro de fnErr.context (Response cru, precisa parsear).
-        let errBody = null;
-        try { errBody = await fnErr?.context?.json?.(); } catch {}
-        if (!cancelled && errBody?.error === "device_replaced" && typeof forceSignOut === "function") {
-          forceSignOut();
-          return;
-        }
         setSignedVideoUrl("");
         return;
       }
@@ -546,9 +528,9 @@ export default function DoramaWatch() {
 
       // ✅ 29/07 — encurtado de 20s pra bem mais rápido: o usuário testou e
       // o outro dispositivo demorava até 20s pra perceber que foi derrubado
-      // (parecia que "não tinha funcionado"). Servidor manda o valor real;
-      // aqui só é o piso mínimo.
-      const interval = Math.max(4, data.heartbeat_interval_seconds ?? 6) * 1000;
+      // (parecia que "não tinha funcionado"). Servidor manda o valor real
+      // (mais curto ainda pra tesagencia); aqui só é o piso mínimo.
+      const interval = Math.max(2, data.heartbeat_interval_seconds ?? 6) * 1000;
 
       const pingNow = async () => {
         const ping = await callClaim(false);

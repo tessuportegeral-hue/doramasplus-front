@@ -479,7 +479,6 @@ export const AuthProvider = ({ children }) => {
     isPremium, checkingPremium, refreshPremiumStatus,
     checkingSession, singleSessionEnabled: ENABLE_SINGLE_SESSION,
     kickedOut, clearKickedOut,
-    forceSignOut,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

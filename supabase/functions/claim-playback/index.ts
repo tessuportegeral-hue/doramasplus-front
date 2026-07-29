@@ -48,6 +48,14 @@ Deno.serve(async (req) => {
 
     const userId = userData.user.id;
 
+    // ✅ 29/07 — afiando SÓ pra tesagencia por enquanto (pedido explícito):
+    // heartbeat mais curto e limpeza de sessão zumbi mais rápida. Todo
+    // mundo continua no valor de produção (6s / 25s) até validar.
+    const SHARP_TEST_EMAIL = "tesagencia@gmail.com";
+    const isSharpTestUser = userData.user.email === SHARP_TEST_EMAIL;
+    const staleAfterMs = isSharpTestUser ? 9_000 : 25_000;
+    const heartbeatSeconds = isSharpTestUser ? 3 : 6;
+
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
@@ -61,12 +69,12 @@ Deno.serve(async (req) => {
 
     const maxStreams = subRows?.[0]?.max_concurrent_streams ?? 1;
 
-    // Expirar sessoes com mais de 25s sem heartbeat
+    // Expirar sessoes zumbi sem heartbeat recente
     await admin
       .from("playback_sessions")
       .delete()
       .eq("user_id", userId)
-      .lt("last_heartbeat", new Date(Date.now() - 25_000).toISOString());
+      .lt("last_heartbeat", new Date(Date.now() - staleAfterMs).toISOString());
 
     const { data: existing } = await admin
       .from("playback_sessions")
@@ -120,12 +128,7 @@ Deno.serve(async (req) => {
       started_at: now,
     }, { onConflict: "user_id,device_id" });
 
-    // ✅ 29/07 — encurtado de 20s pra 6s: usuário testou o botão de force e
-    // achou que "não tinha funcionado" porque o outro dispositivo demorava
-    // até 20s pra perceber que foi derrubado. Frontend (DoramaWatch.jsx)
-    // também ganhou checagem imediata ao voltar pra aba (focus/visibility),
-    // então esse valor aqui é só o intervalo de fallback do polling.
-    return json({ allowed: true, max_streams: maxStreams, heartbeat_interval_seconds: 6 });
+    return json({ allowed: true, max_streams: maxStreams, heartbeat_interval_seconds: heartbeatSeconds });
   } catch (e) {
     return json({ error: "internal", details: String(e) }, 500);
   }
