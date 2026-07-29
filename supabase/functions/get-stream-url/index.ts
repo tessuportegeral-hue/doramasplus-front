@@ -54,6 +54,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const STREAM_TOKEN_TEST_EMAIL: string | null = null
 // ============================
 
+// ✅ NOVO 29/07 — reforço extra da trava de dispositivo: além do login
+// derrubar o dispositivo antigo (revoke_other_sessions), aqui a gente
+// confere DE NOVO na hora de pedir um vídeo se quem está pedindo ainda é
+// o dispositivo "dono" da sessão (active_sessions.session_version).
+// Cobre a janela residual de um access token antigo que ainda não expirou
+// tecnicamente mas já devia ter sido substituído. Espelhar com
+// src/pages/Login.jsx (DEVICE_LOCK_HARD_TEST_EMAIL).
+const DEVICE_LOCK_HARD_TEST_EMAIL: string | null = 'tesagencia@gmail.com'
+// ============================
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -227,7 +237,7 @@ Deno.serve(async (req: Request) => {
     // não rejeitamos aqui se não houver token; só tentamos resolver o usuário.
     const authHeader = req.headers.get('Authorization')
     const jwt = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : ''
-    let user: { email?: string } | null = null
+    let user: { id?: string; email?: string } | null = null
     if (jwt) {
       const { data } = await admin.auth.getUser(jwt)
       user = data?.user ?? null
@@ -239,6 +249,7 @@ Deno.serve(async (req: Request) => {
     const mode = body?.mode === 'iphone' ? 'iphone' : 'normal'
     const freeTrial = body?.free_trial === true
     const wantsAlt = body?.audio === 'alt'
+    const clientSessionVersion = String(body?.session_version || '').trim()
     if (!doramaId) {
       return jsonResp(400, { error: 'dorama_id required' })
     }
@@ -254,6 +265,31 @@ Deno.serve(async (req: Request) => {
       }
       // TODO: validar assinatura ativa em `subscriptions`. Hoje comentado
       // pra não bloquear testes com tesagencia.
+
+      // ✅ NOVO 29/07 — reforço da trava de dispositivo: confere se este
+      // dispositivo ainda é o "dono" da sessão antes de assinar um vídeo
+      // NOVO. Fail-open se faltar dado (sem session_version mandado pelo
+      // client, ou sem registro ainda em active_sessions) pra não quebrar
+      // playback por causa de um client desatualizado ou primeiro acesso.
+      const gateApplies =
+        DEVICE_LOCK_HARD_TEST_EMAIL === null || user.email === DEVICE_LOCK_HARD_TEST_EMAIL
+      if (gateApplies && user.id && clientSessionVersion) {
+        const { data: activeSession } = await admin
+          .from('active_sessions')
+          .select('session_version')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (
+          activeSession?.session_version &&
+          String(activeSession.session_version) !== clientSessionVersion
+        ) {
+          return jsonResp(403, {
+            error: 'device_replaced',
+            message: 'Sua sessão foi substituída por outro dispositivo.',
+          })
+        }
+      }
     } else if (freeTrial) {
       // Caminho B: teste grátis anônimo. Valida o trial por IP na mesma tabela
       // `free_trials` usada pela edge `free-trial` (verify_jwt: false).
