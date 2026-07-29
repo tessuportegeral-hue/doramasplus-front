@@ -100,6 +100,7 @@ export default function DoramaWatch() {
   const forceNextClaimRef = useRef(false);
   const [claimRetryNonce, setClaimRetryNonce] = useState(0);
   const [claimForcing, setClaimForcing] = useState(false);
+  const claimVisibilityCleanupRef = useRef(null);
 
   // ===================== PLAYER FIX (resume robusto + pausa ao sair) =============
   // Mantém o player montado ao voltar pra aba (não desmonta no flicker de
@@ -543,8 +544,13 @@ export default function DoramaWatch() {
 
       setClaimAllowed(true);
 
-      const interval = Math.max(10, data.heartbeat_interval_seconds ?? 30) * 1000;
-      heartbeatId = setInterval(async () => {
+      // ✅ 29/07 — encurtado de 20s pra bem mais rápido: o usuário testou e
+      // o outro dispositivo demorava até 20s pra perceber que foi derrubado
+      // (parecia que "não tinha funcionado"). Servidor manda o valor real;
+      // aqui só é o piso mínimo.
+      const interval = Math.max(4, data.heartbeat_interval_seconds ?? 6) * 1000;
+
+      const pingNow = async () => {
         const ping = await callClaim(false);
         if (!active) return;
         if (ping !== null && !ping.allowed) {
@@ -556,12 +562,32 @@ export default function DoramaWatch() {
             if (el && typeof el.pause === "function") el.pause();
           } catch {}
         }
-      }, interval);
+      };
+
+      heartbeatId = setInterval(pingNow, interval);
+
+      // ✅ Checagem extra ao voltar pra aba/foco — cobre o caso comum de
+      // "derrubei no outro navegador e voltei pra essa aba na hora", sem
+      // esperar o próximo tick do interval.
+      const onVisible = () => {
+        if (!active) return;
+        if (document.visibilityState === "visible") pingNow();
+      };
+      window.addEventListener("focus", onVisible);
+      document.addEventListener("visibilitychange", onVisible);
+      claimVisibilityCleanupRef.current = () => {
+        window.removeEventListener("focus", onVisible);
+        document.removeEventListener("visibilitychange", onVisible);
+      };
     })();
 
     return () => {
       active = false;
       clearInterval(heartbeatId);
+      if (claimVisibilityCleanupRef.current) {
+        claimVisibilityCleanupRef.current();
+        claimVisibilityCleanupRef.current = null;
+      }
     };
   }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium, claimRetryNonce]);
 
@@ -1123,9 +1149,9 @@ export default function DoramaWatch() {
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
                   >
                     {claimForcing ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Assistindo aqui...</>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Resolvendo...</>
                     ) : (
-                      "Assistir aqui e desconectar o outro"
+                      "Limite de Reprodução? Clique aqui para resolver"
                     )}
                   </Button>
                 </div>
