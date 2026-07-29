@@ -48,13 +48,11 @@ Deno.serve(async (req) => {
 
     const userId = userData.user.id;
 
-    // ✅ 29/07 — afiando SÓ pra tesagencia por enquanto (pedido explícito):
-    // heartbeat mais curto e limpeza de sessão zumbi mais rápida. Todo
-    // mundo continua no valor de produção (6s / 25s) até validar.
-    const SHARP_TEST_EMAIL = "tesagencia@gmail.com";
-    const isSharpTestUser = userData.user.email === SHARP_TEST_EMAIL;
-    const staleAfterMs = isSharpTestUser ? 9_000 : 25_000;
-    const heartbeatSeconds = isSharpTestUser ? 3 : 6;
+    // ✅ 29/07 — afiado pra todo mundo (validado antes só com tesagencia):
+    // heartbeat de 3s e limpeza de sessão zumbi em 9s, pra derrubada de
+    // dispositivo ficar rápida de verdade.
+    const staleAfterMs = 9_000;
+    const heartbeatSeconds = 3;
 
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
