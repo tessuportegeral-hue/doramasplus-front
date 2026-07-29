@@ -64,10 +64,15 @@ const Login = () => {
     return email === SINGLE_SESSION_TEST_EMAIL;
   };
 
-  const shouldHardRevoke = (email) => {
-    if (!DEVICE_LOCK_HARD_TEST_EMAIL) return true; // null = todos
-    return email === DEVICE_LOCK_HARD_TEST_EMAIL;
-  };
+  // ⚠️ DESATIVADO 29/07 — testando com tesagencia, o segundo dispositivo
+  // parou de conseguir logar de vez depois dessa revogação (só 1 sessão
+  // válida sobrava no banco, o outro nunca criava sessão nova). Causa exata
+  // ainda não confirmada — suspeita de conflito com o duplo
+  // signInWithPassword do fluxo do modal (handleLogin faz login, detecta
+  // conflito, desloga; evictAndLogin loga de novo). Desligado até investigar
+  // com calma; o resto da trava (modal de conta ativa + claim-playback)
+  // continua funcionando normal sem essa parte.
+  const shouldHardRevoke = (_email) => false;
 
   // ✅ FIX: grava o UUID deste device IMEDIATAMENTE no banco
   // Isso garante que o device novo tem prioridade antes do contexto inicializar
