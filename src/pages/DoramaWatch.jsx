@@ -91,6 +91,16 @@ export default function DoramaWatch() {
   const [claimAllowed, setClaimAllowed] = useState(false);
   const [claimMessage, setClaimMessage] = useState("");
 
+  // ✅ NOVO 29/07 — botão "assistir aqui e desconectar o outro" no aviso de
+  // limite atingido. force=true já era suportado pelo backend (claim-playback),
+  // só nunca tinha sido ligado a nenhum botão. forceNextClaimRef sinaliza pro
+  // effect abaixo mandar force=true na PRÓXIMA chamada; claimRetryNonce
+  // dispara essa nova chamada re-rodando o effect (mesmo padrão de
+  // evictAndLogin em Login.jsx).
+  const forceNextClaimRef = useRef(false);
+  const [claimRetryNonce, setClaimRetryNonce] = useState(0);
+  const [claimForcing, setClaimForcing] = useState(false);
+
   // ===================== PLAYER FIX (resume robusto + pausa ao sair) =============
   // Mantém o player montado ao voltar pra aba (não desmonta no flicker de
   // checkingPremium/claim, que zerava o <video>) + pausa ao sair da tela.
@@ -511,9 +521,13 @@ export default function DoramaWatch() {
     };
 
     (async () => {
-      const data = await callClaim(false);
+      const forced = forceNextClaimRef.current;
+      forceNextClaimRef.current = false;
+
+      const data = await callClaim(forced);
       if (!active) return;
       setClaimChecked(true);
+      setClaimForcing(false);
 
       if (data === null) {
         // falha de rede: fail open para não bloquear usuários legítimos
@@ -549,7 +563,16 @@ export default function DoramaWatch() {
       active = false;
       clearInterval(heartbeatId);
     };
-  }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium]);
+  }, [isAuthenticated, isPremium, dorama?.id, loading, checkingPremium, claimRetryNonce]);
+
+  // ✅ Botão "assistir aqui e desconectar o outro" — reusa o effect acima
+  // (mesma lógica de heartbeat etc.), só sinaliza force=true na próxima chamada.
+  const handleForceClaimEntry = () => {
+    if (claimForcing) return;
+    setClaimForcing(true);
+    forceNextClaimRef.current = true;
+    setClaimRetryNonce((n) => n + 1);
+  };
 
   // PLAYER FIX: mantém claimAllowedRef em sincronia com o estado
   useEffect(() => { claimAllowedRef.current = claimAllowed; }, [claimAllowed]);
@@ -1091,9 +1114,20 @@ export default function DoramaWatch() {
                   <p className="text-white text-lg font-semibold mb-2">
                     Limite de reproduções simultâneas atingido
                   </p>
-                  <p className="text-slate-300 text-sm">
+                  <p className="text-slate-300 text-sm mb-6">
                     {claimMessage}
                   </p>
+                  <Button
+                    onClick={handleForceClaimEntry}
+                    disabled={claimForcing}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                  >
+                    {claimForcing ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Assistindo aqui...</>
+                    ) : (
+                      "Assistir aqui e desconectar o outro"
+                    )}
+                  </Button>
                 </div>
               )}
             </div>
