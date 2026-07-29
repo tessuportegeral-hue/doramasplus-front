@@ -5,6 +5,9 @@ import { grantSubscriptionAndProfile } from "../_shared/grant-subscription.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const DEFAULT_PASSWORD = "123456";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
+const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
+const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 
 function getMetaCredsForNumber(phoneNumberId: string | null): { pixelId: string; token: string; pageId: string } {
   if (phoneNumberId === "1253472567838504") {
@@ -38,29 +41,52 @@ async function sha256hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function ensureProfile(supabase: any, phoneDigits: string) {
-  const fakeEmail = `${phoneDigits}@doramasplus.com`.toLowerCase();
-  let userId: string | null = null;
+// ✅ 28/07: Asaas não avisa o dono da conta quando entra uma venda de verdade
+// (só o comprador recebe recibo). Manda um email curto pra cada venda
+// confirmada (site ou bot WhatsApp), best-effort — nunca bloqueia o
+// processamento do pagamento em si.
+// ✅ 29/07: separa nome/email/telefone em vez de um "identifier" genérico
+// (antes só mostrava email OU telefone, nunca os dois) — pedido explícito
+// pra facilitar contato/contexto direto do email de notificação.
+async function notifySale(opts: {
+  source: "site" | "whatsapp_bot";
+  plan: string;
+  amountCents: number;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}): Promise<{ ok: boolean; status?: number; body?: string; error?: string; key_present: boolean }> {
+  if (!RESEND_API_KEY || !ALERT_EMAIL) return { ok: false, error: "missing_env", key_present: !!RESEND_API_KEY };
+  const planLabel =
+    opts.plan === "quarterly" ? "Trimestral" :
+    opts.plan === "series" ? "1 Série" :
+    opts.plan === "trial3" ? "Passe Teste" : "Mensal";
+  const valueLabel = `R$ ${(opts.amountCents / 100).toFixed(2).replace(".", ",")}`;
+  const sourceLabel = opts.source === "site" ? "Site" : "Bot WhatsApp";
+  const nameLabel = opts.name?.trim() || "—";
+  const emailLabel = opts.email?.trim() || "—";
+  const phoneLabel = opts.phone?.trim() || "—";
   try {
-    const { data: created, error } = await supabase.auth.admin.createUser({
-      email: fakeEmail, password: DEFAULT_PASSWORD, email_confirm: true,
-      user_metadata: { name: "", phone: phoneDigits },
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [ALERT_EMAIL],
+        subject: `💰 Nova venda: ${planLabel} - ${valueLabel}`,
+        html: `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
+          <p><b>Venda confirmada via Asaas (Pix)</b></p>
+          <p>Origem: ${sourceLabel}<br>Plano: ${planLabel}<br>Valor: ${valueLabel}<br>Nome: ${nameLabel}<br>Email: ${emailLabel}<br>Telefone: ${phoneLabel}</p>
+        </div>`,
+      }),
     });
-    if (error) {
-      const m = String(error.message || "").toLowerCase();
-      if (m.includes("already") || m.includes("exists") || m.includes("registered")) {
-        const { data: existing } = await supabase.from("profiles").select("id").eq("email", fakeEmail).maybeSingle();
-        userId = existing?.id || null;
-      } else {
-        console.error("[asaas-webhook] createUser erro:", error.message);
-      }
-    } else {
-      userId = created?.user?.id || null;
-    }
-  } catch (e) { console.error("[asaas-webhook] ensureProfile erro:", e); }
-  if (!userId) return null;
-  await supabase.from("profiles").upsert({ id: userId, name: "", phone: phoneDigits, email: fakeEmail }, { onConflict: "id" });
-  return { id: userId, name: null as string | null, email: fakeEmail, phone: phoneDigits };
+    const bodyText = await res.text().catch(() => "");
+    console.log("[asaas-webhook] notifySale resend status:", res.status, "body:", bodyText.slice(0, 300));
+    return { ok: res.ok, status: res.status, body: bodyText.slice(0, 300), key_present: true };
+  } catch (e) {
+    console.error("[asaas-webhook] notifySale email fail:", String(e));
+    return { ok: false, error: String(e), key_present: true };
+  }
 }
 
 async function dispararPixel(phone: string, email: string | null, value: number, plan: string, eventId: string, pixPaymentId?: string, ctwaClid?: string | null, phoneNumberId?: string | null) {
@@ -139,6 +165,31 @@ async function dispararPixel(phone: string, email: string | null, value: number,
   }
 }
 
+async function ensureProfile(supabase: any, phoneDigits: string) {
+  const fakeEmail = `${phoneDigits}@doramasplus.com`.toLowerCase();
+  let userId: string | null = null;
+  try {
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email: fakeEmail, password: DEFAULT_PASSWORD, email_confirm: true,
+      user_metadata: { name: "", phone: phoneDigits },
+    });
+    if (error) {
+      const m = String(error.message || "").toLowerCase();
+      if (m.includes("already") || m.includes("exists") || m.includes("registered")) {
+        const { data: existing } = await supabase.from("profiles").select("id").eq("email", fakeEmail).maybeSingle();
+        userId = existing?.id || null;
+      } else {
+        console.error("[asaas-webhook] createUser erro:", error.message);
+      }
+    } else {
+      userId = created?.user?.id || null;
+    }
+  } catch (e) { console.error("[asaas-webhook] ensureProfile erro:", e); }
+  if (!userId) return null;
+  await supabase.from("profiles").upsert({ id: userId, name: "", phone: phoneDigits, email: fakeEmail }, { onConflict: "id" });
+  return { id: userId, name: null as string | null, email: fakeEmail, phone: phoneDigits };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { status: 200 });
   if (req.method !== "POST") return json({ ok: true }, 200);
@@ -159,12 +210,124 @@ Deno.serve(async (req) => {
     const asaasPaymentId = String(payment?.id || "");
     const value = Number(payment?.value || 0);
 
-    // Pagamento fora do fluxo do salesbot: retorna 200 para nao gerar penalizacao no Asaas
     if (!externalReference) {
       console.log("[asaas-webhook] externalReference ausente, ignorando pagamento:", asaasPaymentId);
       return json({ ok: true, ignored: true, reason: "externalReference ausente" }, 200);
     }
     const parts = externalReference.split("|");
+
+    if (parts[0] === "doramasplus") {
+      if (parts.length < 3) {
+        return json({ ok: true, ignored: true, reason: "order_nsu invalido (site)" }, 200);
+      }
+      const userId = parts[1];
+      const plan = parts[2];
+      if (!["monthly", "quarterly", "trial3"].includes(plan)) {
+        return json({ ok: true, ignored: true, reason: "plano invalido (site): " + plan }, 200);
+      }
+
+      const amountCentsSite = Math.round(value * 100);
+      const nowSite = new Date();
+
+      const { data: existingSitePay } = await supabase
+        .from("pix_payments")
+        .select("id, status, meta_sent")
+        .eq("order_nsu", externalReference)
+        .maybeSingle();
+
+      if (existingSitePay?.status === "paid") {
+        return json({ ok: true, already_processed: true }, 200);
+      }
+
+      try {
+        await supabase.from("pix_payments").upsert({
+          user_id: userId,
+          provider: "asaas",
+          plan,
+          amount_cents: amountCentsSite,
+          order_nsu: externalReference,
+          status: "paid",
+          paid_at: nowSite.toISOString(),
+          raw: payload,
+        }, { onConflict: "order_nsu" });
+      } catch (e) {
+        console.error("[asaas-webhook] site pix_payments upsert erro:", String(e));
+      }
+
+      const daysToAddSite = plan === "quarterly" ? 90 : plan === "trial3" ? 1 : 30;
+      let baseDateSite = nowSite;
+      try {
+        const { data: currentSub } = await supabase
+          .from("subscriptions")
+          .select("status, end_at, current_period_end")
+          .eq("user_id", userId)
+          .maybeSingle();
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("active, subscription_active_until")
+          .eq("id", userId)
+          .maybeSingle();
+        const bestEnd = maxDate(
+          maxDate(
+            currentSub?.end_at ? new Date(currentSub.end_at) : null,
+            currentSub?.current_period_end ? new Date(currentSub.current_period_end) : null,
+          ),
+          prof?.subscription_active_until ? new Date(prof.subscription_active_until) : null,
+        );
+        const isActive = currentSub?.status === "active" || currentSub?.status === "trialing" || prof?.active === true;
+        if (bestEnd && isActive && bestEnd > nowSite) baseDateSite = bestEnd;
+      } catch {}
+
+      const endAtSite = addDays(baseDateSite, daysToAddSite);
+      const planNameSite =
+        plan === "quarterly" ? "DoramasPlus Trimestral" : plan === "trial3" ? "DoramasPlus Passe Teste" : "DoramasPlus Padrao";
+      const planIntervalSite = plan === "quarterly" ? "quarter" : plan === "trial3" ? "trial" : "month";
+
+      const grantResultSite = await grantSubscriptionAndProfile(supabase, userId, {
+        status: "active",
+        start_at: nowSite.toISOString(),
+        end_at: endAtSite.toISOString(),
+        current_period_end: endAtSite.toISOString(),
+        plan_name: planNameSite,
+        plan_interval: planIntervalSite,
+        source: "asaas",
+        provider: "asaas",
+        provider_ref: asaasPaymentId,
+        order_nsu: externalReference,
+        price_id: plan === "quarterly" ? "asaas_pix_4790" : "asaas_pix_1690",
+        is_manual: false,
+        notes: `PIX Asaas (site) - ${planNameSite}`,
+        last_renewed_at: nowSite.toISOString(),
+      });
+
+      if (!grantResultSite.ok) {
+        console.error("[asaas-webhook] site subscription error:", grantResultSite.error);
+        return json({ ok: false, error: "erro ao liberar assinatura" }, 500);
+      }
+
+      const { data: profSite } = await supabase.from("profiles").select("name, email, phone").eq("id", userId).maybeSingle();
+      await notifySale({ source: "site", plan, amountCents: amountCentsSite, name: profSite?.name || null, email: profSite?.email || null, phone: profSite?.phone || null });
+
+      if (plan !== "trial3") {
+        try {
+          const referralResult = await creditReferralIfEligible(supabase, userId);
+          console.log("[referral] resultado (asaas site):", JSON.stringify(referralResult));
+        } catch (e) {
+          console.error("[referral] excecao:", e);
+        }
+      }
+      try {
+        const pendingResult = await resolvePendingReferralsForReferrer(supabase, userId);
+        if (pendingResult.resolved > 0) {
+          console.log("[referral] pending resolvidos (asaas site):", pendingResult.resolved, "para", userId);
+        }
+      } catch (e) {
+        console.error("[referral] excecao ao resolver pending:", e);
+      }
+
+      return json({ ok: true, userId, plan, endAt: endAtSite.toISOString() }, 200);
+    }
+
     if (parts.length < 3 || parts[0] !== "salesbot_asaas") {
       console.log("[asaas-webhook] externalReference invalido, ignorando:", externalReference);
       return json({ ok: true, ignored: true, reason: "externalReference invalido" }, 200);
@@ -205,6 +368,22 @@ Deno.serve(async (req) => {
 
       await dispararPixel(userPhone, null, value, plan, eventId, ins?.id, savedCtwaClid, receivingPhoneNumberId);
 
+      // ✅ 29/07: tenta achar nome/email já cadastrados pelo telefone (mesmo
+      // padrão de match de dois formatos usado no resto do arquivo) — série
+      // é compra rápida, pode não ter perfil ainda, fica "—" nesse caso.
+      let seriesName: string | null = null;
+      let seriesEmail: string | null = null;
+      try {
+        const phoneCandidatesSeries = Array.from(new Set([
+          phoneDigits,
+          phoneDigits.startsWith("55") ? phoneDigits.slice(2) : "55" + phoneDigits,
+        ]));
+        const { data: seriesProfile } = await supabase.from("profiles").select("name, email").in("phone", phoneCandidatesSeries).limit(1).maybeSingle();
+        seriesName = seriesProfile?.name || null;
+        seriesEmail = seriesProfile?.email || null;
+      } catch {}
+      await notifySale({ source: "whatsapp_bot", plan, amountCents, name: seriesName, email: seriesEmail, phone: userPhone });
+
       try {
         await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-sales-bot/notify-access`, {
           method: "POST",
@@ -216,7 +395,6 @@ Deno.serve(async (req) => {
       return json({ ok: true, plan: "series", phone: userPhone }, 200);
     }
 
-    // monthly / quarterly
     let profile: any = null;
     if (existingPay?.user_id) {
       const { data: byId } = await supabase.from("profiles").select("id, name, email, phone, active").eq("id", existingPay.user_id).maybeSingle();
@@ -261,7 +439,6 @@ Deno.serve(async (req) => {
       receiving_phone_number_id: receivingPhoneNumberId,
     }, { onConflict: "order_nsu" }).select("id").maybeSingle();
 
-    // libera assinatura (subscriptions primeiro, profiles so se der certo)
     const grantResult = await grantSubscriptionAndProfile(supabase, userId, {
       status: "active",
       start_at: now.toISOString(),
@@ -281,9 +458,8 @@ Deno.serve(async (req) => {
 
     if (!grantResult.ok) { console.error("[asaas-webhook] subscription error:", grantResult.error); return json({ ok: false, error: "erro ao liberar assinatura" }, 500); }
 
-    // Referral - este pagamento veio via Asaas, fora dos webhooks normais
-    // (InfinityPay/Stripe). Sem isso, indicacoes que passam por aqui nunca
-    // creditam o indicador.
+    await notifySale({ source: "whatsapp_bot", plan, amountCents, name: userName, email: userEmail, phone: userPhone });
+
     try {
       const referralResult = await creditReferralIfEligible(supabase, userId);
       console.log("[referral] resultado (asaas):", JSON.stringify(referralResult));
