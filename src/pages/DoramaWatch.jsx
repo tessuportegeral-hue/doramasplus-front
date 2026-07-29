@@ -8,14 +8,9 @@ import { useAuth } from "@/contexts/SupabaseAuthContext";
 import Hls from "hls.js";
 import useSessionGuard from "@/hooks/useSessionGuard";
 
-// ✅ TESTE — só ativa session guard pra este email
-// Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = null;
-
-// ✅ 29/07 — testando modelo "Netflix" (login livre, trava só no vídeo via
-// claim-playback). Exclui só essa conta do session guard por enquanto.
-// Espelhar em Login.jsx e SupabaseAuthContext.jsx.
-const SINGLE_SESSION_EXCLUDE_EMAIL = "tesagencia@gmail.com";
+// ✅ 29/07 — aposentado (modelo "Netflix"): login livre, trava só no vídeo
+// via claim-playback. Testado com tesagencia antes de liberar geral.
+// Espelhar com Login.jsx e SupabaseAuthContext.jsx.
 
 // ✅ ROLLOUT GATEADO — quando != null, só este email chama a edge function
 // get-stream-url; os demais ficam no caminho legado (lê bunny_url direto
@@ -32,11 +27,9 @@ export default function DoramaWatch() {
 
   const { user, isAuthenticated, isPremium, checkingPremium, loading } = useAuth();
 
-  // ✅ Trava de sessão única — só ativa para o email de teste
-  // Quando SINGLE_SESSION_TEST_EMAIL = null, protege todos os usuários
-  const shouldGuard = user?.email !== SINGLE_SESSION_EXCLUDE_EMAIL &&
-    (!SINGLE_SESSION_TEST_EMAIL || user?.email === SINGLE_SESSION_TEST_EMAIL);
-  useSessionGuard(shouldGuard);
+  // ✅ Trava de sessão única aposentada (modelo Netflix) — useSessionGuard
+  // fica desligado pra todo mundo, a proteção real é o claim-playback.
+  useSessionGuard(false);
 
   const [dorama, setDorama] = useState(null);
   const [loadingDorama, setLoadingDorama] = useState(true);

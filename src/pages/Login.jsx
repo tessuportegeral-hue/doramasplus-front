@@ -8,15 +8,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
-// ✅ TESTE — só ativa single session pra este email
-// Para ativar pra TODOS: mude para null
-const SINGLE_SESSION_TEST_EMAIL = null;
-
-// ✅ 29/07 — testando modelo "Netflix" (login livre em vários dispositivos,
-// trava só na hora de assistir via claim-playback). Exclui só essa conta
-// da trava de sessão única por enquanto — todo mundo continua protegido
-// normalmente. Espelhar em SupabaseAuthContext.jsx e DoramaWatch.jsx.
-const SINGLE_SESSION_EXCLUDE_EMAIL = "tesagencia@gmail.com";
+// ✅ 29/07 — aposentado (modelo "Netflix"): login livre em vários
+// dispositivos pra todo mundo, trava só na hora de assistir via
+// claim-playback. Testado com tesagencia antes de liberar geral. Não
+// reativar sem repensar o fluxo — espelhar com SupabaseAuthContext.jsx e
+// DoramaWatch.jsx.
 
 const Login = () => {
   const navigate = useNavigate();
@@ -58,11 +54,7 @@ const Login = () => {
     return `${d}@doramasplus.com`;
   };
 
-  const shouldCheckSingleSession = (email) => {
-    if (email === SINGLE_SESSION_EXCLUDE_EMAIL) return false;
-    if (!SINGLE_SESSION_TEST_EMAIL) return true; // null = todos
-    return email === SINGLE_SESSION_TEST_EMAIL;
-  };
+  const shouldCheckSingleSession = (_email) => false;
 
   // ✅ FIX: grava o UUID deste device IMEDIATAMENTE no banco
   // Isso garante que o device novo tem prioridade antes do contexto inicializar

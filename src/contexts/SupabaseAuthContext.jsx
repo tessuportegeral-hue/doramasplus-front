@@ -14,12 +14,13 @@ const AuthContext = createContext(null);
 // =========================
 // CONFIG
 // =========================
-const ENABLE_SINGLE_SESSION = true;
-
-// ✅ 29/07 — testando modelo "Netflix" (login livre, trava só no vídeo via
-// claim-playback). Exclui só essa conta da trava de sessão única por
-// enquanto. Espelhar em Login.jsx e DoramaWatch.jsx.
-const SINGLE_SESSION_EXCLUDE_EMAIL = "tesagencia@gmail.com";
+// ✅ 29/07 — aposentado (modelo "Netflix"): login livre em vários
+// dispositivos pra todo mundo, trava só na hora de assistir via
+// claim-playback (playback_sessions / subscriptions.max_concurrent_streams).
+// Testado com tesagencia antes de liberar geral. Não reativar sem repensar
+// o fluxo — o modal "conta ativa em outro dispositivo" em Login.jsx e o
+// guard em DoramaWatch.jsx também foram desligados junto.
+const ENABLE_SINGLE_SESSION = false;
 
 const SESSION_VERSION_KEY = (userId) => `dp_sv_${userId}`;
 const SESSION_POLL_MS = 5_000;       // fallback polling a cada 5s
@@ -46,7 +47,6 @@ export const AuthProvider = ({ children }) => {
   const premiumPollStartedAtRef = useRef(0);
   const isPremiumRef = useRef(false);
   const activeUserIdRef = useRef(null);
-  const singleSessionExcludedRef = useRef(false);
   const localVersionRef = useRef(null);
   const timersRef = useRef([]);
   const inFlightRef = useRef(false);
@@ -148,7 +148,7 @@ export const AuthProvider = ({ children }) => {
   // ✅ FIX CRÍTICO: startSession NÃO sobrescreve se já tem UUID válido no banco
   // Isso evita o bug onde o device B derrubava a si mesmo após o grace period
   const startSession = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION || singleSessionExcludedRef.current) return true;
+    if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
     if (!uid || inFlightRef.current) return true;
 
@@ -210,7 +210,7 @@ export const AuthProvider = ({ children }) => {
   }, [readStoredVersion]);
 
   const validateSession = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION || singleSessionExcludedRef.current) return true;
+    if (!ENABLE_SINGLE_SESSION) return true;
     const uid = activeUserIdRef.current;
     if (!uid) return true;
 
@@ -294,7 +294,7 @@ export const AuthProvider = ({ children }) => {
 
   // ✅ REALTIME — escuta UPDATE na linha deste user_id
   const startRealtimeSession = useCallback((uid) => {
-    if (!ENABLE_SINGLE_SESSION || !uid || singleSessionExcludedRef.current) return;
+    if (!ENABLE_SINGLE_SESSION || !uid) return;
     stopRealtimeSession();
 
     const channel = supabase
@@ -329,7 +329,7 @@ export const AuthProvider = ({ children }) => {
   // ✅ FIX: startSessionPolling NÃO chama startSession
   // Só inicia o monitoramento. O UUID já foi gravado pelo Login.jsx.
   const startSessionPolling = useCallback(async () => {
-    if (!ENABLE_SINGLE_SESSION || !activeUserIdRef.current || singleSessionExcludedRef.current) return;
+    if (!ENABLE_SINGLE_SESSION || !activeUserIdRef.current) return;
 
     stopSessionPolling();
     stopRealtimeSession();
@@ -368,7 +368,6 @@ export const AuthProvider = ({ children }) => {
 
         if (currentUser) {
           activeUserIdRef.current = currentUser.id;
-          singleSessionExcludedRef.current = currentUser.email === SINGLE_SESSION_EXCLUDE_EMAIL;
           isKickedRef.current = false;
           const stored = readStoredVersion(currentUser.id);
           localVersionRef.current = stored || null;
@@ -402,7 +401,6 @@ export const AuthProvider = ({ children }) => {
 
       if (currentUser) {
         activeUserIdRef.current = currentUser.id;
-        singleSessionExcludedRef.current = currentUser.email === SINGLE_SESSION_EXCLUDE_EMAIL;
         isKickedRef.current = false;
         setKickedOut(false);
 
