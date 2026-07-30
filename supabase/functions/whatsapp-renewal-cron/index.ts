@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPushToUser } from "../_shared/push.ts";
+import { createAsaasCheckoutLink } from "../_shared/asaas-renewal-link.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -12,9 +13,6 @@ const LINK_DEFAULT = Deno.env.get("RENEWAL_LINK") || "www.doramasplus.com.br/pla
 const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
 
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
-const INFINITEPAY_HANDLE = Deno.env.get("INFINITEPAY_HANDLE") || "";
-const INFINITEPAY_WEBHOOK_URL =
-  Deno.env.get("INFINITEPAY_WEBHOOK_URL") || Deno.env.get("INIFITEPAY_WEBHOOK_URL") || "";
 
 const TZ = "America/Sao_Paulo";
 
@@ -82,124 +80,12 @@ function planFromName(planName: string | null | undefined): "monthly" | "quarter
   return String(planName || "").toLowerCase().includes("trimestral") ? "quarterly" : "monthly";
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ✅ 24/07: achado o motivo real da falha intermitente (não é bug nosso) —
-// a API de criação de checkout da InfinityPay libera só 5 chamadas em
-// sequência e depois bloqueia por ~40-50s (confirmado nos horários dos
-// pix_payments criados hoje: grupos de exatamente 5, sempre com esse
-// intervalo). Como renew_3d/renew_1d rodam em invocações HTTP separadas,
-// um contador em memória não adianta — precisa ser compartilhado via banco.
-// Essa tabela guarda só um timestamp: "próximo horário liberado pra chamar
-// a InfinityPay". Cada chamador reserva atomicamente o próximo slot (~9s
-// depois do anterior, margem de segurança sobre o ritmo observado de 5/45s)
-// e espera até lá antes de disparar o fetch — em vez de disparar rápido e
-// torcer pro retry cair numa janela aberta.
-async function claimInfinitepaySlot(): Promise<void> {
-  try {
-    const { data: mySlot, error } = await supabase.rpc("claim_infinitepay_slot");
-    if (error || !mySlot) return;
-    const waitMs = new Date(mySlot as string).getTime() - Date.now();
-    if (waitMs > 0) await sleep(waitMs);
-  } catch (e) {
-    console.error("[renewal-link] falha no pacer da InfinityPay:", String(e));
-  }
-}
-
-// ✅ Gera um checkout InfinityPay novo pro user_id/plano, do mesmo jeito que
-// infinitepay-create-checkout faz pro site — só que sem exigir sessão
-// logada (o cron já sabe de quem é cada lembrete, direto do banco).
-async function createInfinitepayCheckoutLinkAttempt(
-  userId: string,
-  plan: "monthly" | "quarterly"
-): Promise<string | null> {
-  const amountCents = plan === "quarterly" ? 4790 : 1690;
-  const description = plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrao";
-  const order_nsu = `doramasplus|${userId}|${plan}|${Date.now()}`;
-  const redirect_url =
-    `${PUBLIC_BASE_URL}/checkout/sucesso` +
-    `?gateway=infinitepay&order_nsu=${encodeURIComponent(order_nsu)}` +
-    `&event_id=${encodeURIComponent(order_nsu)}`;
-
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle();
-  const userEmail = prof?.email || "no-email@local.invalid";
-
-  const resp = await fetch("https://api.checkout.infinitepay.io/links", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      handle: INFINITEPAY_HANDLE,
-      order_nsu,
-      webhook_url: INFINITEPAY_WEBHOOK_URL,
-      redirect_url,
-      items: [{ quantity: 1, price: amountCents, description }],
-      customer: { email: userEmail },
-    }),
-  });
-
-  const text = await resp.text();
-  let parsed: any = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch {}
-
-  if (!resp.ok || !parsed?.url) {
-    console.error(
-      "[renewal-link] falha ao gerar checkout InfinitePay:",
-      resp.status,
-      text.slice(0, 300)
-    );
-    return null;
-  }
-
-  try {
-    await supabase.from("pix_payments").insert({
-      user_id: userId,
-      provider: "infinitepay",
-      plan,
-      amount_cents: amountCents,
-      order_nsu,
-      status: "pending",
-      raw: parsed,
-      event_id: order_nsu,
-      source: "whatsapp_renewal_cron",
-    });
-  } catch (e) {
-    console.error("[renewal-link] falha ao gravar pix_payments pending:", String(e));
-  }
-
-  return String(parsed.url);
-}
-
-async function createInfinitepayCheckoutLink(
-  userId: string,
-  plan: "monthly" | "quarterly"
-): Promise<string | null> {
-  if (!INFINITEPAY_HANDLE || !INFINITEPAY_WEBHOOK_URL) return null;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    await claimInfinitepaySlot();
-    try {
-      const url = await createInfinitepayCheckoutLinkAttempt(userId, plan);
-      if (url) return url;
-    } catch (e) {
-      console.error(`[renewal-link] excecao ao gerar checkout (tentativa ${attempt}):`, String(e));
-    }
-  }
-
-  return null;
-}
-
-// ✅ 23/07: gera link direto pra qualquer provider que não seja Stripe
+// ✅ 30/07: gera link direto pra qualquer provider que não seja Stripe
 // (infinitepay, asaas, manual, comprovante_validado, etc — todo mundo que
-// pagou/foi ativado fora da Stripe usa o mesmo checkout InfinityPay pra
+// pagou/foi ativado fora da Stripe usa o mesmo checkout Asaas pra
 // renovar). Stripe continua de fora (cobrança automática já cuida disso).
+// Antes gerava link InfinityPay — trocado porque a InfinityPay parou de
+// receber pelo link de checkout (ver [[project-infinitepay-disabled-migrated-asaas]]).
 async function resolveRenewalLink(
   userId: string,
   provider: string,
@@ -208,7 +94,7 @@ async function resolveRenewalLink(
   if (provider === "stripe") return LINK_DEFAULT;
 
   const plan = planFromName(planName);
-  const checkoutUrl = await createInfinitepayCheckoutLink(userId, plan);
+  const checkoutUrl = await createAsaasCheckoutLink(supabase, userId, plan, "whatsapp_renewal_cron");
   if (!checkoutUrl) return LINK_DEFAULT;
 
   const token = await createShortRedirect(checkoutUrl);

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createAsaasCheckoutLink } from "../_shared/asaas-renewal-link.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -9,9 +10,6 @@ const SUPORTE_LINK = "https://wa.me/5518996796654";
 const COMUNIDADE_LINK = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
-const INFINITEPAY_HANDLE = Deno.env.get("INFINITEPAY_HANDLE") || "";
-const INFINITEPAY_WEBHOOK_URL =
-  Deno.env.get("INFINITEPAY_WEBHOOK_URL") || Deno.env.get("INIFITEPAY_WEBHOOK_URL") || "";
 
 const TZ = "America/Sao_Paulo";
 
@@ -69,104 +67,10 @@ function planFromName(planName: string | null | undefined): "monthly" | "quarter
   return String(planName || "").toLowerCase().includes("trimestral") ? "quarterly" : "monthly";
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ✅ 24/07: achado o motivo real (ver whatsapp-renewal-cron) — a InfinityPay
-// libera só 5 chamadas de criação de checkout em sequência e bloqueia por
-// ~40-50s depois. Pacer compartilhado via banco (tabela infinitepay_link_pacer)
-// pra respeitar esse ritmo mesmo com whatsapp-renewal-cron chamando ao mesmo tempo.
-async function claimInfinitepaySlot(): Promise<void> {
-  try {
-    const { data: mySlot, error } = await supabase.rpc("claim_infinitepay_slot");
-    if (error || !mySlot) return;
-    const waitMs = new Date(mySlot as string).getTime() - Date.now();
-    if (waitMs > 0) await sleep(waitMs);
-  } catch (e) {
-    console.error("[renewal-link] falha no pacer da InfinityPay:", String(e));
-  }
-}
-
-async function createInfinitepayCheckoutLinkAttempt(
-  userId: string,
-  plan: "monthly" | "quarterly"
-): Promise<string | null> {
-  const amountCents = plan === "quarterly" ? 4790 : 1690;
-  const description = plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrao";
-  const order_nsu = `doramasplus|${userId}|${plan}|${Date.now()}`;
-  const redirect_url =
-    `${PUBLIC_BASE_URL}/checkout/sucesso` +
-    `?gateway=infinitepay&order_nsu=${encodeURIComponent(order_nsu)}` +
-    `&event_id=${encodeURIComponent(order_nsu)}`;
-
-  const { data: prof } = await supabase.from("profiles").select("email").eq("id", userId).maybeSingle();
-  const userEmail = prof?.email || "no-email@local.invalid";
-
-  const resp = await fetch("https://api.checkout.infinitepay.io/links", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      handle: INFINITEPAY_HANDLE,
-      order_nsu,
-      webhook_url: INFINITEPAY_WEBHOOK_URL,
-      redirect_url,
-      items: [{ quantity: 1, price: amountCents, description }],
-      customer: { email: userEmail },
-    }),
-  });
-
-  const text = await resp.text();
-  let parsed: any = null;
-  try {
-    parsed = JSON.parse(text);
-  } catch {}
-
-  if (!resp.ok || !parsed?.url) {
-    console.error("[renewal-link] falha ao gerar checkout InfinitePay:", resp.status, text.slice(0, 300));
-    return null;
-  }
-
-  try {
-    await supabase.from("pix_payments").insert({
-      user_id: userId,
-      provider: "infinitepay",
-      plan,
-      amount_cents: amountCents,
-      order_nsu,
-      status: "pending",
-      raw: parsed,
-      event_id: order_nsu,
-      source: "email_renewal_reminder",
-    });
-  } catch (e) {
-    console.error("[renewal-link] falha ao gravar pix_payments pending:", String(e));
-  }
-
-  return String(parsed.url);
-}
-
-async function createInfinitepayCheckoutLink(
-  userId: string,
-  plan: "monthly" | "quarterly"
-): Promise<string | null> {
-  if (!INFINITEPAY_HANDLE || !INFINITEPAY_WEBHOOK_URL) return null;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    await claimInfinitepaySlot();
-    try {
-      const url = await createInfinitepayCheckoutLinkAttempt(userId, plan);
-      if (url) return url;
-    } catch (e) {
-      console.error(`[renewal-link] excecao ao gerar checkout (tentativa ${attempt}):`, String(e));
-    }
-  }
-
-  return null;
-}
-
-// ✅ 23/07: gera link direto pra qualquer provider que não seja Stripe
-// (infinitepay, asaas, manual, comprovante_validado, etc).
+// ✅ 30/07: gera link direto pra qualquer provider que não seja Stripe
+// (infinitepay, asaas, manual, comprovante_validado, etc). Antes gerava
+// link InfinityPay — trocado porque a InfinityPay parou de receber pelo
+// link de checkout (ver [[project-infinitepay-disabled-migrated-asaas]]).
 async function resolveRenewalLink(
   userId: string,
   provider: string | null | undefined,
@@ -175,7 +79,7 @@ async function resolveRenewalLink(
   if (provider === "stripe") return PLANS_LINK;
 
   const plan = planFromName(planName);
-  const checkoutUrl = await createInfinitepayCheckoutLink(userId, plan);
+  const checkoutUrl = await createAsaasCheckoutLink(supabase, userId, plan, "email_renewal_reminder");
   if (!checkoutUrl) return PLANS_LINK;
 
   const token = await createShortRedirect(checkoutUrl);
