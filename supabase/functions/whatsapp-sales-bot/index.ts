@@ -48,6 +48,8 @@ const SERIES: { name: string; link: string }[] = [
   { name: "Quando o Destino assinou por Mim", link: "https://player.mediadelivery.net/play/624586/df231e2d-fc25-4e2f-a871-80cf53994745" },
   { name: "Presa pelo Odio, Livre pelo Amor", link: "https://player.mediadelivery.net/play/688480/78170734-2461-4c1c-98ed-d1088abaddb2" },
   { name: "Tirar as notas, Acertar as Contas", link: "https://player.mediadelivery.net/play/688480/0e5d9317-4218-4b6f-b616-ebd2cc80dd5f" },
+  { name: "A Escolhida Do Dragao: Sem Saida", link: "https://player.mediadelivery.net/play/688480/f935599b-4b53-45d6-90b2-b5d93c64a603" },
+  { name: "Agora Eles Sabem Quem Perderam", link: "https://player.mediadelivery.net/play/688480/07347415-668a-4d5a-9f51-e2b4895b0b67" },
 ];
 
 const AD_SERIES_MAP: Record<string, string> = {
@@ -71,6 +73,13 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23859373371630792": "Tirar as notas, Acertar as Contas",
   "23859373371650792": "Presa pelo Odio, Livre pelo Amor",
   "23859373371660792": "Prefiro Morrer a te amar de Novo",
+  // Conta 1499 - campanha 30/07
+  "23860337776250792": "A Escolhida Do Dragao: Sem Saida",
+  "23860337776260792": "Agora Eles Sabem Quem Perderam",
+  "23860337776270792": "Para Sempre ao seu Lado",
+  "23860337848610792": "Quando o Destino assinou por Mim",
+  "23860337848620792": "Quando o Destino assinou por Mim",
+  "23860337848630792": "Quando o Destino assinou por Mim",
   // Conta 8218 - campanha jul/2026
   "120248362051280786": "Luz apos a Traicao",
   "120248362051240786": "Amor a Mesa",
