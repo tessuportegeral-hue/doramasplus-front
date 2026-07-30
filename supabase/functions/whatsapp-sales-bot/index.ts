@@ -80,6 +80,16 @@ const AD_SERIES_MAP: Record<string, string> = {
   "23860337848610792": "Quando o Destino assinou por Mim",
   "23860337848620792": "Quando o Destino assinou por Mim",
   "23860337848630792": "Quando o Destino assinou por Mim",
+  "23860337932340792": "De Chefona a Aluna: Vinganca na Sala",
+  "23860337932350792": "De Chefona a Aluna: Vinganca na Sala",
+  "23860337932360792": "De Chefona a Aluna: Vinganca na Sala",
+  // Conta 8218 - campanha 30/07
+  "120249047756500786": "Para Sempre ao seu Lado",
+  "120249047756480786": "Agora Eles Sabem Quem Perderam",
+  "120249047756490786": "A Escolhida Do Dragao: Sem Saida",
+  "120249047876560786": "O Garoto de Programa que Conheci em Paris",
+  "120249047876580786": "A Escolhida Do Dragao: Sem Saida",
+  "120249047876590786": "De Chefona a Aluna: Vinganca na Sala",
   // Conta 8218 - campanha jul/2026
   "120248362051280786": "Luz apos a Traicao",
   "120248362051240786": "Amor a Mesa",
