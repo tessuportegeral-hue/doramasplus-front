@@ -14,6 +14,14 @@ import { useNavigate } from 'react-router-dom';
 // ✅ email de teste: sempre vê o Passe Teste e passa direto pelo gate (validação antes do lançamento)
 const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
 
+// ✅ 30/07: achado que o Pix da InfinityPay nunca tinha parado de funcionar
+// de verdade (só o cartão de crédito deles foi bloqueado) — volta a ser o
+// provider do botão "Pagar no Pix". Fica redirecionando pra fora do site
+// (checkout.infinitepay.io), diferente do Asaas que é inline. Código do
+// Asaas mantido do lado (não removido) — pra voltar rápido é só trocar
+// esta constante pra 'asaas'.
+const PIX_PROVIDER = 'infinitepay'; // 'infinitepay' | 'asaas'
+
 // ✅ metadados dos planos (nome + valor exibido no InitiateCheckout)
 const PLAN_META = {
   trial3: { name: 'DoramasPlus Passe Teste', value: 2.99 },
@@ -331,9 +339,12 @@ const SubscriptionPlans = () => {
         } catch {}
       }
 
+      const functionName =
+        PIX_PROVIDER === 'asaas' ? 'asaas-create-checkout' : 'infinitepay-create-checkout';
+
       // ✅ header manual (evita race do SDK usar token desatualizado logo após refresh)
       const { data, error } = await supabase.functions.invoke(
-        'asaas-create-checkout',
+        functionName,
         {
           body: {
             plan: planType,
@@ -350,7 +361,7 @@ const SubscriptionPlans = () => {
       );
 
       if (error) {
-        console.error('[asaas-create-checkout] error object:', error);
+        console.error(`[${functionName}] error object:`, error);
         const msg = getInvokeErrorMessage(
           error,
           'Erro ao comunicar com o servidor (Pix)'
@@ -358,13 +369,20 @@ const SubscriptionPlans = () => {
         throw new Error(msg);
       }
 
-      if (!data?.copy_paste) {
-        console.error('[asaas-create-checkout] data sem copy_paste:', data);
-        throw new Error('Código Pix não retornado');
+      if (PIX_PROVIDER === 'asaas') {
+        if (!data?.copy_paste) {
+          console.error('[asaas-create-checkout] data sem copy_paste:', data);
+          throw new Error('Código Pix não retornado');
+        }
+        setPixCheckout(data);
+        setPixModalOpen(true);
+      } else {
+        if (!data?.url) {
+          console.error('[infinitepay-create-checkout] data sem url:', data);
+          throw new Error('URL do Pix não retornada');
+        }
+        window.location.href = data.url;
       }
-
-      setPixCheckout(data);
-      setPixModalOpen(true);
     } catch (err) {
       console.error('PIX ERRO FINAL:', err);
       toast({
