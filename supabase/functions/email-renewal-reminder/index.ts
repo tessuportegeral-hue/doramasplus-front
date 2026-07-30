@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { createAsaasCheckoutLink } from "../_shared/asaas-renewal-link.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -8,8 +7,6 @@ const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
 const PLANS_LINK = "https://doramasplus.com.br/plans";
 const SUPORTE_LINK = "https://wa.me/5518996796654";
 const COMUNIDADE_LINK = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
-
-const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
 
 const TZ = "America/Sao_Paulo";
 
@@ -49,43 +46,11 @@ async function alreadySent(userId: string, kind: ReminderKind): Promise<boolean>
   return (data?.length || 0) > 0;
 }
 
-// ✅ 23/07: mesma lógica do whatsapp-renewal-cron — gera checkout InfinityPay
-// pronto + token curto (doramasplus.com.br/r/<token>) em vez de mandar pro
-// /plans (que exige login e escolher o plano de novo). Só pra provider=infinitepay;
-// qualquer falha cai no link antigo, nunca trava o envio do email.
-async function createShortRedirect(targetUrl: string): Promise<string | null> {
-  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-  const { error } = await supabase.from("payment_redirects").insert({ token, target_url: targetUrl });
-  if (error) {
-    console.error("[renewal-link] falha ao gravar payment_redirects:", String(error));
-    return null;
-  }
-  return token;
-}
-
-function planFromName(planName: string | null | undefined): "monthly" | "quarterly" {
-  return String(planName || "").toLowerCase().includes("trimestral") ? "quarterly" : "monthly";
-}
-
-// ✅ 30/07: gera link direto pra qualquer provider que não seja Stripe
-// (infinitepay, asaas, manual, comprovante_validado, etc). Antes gerava
-// link InfinityPay — trocado porque a InfinityPay parou de receber pelo
-// link de checkout (ver [[project-infinitepay-disabled-migrated-asaas]]).
-async function resolveRenewalLink(
-  userId: string,
-  provider: string | null | undefined,
-  planName: string | null | undefined
-): Promise<string> {
-  if (provider === "stripe") return PLANS_LINK;
-
-  const plan = planFromName(planName);
-  const checkoutUrl = await createAsaasCheckoutLink(supabase, userId, plan, "email_renewal_reminder");
-  if (!checkoutUrl) return PLANS_LINK;
-
-  const token = await createShortRedirect(checkoutUrl);
-  if (!token) return PLANS_LINK;
-
-  return `${PUBLIC_BASE_URL}/r/${token}`;
+// ✅ 30/07: volta a mandar todo mundo pro /plans em vez de pré-gerar um
+// checkout — pelo /plans a pessoa gera o Pix copia-e-cola direto ali,
+// mais fácil que cair numa página hospedada externa (Asaas/InfinityPay).
+async function resolveRenewalLink(): Promise<string> {
+  return PLANS_LINK;
 }
 
 function buildHtml(name: string, kind: ReminderKind, link: string): string {
@@ -175,7 +140,7 @@ async function processGroup(kind: ReminderKind, subscriptions: any[]): Promise<{
     const email = profile?.email;
     if (!email || email.endsWith("@doramasplus.com")) { skipped++; continue; }
     const name = String(profile?.name || "").split(" ")[0] || "você";
-    const link = kind === "stripe_failed_3d" ? PLANS_LINK : await resolveRenewalLink(sub.user_id, sub.provider, sub.plan_name);
+    const link = kind === "stripe_failed_3d" ? PLANS_LINK : await resolveRenewalLink();
     try {
       await sendEmail(email, name, effectiveKind, link);
       await supabase.from("whatsapp_renewal_logs").insert({ user_id: sub.user_id, kind: `email_${effectiveKind}`, provider: "resend", sent_to: email, template_name: `email_${effectiveKind}`, meta: { subscription_id: sub.id, end_at: sub.end_at, plan_name: sub.plan_name ?? null, link } });

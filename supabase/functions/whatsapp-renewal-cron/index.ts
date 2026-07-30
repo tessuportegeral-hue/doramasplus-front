@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPushToUser } from "../_shared/push.ts";
-import { createAsaasCheckoutLink } from "../_shared/asaas-renewal-link.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -11,8 +10,6 @@ const ZAP_ADMIN_SECRET = Deno.env.get("ZAP_ADMIN_SECRET") || "";
 
 const LINK_DEFAULT = Deno.env.get("RENEWAL_LINK") || "www.doramasplus.com.br/plans";
 const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
-
-const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
 
 const TZ = "America/Sao_Paulo";
 
@@ -58,49 +55,11 @@ function startOfTodaySaoPauloUTCISO() {
   return new Date(`${year}-${month}-${day}T03:00:00.000Z`).toISOString();
 }
 
-// ✅ 23/07: gera um token curto (gravado em payment_redirects) pra colar
-// em doramasplus.com.br/r/<token> — o botão do template de WhatsApp só
-// aceita variável de URL no mesmo domínio aprovado, então o link sempre
-// começa com nosso domínio e o pay-redirect (via rewrite no vercel.json)
-// resolve o destino real depois do clique. Token curto em vez de
-// codificar a URL inteira (a da InfinityPay já é longa por natureza).
-async function createShortRedirect(targetUrl: string): Promise<string | null> {
-  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-  const { error } = await supabase
-    .from("payment_redirects")
-    .insert({ token, target_url: targetUrl });
-  if (error) {
-    console.error("[renewal-link] falha ao gravar payment_redirects:", String(error));
-    return null;
-  }
-  return token;
-}
-
-function planFromName(planName: string | null | undefined): "monthly" | "quarterly" {
-  return String(planName || "").toLowerCase().includes("trimestral") ? "quarterly" : "monthly";
-}
-
-// ✅ 30/07: gera link direto pra qualquer provider que não seja Stripe
-// (infinitepay, asaas, manual, comprovante_validado, etc — todo mundo que
-// pagou/foi ativado fora da Stripe usa o mesmo checkout Asaas pra
-// renovar). Stripe continua de fora (cobrança automática já cuida disso).
-// Antes gerava link InfinityPay — trocado porque a InfinityPay parou de
-// receber pelo link de checkout (ver [[project-infinitepay-disabled-migrated-asaas]]).
-async function resolveRenewalLink(
-  userId: string,
-  provider: string,
-  planName: string | null | undefined
-): Promise<string> {
-  if (provider === "stripe") return LINK_DEFAULT;
-
-  const plan = planFromName(planName);
-  const checkoutUrl = await createAsaasCheckoutLink(supabase, userId, plan, "whatsapp_renewal_cron");
-  if (!checkoutUrl) return LINK_DEFAULT;
-
-  const token = await createShortRedirect(checkoutUrl);
-  if (!token) return LINK_DEFAULT;
-
-  return `${PUBLIC_BASE_URL}/r/${token}`;
+// ✅ 30/07: volta a mandar todo mundo pro /plans em vez de pré-gerar um
+// checkout — pelo /plans a pessoa gera o Pix copia-e-cola direto ali,
+// mais fácil que cair numa página hospedada externa (Asaas/InfinityPay).
+async function resolveRenewalLink(): Promise<string> {
+  return LINK_DEFAULT;
 }
 
 async function sendTemplate(toE164Digits: string, template: string, name: string, link: string) {
@@ -252,7 +211,7 @@ limit 500
     const dup = await alreadySentToday(userId, kind);
     if (dup) { skipped_already_sent++; continue; }
 
-    const link = await resolveRenewalLink(userId, provider, planName);
+    const link = await resolveRenewalLink();
 
     // ✅ 25/07: push como canal extra, junto do WhatsApp — mesmo link direto.
     // Só dispara aqui (não duplica em email-renewal-reminder) pra não mandar
@@ -296,24 +255,6 @@ serve(async (req) => {
   }
 
   if (req.method === "HEAD") return new Response(null, { status: 200 });
-
-  // ✅ 25/07: debug — testa resolveRenewalLink pra um user_id específico
-  // sem mandar nada de verdade, só pra conferir se o link vem certo com o
-  // plano da assinatura real da pessoa.
-  const testLinkFor = new URL(req.url).searchParams.get("test_link_for");
-  if (testLinkFor) {
-    const { data: sub } = await supabase
-      .from("subscriptions")
-      .select("provider, plan_name")
-      .eq("user_id", testLinkFor)
-      .order("end_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!sub) return new Response(JSON.stringify({ ok: false, error: "no_subscription" }), { status: 404 });
-    const link = await resolveRenewalLink(testLinkFor, sub.provider || "", sub.plan_name);
-    return new Response(JSON.stringify({ ok: true, provider: sub.provider, plan_name: sub.plan_name, link }), { status: 200 });
-  }
 
   // ✅ 23/07: cada kind roda numa chamada separada (cron externo dispara duas
   // vezes) pra um batch lento nunca mais consumir o tempo do outro em silêncio
