@@ -1,12 +1,15 @@
 // business-metrics-report: roda 1x/dia via pg_cron (9h BRT) e manda um email
 // com números de negócio (cadastros, conversão, renovação, perda de acesso)
 // + os mesmos números do painel /admin/analytics (mesma query, pra nunca
-// divergir do que já é mostrado lá).
+// divergir do que já é mostrado lá) + comparação com 3 meses atrás + uma
+// opinião gerada por IA (Claude, mesma chave usada no dora-chat) sobre o
+// momento do negócio.
 //
 // Cadência de período:
 // - Dia normal: números do DIA ANTERIOR.
-// - Último dia do calendário (mês corrente): em vez do dia anterior, números
-//   do MÊS INTEIRO (dia 1 até ontem).
+// - Dia 1 do mês: em vez do dia anterior, números do MÊS INTEIRO ANTERIOR
+//   (mês fechado, dados completos — antes era no último dia do mês, mas aí
+//   faltava o próprio dia).
 // - Domingo: além da seção do dia, soma uma seção de SEMANA (últimos 7 dias
 //   corridos, terminando ontem).
 //
@@ -16,6 +19,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const CRON_SECRET = "dp_biz_metrics_w9k3r7";
 
 const PRICE_MONTHLY = 15.9;
@@ -67,6 +71,20 @@ function lastDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
+// Desloca uma data BRT-midnight em N meses (preserva dia-do-mês quando
+// possível, clampando pro último dia do mês alvo se não existir, ex.: 31
+// de um mês de 30 dias).
+function shiftMonthsIso(iso: string, monthsDelta: number): string {
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  const d = Number(iso.slice(8, 10));
+  let totalMonths = (y * 12 + (m - 1)) + monthsDelta;
+  const newYear = Math.floor(totalMonths / 12);
+  const newMonth = (totalMonths % 12) + 1;
+  const clampedDay = Math.min(d, lastDayOfMonth(newYear, newMonth));
+  return brtMidnightIso(newYear, newMonth, clampedDay);
+}
+
 type Period = { start: string; end: string; compareStart: string; compareEnd: string; label: string };
 
 function buildDailyPeriod(today: { year: number; month: number; day: number }): Period {
@@ -76,13 +94,17 @@ function buildDailyPeriod(today: { year: number; month: number; day: number }): 
   return { start: yestStart, end: todayStart, compareStart: dayBeforeStart, compareEnd: yestStart, label: "Dia anterior" };
 }
 
+// ✅ 01/08: dispara no DIA 1 do mês (não mais no último dia) — assim o mês
+// reportado já está totalmente fechado, sem faltar o próprio dia.
 function buildMonthlyPeriod(today: { year: number; month: number; day: number }): Period {
-  const todayStart = brtMidnightIso(today.year, today.month, today.day);
-  const monthStart = brtMidnightIso(today.year, today.month, 1);
+  const thisMonthStart = brtMidnightIso(today.year, today.month, 1);
   const prevMonth = today.month === 1 ? 12 : today.month - 1;
   const prevMonthYear = today.month === 1 ? today.year - 1 : today.year;
   const prevMonthStart = brtMidnightIso(prevMonthYear, prevMonth, 1);
-  return { start: monthStart, end: todayStart, compareStart: prevMonthStart, compareEnd: monthStart, label: "Mês inteiro" };
+  const twoMonthsAgoMonth = prevMonth === 1 ? 12 : prevMonth - 1;
+  const twoMonthsAgoYear = prevMonth === 1 ? prevMonthYear - 1 : prevMonthYear;
+  const twoMonthsAgoStart = brtMidnightIso(twoMonthsAgoYear, twoMonthsAgoMonth, 1);
+  return { start: prevMonthStart, end: thisMonthStart, compareStart: twoMonthsAgoStart, compareEnd: prevMonthStart, label: "Mês inteiro" };
 }
 
 function buildWeeklyPeriod(today: { year: number; month: number; day: number }): Period {
@@ -92,7 +114,7 @@ function buildWeeklyPeriod(today: { year: number; month: number; day: number }):
   return { start: weekStart, end: todayStart, compareStart, compareEnd: weekStart, label: "Últimos 7 dias" };
 }
 
-type Section = { title: string; html: string };
+type Section = { title: string; html: string; forOpinion: Record<string, unknown> };
 
 async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidOfSignups: number; renewals: number; churned: number }> {
   const rows = await runSql(`
@@ -293,14 +315,37 @@ function fmtBRL(v: number): string {
 }
 
 function fmtDate(iso: string): string {
-  // exibe em data BRT (yyyy-mm-dd) a partir do instante UTC-midnight-BRT construído
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
+function pctChange(current: number, before: number): string {
+  if (before === 0) return current > 0 ? "novo" : "0%";
+  const delta = ((current - before) / before) * 100;
+  const sign = delta >= 0 ? "+" : "";
+  return `${sign}${Math.round(delta * 10) / 10}%`;
+}
+
 async function buildSection(p: Period): Promise<Section> {
-  const [custom, panel] = await Promise.all([computeCustomMetrics(p), computePanelMetrics(p)]);
+  const threeMonthsAgoPeriod: Period = {
+    start: shiftMonthsIso(p.start, -3),
+    end: shiftMonthsIso(p.end, -3),
+    compareStart: shiftMonthsIso(p.compareStart, -3),
+    compareEnd: shiftMonthsIso(p.compareEnd, -3),
+    label: "3 meses atrás",
+  };
+
+  const [custom, panel, custom3mo, panel3mo] = await Promise.all([
+    computeCustomMetrics(p),
+    computePanelMetrics(p),
+    computeCustomMetrics(threeMonthsAgoPeriod),
+    computePanelMetrics(threeMonthsAgoPeriod),
+  ]);
+
   const conversionRate = custom.signups > 0 ? Math.round((custom.paidOfSignups / custom.signups) * 10000) / 100 : 0;
+  // ✅ 01/08: % de renovação em relação a quem TINHA assinatura ativa no
+  // início do período (mesmo cohort que o painel usa pra retenção).
+  const renewalRate = panel.churn.cohort > 0 ? Math.round((custom.renewals / panel.churn.cohort) * 10000) / 100 : 0;
 
   const html = `
     <div style="margin-bottom:20px;">
@@ -308,7 +353,7 @@ async function buildSection(p: Period): Promise<Section> {
       <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
         <tr><td style="padding:4px 0;">📝 Cadastros novos</td><td style="text-align:right;font-weight:bold;">${custom.signups}</td></tr>
         <tr><td style="padding:4px 0;">💳 Desses, pagaram</td><td style="text-align:right;font-weight:bold;">${custom.paidOfSignups} (${conversionRate}%)</td></tr>
-        <tr><td style="padding:4px 0;">🔄 Renovações</td><td style="text-align:right;font-weight:bold;">${custom.renewals}</td></tr>
+        <tr><td style="padding:4px 0;">🔄 Renovações</td><td style="text-align:right;font-weight:bold;">${custom.renewals} (${renewalRate}% de quem tinha assinatura ativa)</td></tr>
         <tr><td style="padding:4px 0;">📉 Perderam assinatura ativa</td><td style="text-align:right;font-weight:bold;color:#e74c3c;">${custom.churned}</td></tr>
         <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Painel (mesma conta do /admin/analytics)</td></tr>
         <tr><td style="padding:4px 0;">💰 Faturamento do período</td><td style="text-align:right;font-weight:bold;">${fmtBRL(panel.revenue_period)}</td></tr>
@@ -316,18 +361,81 @@ async function buildSection(p: Period): Promise<Section> {
         <tr><td style="padding:4px 0;">✅ Assinantes ativos agora</td><td style="text-align:right;font-weight:bold;">${panel.active_now} (${panel.active_now_monthly} mensal / ${panel.active_now_quarterly} trimestral)</td></tr>
         <tr><td style="padding:4px 0;">⏳ Pix pendente agora</td><td style="text-align:right;">${panel.pending_now}</td></tr>
         <tr><td style="padding:4px 0;">📊 Retenção do período</td><td style="text-align:right;">${panel.churn.retention_rate}% (${panel.churn.retained}/${panel.churn.cohort}) — período anterior: ${panel.churn.compare.retention_rate}%</td></tr>
+        <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Comparado com 3 meses atrás (${fmtDate(threeMonthsAgoPeriod.start)} a ${fmtDate(addDaysIso(threeMonthsAgoPeriod.end, -1))})</td></tr>
+        <tr><td style="padding:4px 0;">💰 Faturamento</td><td style="text-align:right;">${fmtBRL(panel3mo.revenue_period)} → ${pctChange(panel.revenue_period, panel3mo.revenue_period)}</td></tr>
+        <tr><td style="padding:4px 0;">✅ Ativos</td><td style="text-align:right;">${panel3mo.active_now} → ${pctChange(panel.active_now, panel3mo.active_now)}</td></tr>
+        <tr><td style="padding:4px 0;">📝 Cadastros</td><td style="text-align:right;">${custom3mo.signups} → ${pctChange(custom.signups, custom3mo.signups)}</td></tr>
+        <tr><td style="padding:4px 0;">💳 Conversão</td><td style="text-align:right;">${custom3mo.signups > 0 ? Math.round((custom3mo.paidOfSignups / custom3mo.signups) * 10000) / 100 : 0}% → ${pctChange(conversionRate, custom3mo.signups > 0 ? (custom3mo.paidOfSignups / custom3mo.signups) * 100 : 0)}</td></tr>
       </table>
     </div>`;
 
-  return { title: p.label, html };
+  return {
+    title: p.label,
+    html,
+    forOpinion: {
+      periodo: p.label,
+      cadastros: custom.signups,
+      pagaram: custom.paidOfSignups,
+      taxa_conversao_pct: conversionRate,
+      renovacoes: custom.renewals,
+      taxa_renovacao_pct: renewalRate,
+      perderam_assinatura: custom.churned,
+      faturamento: panel.revenue_period,
+      faturamento_3_meses_atras: panel3mo.revenue_period,
+      assinantes_ativos_agora: panel.active_now,
+      assinantes_ativos_3_meses_atras: panel3mo.active_now,
+      taxa_retencao_pct: panel.churn.retention_rate,
+      taxa_retencao_periodo_anterior_pct: panel.churn.compare.retention_rate,
+      cadastros_3_meses_atras: custom3mo.signups,
+    },
+  };
+}
+
+async function generateOpinion(sectionsData: Record<string, unknown>[]): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) return null;
+  try {
+    const prompt = `Você é um analista de negócios experiente olhando os números de uma plataforma de streaming de doramas por assinatura (DoramasPlus). Aqui estão os números do período mais recente (em JSON):\n\n${JSON.stringify(sectionsData, null, 2)}\n\nEscreva uma opinião curta (3 a 5 frases, em português do Brasil, tom direto e prático) sobre como está o momento do negócio: o que está indo bem, o que preocupa, e se fizer sentido, UMA sugestão concreta de onde focar atenção. Não repita os números crus (já aparecem em tabela antes disso), foque na interpretação. Não use markdown, só texto corrido.`;
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 400,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) {
+      console.error("[business-metrics-report] anthropic error:", res.status, await res.text().catch(() => ""));
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    const text = data?.content?.[0]?.text;
+    return typeof text === "string" ? text.trim() : null;
+  } catch (e) {
+    console.error("[business-metrics-report] generateOpinion fail:", String(e));
+    return null;
+  }
 }
 
 async function sendEmail(sections: Section[], subjectLabel: string) {
   if (!RESEND_API_KEY || !ALERT_EMAIL) return;
+  const opinion = await generateOpinion(sections.map((s) => s.forOpinion));
+  const opinionHtml = opinion
+    ? `<div style="margin-bottom:20px;padding:14px;background:#161616;border:1px solid #333;border-radius:8px;">
+        <div style="color:#e74c3c;font-size:12px;font-weight:bold;margin-bottom:6px;">🤖 Opinião (gerada por IA a partir dos números acima)</div>
+        <div style="color:#ddd;font-size:13px;line-height:1.6;">${opinion.replace(/\n/g, "<br>")}</div>
+      </div>`
+    : "";
   const html = `
     <div style="font-family:Arial,sans-serif;background:#0f0f0f;padding:20px;">
       <h2 style="color:#fff;">📈 DoramasPlus — Relatório de negócio (${subjectLabel})</h2>
       ${sections.map((s) => s.html).join("")}
+      ${opinionHtml}
       <p style="color:#888;font-size:11px;margin-top:16px;">Gerado às ${new Date().toISOString()}.</p>
     </div>`;
   await fetch("https://api.resend.com/emails", {
@@ -348,20 +456,20 @@ Deno.serve(async (req) => {
   }
 
   const today = getBrasiliaTodayParts();
-  const isLastDay = today.day === lastDayOfMonth(today.year, today.month);
+  const isFirstDay = today.day === 1;
   const isSunday = today.weekday === "Sun";
 
-  const mainPeriod = isLastDay ? buildMonthlyPeriod(today) : buildDailyPeriod(today);
+  const mainPeriod = isFirstDay ? buildMonthlyPeriod(today) : buildDailyPeriod(today);
   const sections: Section[] = [await buildSection(mainPeriod)];
 
   if (isSunday) {
     sections.push(await buildSection(buildWeeklyPeriod(today)));
   }
 
-  const subjectLabel = isLastDay ? "mês inteiro" : isSunday ? "diário + semanal" : "diário";
+  const subjectLabel = isFirstDay ? "mês inteiro" : isSunday ? "diário + semanal" : "diário";
   await sendEmail(sections, subjectLabel);
 
-  return new Response(JSON.stringify({ ok: true, is_last_day: isLastDay, is_sunday: isSunday, sections: sections.map((s) => s.title) }), {
+  return new Response(JSON.stringify({ ok: true, is_first_day: isFirstDay, is_sunday: isSunday, sections: sections.map((s) => s.title) }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
