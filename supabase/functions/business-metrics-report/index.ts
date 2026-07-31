@@ -455,9 +455,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
   }
 
+  // ✅ 01/08: força o tipo de período pra facilitar testar/conferir preview
+  // sem esperar a data real (ex.: ver o "mês inteiro" sem ser dia 1). Uso
+  // normal do cron não manda body, cai no auto-detect por data.
+  const body = await req.json().catch(() => ({}));
+  const forcePeriod = typeof body?.force_period === "string" ? body.force_period : null;
+
   const today = getBrasiliaTodayParts();
-  const isFirstDay = today.day === 1;
-  const isSunday = today.weekday === "Sun";
+  const isFirstDay = forcePeriod ? forcePeriod === "monthly" : today.day === 1;
+  const isSunday = forcePeriod ? forcePeriod === "weekly" : today.weekday === "Sun";
 
   const mainPeriod = isFirstDay ? buildMonthlyPeriod(today) : buildDailyPeriod(today);
   const sections: Section[] = [await buildSection(mainPeriod)];
