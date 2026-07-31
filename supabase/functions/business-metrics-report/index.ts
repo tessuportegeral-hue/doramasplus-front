@@ -116,22 +116,43 @@ async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidO
       select count(distinct user_id) as qtd from subscription_renewals, period
       where is_renewal = true and renewed_at >= period.p_start and renewed_at < period.p_end
     ),
+    -- ⚠️ 01/08 fix: churned_users NÃO pode vir da tabela subscriptions (ela é
+    -- sobrescrita a cada pagamento — quando alguém renova, o registro antigo
+    -- de quem "perdeu" desaparece, e o winback nunca encontra ninguém). Usa
+    -- subscription_renewals (histórico, nunca muda) e congela o estado
+    -- exatamente no fim do período, igual o painel faz pra retenção.
+    cohort_start as (
+      select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+      from subscription_renewals sr, period
+      where sr.renewed_at <= period.p_start
+      order by sr.user_id, sr.renewed_at desc
+    ),
+    cohort_active_at_start as (
+      select user_id from cohort_start, period
+      where (end_at is null and provider is null) or end_at > period.p_start
+    ),
+    last_by_period_end as (
+      select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+      from subscription_renewals sr, period
+      where sr.user_id in (select user_id from cohort_active_at_start)
+        and sr.renewed_at < period.p_end
+      order by sr.user_id, sr.renewed_at desc
+    ),
     churned_users as (
-      select distinct user_id, end_at as churn_end_at from subscriptions, period
-      where end_at >= period.p_start and end_at < period.p_end
-        and status not in ('active','trialing')
+      select user_id from last_by_period_end, period
+      where not ((end_at is null and provider is null) or end_at > period.p_end)
     ),
     winback as (
-      -- de quem perdeu assinatura ativa no período, quantos JÁ VOLTARAM a
-      -- pagar depois disso (renovação registrada após a própria perda,
-      -- medido até agora — não fica travado no fim do período).
+      -- de quem perdeu assinatura ativa no período (congelado no fim do
+      -- período), quantos JÁ VOLTARAM a pagar DEPOIS do período fechar —
+      -- esse número só cresce com o tempo, nunca diminui.
       select count(distinct cu.user_id) as qtd
-      from churned_users cu
+      from churned_users cu, period
       where exists (
-        select 1 from subscription_renewals sr
-        where sr.user_id = cu.user_id
-          and sr.is_renewal = true
-          and sr.renewed_at > cu.churn_end_at
+        select 1 from subscription_renewals sr2
+        where sr2.user_id = cu.user_id
+          and sr2.is_renewal = true
+          and sr2.renewed_at >= period.p_end
       )
     )
     select
