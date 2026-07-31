@@ -9,6 +9,21 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 
+// ✅ 31/07: alerta IMEDIATO (email+WhatsApp via admin-whatsapp-notify) quando
+// esse webhook falha de verdade e devolve erro pra Asaas — é exatamente
+// esse tipo de resposta não-200 repetida que faz a Asaas pausar a fila
+// inteira depois de 15 falhas seguidas (ver asaas-webhook-queue-pause).
+// Fire-and-forget, nunca atrasa/bloqueia a resposta ao webhook.
+function alertWebhookFailure(context: string, detail: string) {
+  fetch(`${SUPABASE_URL}/functions/v1/admin-whatsapp-notify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-check-secret": "dp_admin_notify_h4t8w2" },
+    body: JSON.stringify({
+      message: `🚨 DoramasPlus: asaas-webhook falhou (${context}) — isso conta pra fila da Asaas pausar depois de repetir. Detalhe: ${detail}`,
+    }),
+  }).catch((e) => console.error("[asaas-webhook] alertWebhookFailure fail:", String(e)));
+}
+
 function getMetaCredsForNumber(phoneNumberId: string | null): { pixelId: string; token: string; pageId: string } {
   if (phoneNumberId === "1253472567838504") {
     return {
@@ -302,6 +317,7 @@ Deno.serve(async (req) => {
 
       if (!grantResultSite.ok) {
         console.error("[asaas-webhook] site subscription error:", grantResultSite.error);
+        alertWebhookFailure("liberar assinatura, site", String(grantResultSite.error));
         return json({ ok: false, error: "erro ao liberar assinatura" }, 500);
       }
 
@@ -456,7 +472,11 @@ Deno.serve(async (req) => {
       last_renewed_at: now.toISOString(),
     });
 
-    if (!grantResult.ok) { console.error("[asaas-webhook] subscription error:", grantResult.error); return json({ ok: false, error: "erro ao liberar assinatura" }, 500); }
+    if (!grantResult.ok) {
+      console.error("[asaas-webhook] subscription error:", grantResult.error);
+      alertWebhookFailure("liberar assinatura, bot WhatsApp", String(grantResult.error));
+      return json({ ok: false, error: "erro ao liberar assinatura" }, 500);
+    }
 
     await notifySale({ source: "whatsapp_bot", plan, amountCents, name: userName, email: userEmail, phone: userPhone });
 
@@ -489,6 +509,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, userId, plan, endAt: endAt.toISOString() }, 200);
   } catch (e) {
     console.error("[asaas-webhook] ERROR:", e);
+    alertWebhookFailure("exceção não tratada", String(e));
     return json({ ok: false, error: String(e) }, 500);
   }
 });

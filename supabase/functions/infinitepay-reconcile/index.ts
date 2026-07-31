@@ -21,6 +21,21 @@ function json(data: unknown, status = 200) {
   });
 }
 
+// ✅ 31/07: alerta IMEDIATO (email+WhatsApp) quando um pagamento InfinityPay
+// já confirmado como pago não consegue liberar a assinatura, ou quando o
+// cron inteiro crasha — dinheiro entrou e o acesso ficou parado, mesmo
+// tipo de risco que o disjuntor de fila da Asaas cobre. Fire-and-forget.
+function alertReconcileFailure(context: string, detail: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  fetch(`${supabaseUrl}/functions/v1/admin-whatsapp-notify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-check-secret": "dp_admin_notify_h4t8w2" },
+    body: JSON.stringify({
+      message: `🚨 DoramasPlus: infinitepay-reconcile falhou (${context}) — pagamento pode estar confirmado sem liberar acesso. Detalhe: ${detail}`,
+    }),
+  }).catch((e) => console.error("[infinitepay-reconcile] alertReconcileFailure fail:", String(e)));
+}
+
 function addDays(base: Date, days: number) {
   return new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
 }
@@ -337,6 +352,7 @@ Deno.serve(async (req) => {
         // cron não vai reprocessar do zero, mas também não vamos fingir que o
         // acesso foi liberado quando não foi.
         errors.push({ order_nsu, step: "subscriptions_upsert", error: grantResult.error });
+        alertReconcileFailure("liberar assinatura", `order_nsu ${order_nsu}: ${String(grantResult.error)}`);
         continue;
       }
       updated++;
@@ -438,6 +454,7 @@ Deno.serve(async (req) => {
     );
   } catch (e) {
     console.error("infinitepay-reconcile ERROR:", e);
+    alertReconcileFailure("exceção não tratada", String(e));
     return json({ success: false, message: String(e) }, 500);
   }
 });
