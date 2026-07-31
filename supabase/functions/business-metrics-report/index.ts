@@ -179,12 +179,16 @@ async function computePanelMetrics(p: Period): Promise<any> {
     with period as (
       select '${p.start}'::timestamptz as p_start, '${p.end}'::timestamptz as p_end
     ),
+    -- ✅ 01/08 fix: venda avulsa de série (R$10, plan='series', bot
+    -- WhatsApp) não é assinatura — não pode entrar no faturamento nem nas
+    -- "vendas mensal" desse relatório.
     pix as (
       select coalesce(sum(amount_cents),0)/100.0 as total, count(*) as qtd,
         count(*) filter (where plan = 'quarterly') as qtd_trimestral,
         count(*) filter (where plan <> 'quarterly' or plan is null) as qtd_mensal
       from pix_payments, period
       where status = 'paid' and provider in ('infinitepay','asaas')
+        and coalesce(plan,'') <> 'series'
         and created_at between period.p_start and period.p_end
     ),
     stripe_ren as (

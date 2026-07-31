@@ -57,9 +57,18 @@ function endOfMonth(d) {
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   return new Date(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(lastDay)}T23:59:59.999-03:00`);
 }
+// ✅ 01/08 fix: setMonth() sozinho estoura o dia quando o mês de destino é
+// mais curto (ex.: 31/07 - 1 mês = "31 de junho", que não existe, e o JS
+// rolava sozinho pra 01/07 — fazia "Mês passado" virar o mês ATUAL de novo
+// nos dias 29/30/31). Agora trava (clamp) no último dia do mês de destino.
 function addMonths(d, months) {
+  const targetIndex = d.getMonth() + months;
+  const year = d.getFullYear() + Math.floor(targetIndex / 12);
+  const month = ((targetIndex % 12) + 12) % 12;
+  const lastDayOfTarget = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(d.getDate(), lastDayOfTarget);
   const x = new Date(d);
-  x.setMonth(x.getMonth() + months);
+  x.setFullYear(year, month, day);
   return x;
 }
 function addDays(d, days) {

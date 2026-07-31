@@ -83,12 +83,18 @@ Deno.serve(async (req) => {
       with period as (
         select '${periodStart}'::timestamptz as p_start, '${periodEnd}'::timestamptz as p_end
       ),
+      -- ✅ 01/08 fix: venda avulsa de série (R$10, plan='series', bot
+      -- WhatsApp) não é assinatura — nunca cria linha em subscriptions,
+      -- só entrega o link e some. Mas essa query não excluía plan='series',
+      -- então ela inflava o faturamento E entrava contada como "vendas
+      -- mensal" (plan <> 'quarterly' pegava 'series' também).
       pix as (
         select coalesce(sum(amount_cents),0)/100.0 as total, count(*) as qtd,
           count(*) filter (where plan = 'quarterly') as qtd_trimestral,
           count(*) filter (where plan <> 'quarterly' or plan is null) as qtd_mensal
         from pix_payments, period
         where status = 'paid' and provider in ('infinitepay','asaas')
+          and coalesce(plan,'') <> 'series'
           and created_at between period.p_start and period.p_end
       ),
       stripe_ren as (
