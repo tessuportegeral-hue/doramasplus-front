@@ -103,7 +103,7 @@ function buildWeeklyPeriod(today: { year: number; month: number; day: number }):
 
 type Section = { title: string; html: string; forOpinion: Record<string, unknown> };
 
-async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidOfSignups: number; renewals: number; churned: number }> {
+async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidOfSignups: number; renewals: number; churned: number; winback: number }> {
   const rows = await runSql(`
     with period as (select '${p.start}'::timestamptz as p_start, '${p.end}'::timestamptz as p_end),
     signups as (
@@ -116,16 +116,30 @@ async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidO
       select count(distinct user_id) as qtd from subscription_renewals, period
       where is_renewal = true and renewed_at >= period.p_start and renewed_at < period.p_end
     ),
-    churned as (
-      select count(distinct user_id) as qtd from subscriptions, period
+    churned_users as (
+      select distinct user_id, end_at as churn_end_at from subscriptions, period
       where end_at >= period.p_start and end_at < period.p_end
         and status not in ('active','trialing')
+    ),
+    winback as (
+      -- de quem perdeu assinatura ativa no período, quantos JÁ VOLTARAM a
+      -- pagar depois disso (renovação registrada após a própria perda,
+      -- medido até agora — não fica travado no fim do período).
+      select count(distinct cu.user_id) as qtd
+      from churned_users cu
+      where exists (
+        select 1 from subscription_renewals sr
+        where sr.user_id = cu.user_id
+          and sr.is_renewal = true
+          and sr.renewed_at > cu.churn_end_at
+      )
     )
     select
       (select count(*) from signups) as signups,
       (select qtd from paid_of_signups) as paid_of_signups,
       (select qtd from renewals) as renewals,
-      (select qtd from churned) as churned
+      (select count(*) from churned_users) as churned,
+      (select qtd from winback) as winback
   `);
   const r = rows[0] || {};
   return {
@@ -133,6 +147,7 @@ async function computeCustomMetrics(p: Period): Promise<{ signups: number; paidO
     paidOfSignups: Number(r.paid_of_signups || 0),
     renewals: Number(r.renewals || 0),
     churned: Number(r.churned || 0),
+    winback: Number(r.winback || 0),
   };
 }
 
@@ -310,9 +325,14 @@ async function buildSection(p: Period): Promise<Section> {
   const [custom, panel] = await Promise.all([computeCustomMetrics(p), computePanelMetrics(p)]);
 
   const conversionRate = custom.signups > 0 ? Math.round((custom.paidOfSignups / custom.signups) * 10000) / 100 : 0;
-  // ✅ 01/08: % de renovação em relação a quem PERDEU assinatura ativa no
-  // período (renovações vs. churn, não mais vs. cohort ativo do painel).
+  // ✅ 01/08: índice de reposição = renovações vs. churn do MESMO período
+  // (não necessariamente as mesmas pessoas — ver winbackRate abaixo pra
+  // taxa real de recuperação de quem perdeu).
   const renewalRate = custom.churned > 0 ? Math.round((custom.renewals / custom.churned) * 10000) / 100 : custom.renewals > 0 ? 100 : 0;
+  // ✅ 01/08: taxa real de recuperação — acompanha o MESMO grupo de quem
+  // perdeu assinatura ativa no período e mede quantos desses já voltaram a
+  // pagar (medido até agora, então tende a subir com o tempo pra meses recentes).
+  const winbackRate = custom.churned > 0 ? Math.round((custom.winback / custom.churned) * 10000) / 100 : 0;
 
   const html = `
     <div style="margin-bottom:20px;">
@@ -321,7 +341,8 @@ async function buildSection(p: Period): Promise<Section> {
         <tr><td style="padding:4px 0;">📝 Cadastros novos</td><td style="text-align:right;font-weight:bold;">${custom.signups}</td></tr>
         <tr><td style="padding:4px 0;">💳 Desses, pagaram</td><td style="text-align:right;font-weight:bold;">${custom.paidOfSignups} (${conversionRate}%)</td></tr>
         <tr><td style="padding:4px 0;">📉 Perderam assinatura ativa</td><td style="text-align:right;font-weight:bold;color:#e74c3c;">${custom.churned}</td></tr>
-        <tr><td style="padding:4px 0;">🔄 Renovações</td><td style="text-align:right;font-weight:bold;">${custom.renewals} (${renewalRate}% em relação à perda de assinatura ativa)</td></tr>
+        <tr><td style="padding:4px 0;">🔄 Renovações no período (índice de reposição)</td><td style="text-align:right;font-weight:bold;">${custom.renewals} (${renewalRate}% vs. quem perdeu no período)</td></tr>
+        <tr><td style="padding:4px 0;">♻️ Taxa real de recuperação</td><td style="text-align:right;font-weight:bold;color:#2ecc71;">${winbackRate}% (${custom.winback}/${custom.churned} de quem perdeu já voltou a pagar)</td></tr>
         <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Painel (mesma conta do /admin/analytics)</td></tr>
         <tr><td style="padding:4px 0;">💰 Faturamento do período</td><td style="text-align:right;font-weight:bold;">${fmtBRL(panel.revenue_period)}</td></tr>
         <tr><td style="padding:4px 0;">🧾 Vendas no período (mensal/trimestral)</td><td style="text-align:right;">${panel.sold_total} (${panel.sold_monthly}/${panel.sold_quarterly})</td></tr>
@@ -340,8 +361,10 @@ async function buildSection(p: Period): Promise<Section> {
       pagaram: custom.paidOfSignups,
       taxa_conversao_pct: conversionRate,
       renovacoes: custom.renewals,
-      taxa_renovacao_vs_perda_pct: renewalRate,
+      taxa_reposicao_pct: renewalRate,
       perderam_assinatura: custom.churned,
+      recuperaram_apos_perda: custom.winback,
+      taxa_recuperacao_real_pct: winbackRate,
       faturamento: panel.revenue_period,
       assinantes_ativos_agora: panel.active_now,
       taxa_retencao_pct: panel.churn.retention_rate,
