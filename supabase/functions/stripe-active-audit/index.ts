@@ -78,6 +78,11 @@ serve(async (req) => {
               mismatch: isMismatch,
             });
           } catch (e: any) {
+            // ✅ 31/07: NÃO marca como mismatch — "não consegui checar agora"
+            // (ex: rate limit da Stripe depois de várias chamadas seguidas)
+            // é diferente de "checei e tá errado". Confundir os dois já
+            // gerou alarme falso de "28 divergências" quando era só a API
+            // da Stripe engasgando num momento de pico de chamadas.
             checkFailures++;
             logRows.push({
               run_at: runAt,
@@ -86,7 +91,7 @@ serve(async (req) => {
               stripe_subscription_id: sub.stripe_subscription_id,
               db_status: sub.status,
               stripe_status: "check_failed",
-              mismatch: true,
+              mismatch: false,
               detail: String(e?.message ?? e),
             });
           }
@@ -106,7 +111,11 @@ serve(async (req) => {
       }
     }
 
+    // ✅ 31/07: mismatch_rows agora só carrega divergência real (verificada
+    // e confirmada errada); check_failed_rows fica separado — "não consegui
+    // checar" não deve contar como "achei problema" no relatório.
     const mismatchRows = logRows.filter((r) => r.mismatch);
+    const checkFailedRows = logRows.filter((r) => r.stripe_status === "check_failed");
 
     return new Response(
       JSON.stringify({
@@ -115,6 +124,7 @@ serve(async (req) => {
         mismatches,
         mismatch_rows: mismatchRows,
         check_failures: checkFailures,
+        check_failed_rows: checkFailedRows,
         run_at: runAt,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }

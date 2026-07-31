@@ -115,14 +115,21 @@ async function checkInfinitePay(): Promise<Section> {
 async function checkStripe(): Promise<Section> {
   const data = await callFunction("stripe-active-audit", "dp_stripe_audit_q7z1w9r", true);
   const rows: any[] = data?.mismatch_rows || [];
+  const checkFailedRows: any[] = data?.check_failed_rows || [];
   const ok = rows.length === 0;
+  // ✅ 31/07: falha ao CONSULTAR a Stripe (rate limit, timeout) não é a
+  // mesma coisa que "consultei e achei divergência" — antes isso inflava
+  // o número de "problemas" com falso alarme.
+  const mismatchLines = rows.map((r) => `user_id ${r.user_id} — banco diz "${r.db_status}", Stripe diz "${r.stripe_status}" — sub ${r.stripe_subscription_id}`);
+  const failNote = checkFailedRows.length > 0
+    ? [`${checkFailedRows.length} conta(s) não puderam ser verificadas agora (falha ao consultar a Stripe) — tentar de novo mais tarde.`]
+    : [];
+  const details = [...mismatchLines, ...failNote].join("<br>") || undefined;
   return {
     title: `Stripe — assinatura ativa no banco vs status real (${data?.checked ?? "?"} conferidas)`,
     ok,
     summary: ok ? "0 divergências" : `${rows.length} divergência(s)`,
-    details: ok
-      ? undefined
-      : rows.map((r) => `user_id ${r.user_id} — banco diz "${r.db_status}", Stripe diz "${r.stripe_status}" — sub ${r.stripe_subscription_id}`).join("<br>"),
+    details,
   };
 }
 
