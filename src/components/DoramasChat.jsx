@@ -263,7 +263,7 @@ export default function DoramasChat() {
           'Prefer': 'return=minimal'
         },
         body: JSON.stringify([
-          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text, needs_human: false },
           { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
@@ -309,7 +309,7 @@ export default function DoramasChat() {
           'Prefer': 'return=minimal'
         },
         body: JSON.stringify([
-          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: text, needs_human: false },
           { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
@@ -356,7 +356,7 @@ export default function DoramasChat() {
           'Prefer': 'return=minimal'
         },
         body: JSON.stringify([
-          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: placeholderText },
+          { session_id: sessionIdRef.current, user_id: userId, role: 'user', content: placeholderText, needs_human: false },
           { session_id: sessionIdRef.current, user_id: userId, role: 'assistant', content: replyParts.join('\n\n'), needs_human: needsHuman(replyParts.join('\n\n')) }
         ])
       });
