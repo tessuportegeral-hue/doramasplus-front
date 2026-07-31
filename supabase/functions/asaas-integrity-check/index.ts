@@ -3,13 +3,13 @@
 // se não existe assinatura ativa cujo end_at é POSTERIOR ao pagamento, é
 // sinal de que o pagamento pode ter ficado represado (ex: fila do webhook
 // da Asaas pausada após falhas consecutivas, ver asaas-webhook-queue-pause).
-// Não corrige nada sozinho — só detecta e manda email pra revisão manual
-// (ver CLAUDE.md: nunca mexer em lógica de pagamento sem autorização).
+// Não corrige nada sozinho — só detecta.
+//
+// ✅ 31/07: parou de mandar email próprio — agora é só uma peça consultada
+// pelo daily-integrity-report, que junta Asaas/Stripe/InfinityPay/Claim/etc
+// num único email diário (evita "monte de email" separado toda manhã).
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
-const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
-const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 const CRON_SECRET = "dp_asaas_integrity_x3f8q1";
 
 const CHECK_SQL = `
@@ -33,40 +33,6 @@ const CHECK_SQL = `
     and s.status is null
   order by pp.created_at desc
 `;
-
-// ✅ 31/07: manda email TODO DIA, mesmo sem achado — antes só avisava quando
-// tinha divergência, o que ficava indistinguível de "o cron parou de rodar"
-// (silêncio por design parecia bug). Agora sempre confirma que rodou.
-async function sendEmail(rows: any[]) {
-  if (!RESEND_API_KEY || !ALERT_EMAIL) return;
-  const hasIssues = rows.length > 0;
-  const list = rows
-    .map(
-      (r) =>
-        `• ${r.email} — R$ ${(r.amount_cents / 100).toFixed(2)} (${r.plan}) — pago em ${r.pix_created_at} — order_nsu: ${r.order_nsu}`
-    )
-    .join("<br>");
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [ALERT_EMAIL],
-      subject: hasIssues
-        ? `⚠️ Asaas: ${rows.length} pagamento(s) pago(s) sem assinatura ativa correspondente`
-        : `✅ Asaas: checagem diária ok, 0 problemas`,
-      html: hasIssues
-        ? `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
-        <p>Checagem diária de integridade Asaas encontrou pagamento(s) marcados como <b>pagos</b> nas últimas 48h sem uma assinatura ativa que cubra a data do pagamento — possível fila do webhook pausada ou falha na ativação.</p>
-        <p>${list}</p>
-        <p style="color:#888">Isso não corrige nada automaticamente. Verificar manualmente no painel Asaas e/ou reativar a fila de webhooks se estiver pausada.</p>
-      </div>`
-        : `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
-        <p>Checagem diária de integridade Asaas rodou agora e não encontrou nenhum pagamento pago sem assinatura ativa correspondente nas últimas 48h. Tudo certo. ✅</p>
-      </div>`,
-    }),
-  }).catch((e) => console.error("[asaas-integrity-check] email fail:", String(e)));
-}
 
 Deno.serve(async (req) => {
   if (req.headers.get("x-cron-secret") !== CRON_SECRET) {
@@ -92,10 +58,8 @@ Deno.serve(async (req) => {
     const data = await resp.json().catch(() => null);
     const rows: any[] = Array.isArray(data) ? data : [];
 
-    await sendEmail(rows);
-
     return new Response(
-      JSON.stringify({ ok: true, mismatches: rows.length, run_at: new Date().toISOString() }),
+      JSON.stringify({ ok: true, mismatches: rows.length, rows, run_at: new Date().toISOString() }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (e) {
