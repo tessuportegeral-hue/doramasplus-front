@@ -333,6 +333,11 @@ async function buildSection(p: Period): Promise<Section> {
   // perdeu assinatura ativa no período e mede quantos desses já voltaram a
   // pagar (medido até agora, então tende a subir com o tempo pra meses recentes).
   const winbackRate = custom.churned > 0 ? Math.round((custom.winback / custom.churned) * 10000) / 100 : 0;
+  // ✅ 01/08: taxa de churn do período = % de quem TINHA assinatura ativa no
+  // início do período e perdeu até o fim dele (mesmo cohort/mesma conta que
+  // o painel usa pra retenção — é só o complemento: churn% = 100 - retenção%).
+  const churnRate = panel.churn.cohort > 0 ? Math.round((panel.churn.churned / panel.churn.cohort) * 10000) / 100 : 0;
+  const churnRateCompare = panel.churn.compare.cohort > 0 ? Math.round((panel.churn.compare.churned / panel.churn.compare.cohort) * 10000) / 100 : 0;
 
   const html = `
     <div style="margin-bottom:20px;">
@@ -349,6 +354,7 @@ async function buildSection(p: Period): Promise<Section> {
         <tr><td style="padding:4px 0;">✅ Assinantes ativos agora</td><td style="text-align:right;font-weight:bold;">${panel.active_now} (${panel.active_now_monthly} mensal / ${panel.active_now_quarterly} trimestral)</td></tr>
         <tr><td style="padding:4px 0;">⏳ Pix pendente agora</td><td style="text-align:right;">${panel.pending_now}</td></tr>
         <tr><td style="padding:4px 0;">📊 Retenção do período</td><td style="text-align:right;">${panel.churn.retention_rate}% (${panel.churn.retained}/${panel.churn.cohort}) — período anterior: ${panel.churn.compare.retention_rate}%</td></tr>
+        <tr><td style="padding:4px 0;">🔻 Taxa de churn do período</td><td style="text-align:right;font-weight:bold;color:#e74c3c;">${churnRate}% (${panel.churn.churned}/${panel.churn.cohort}) — período anterior: ${churnRateCompare}%</td></tr>
       </table>
     </div>`;
 
@@ -369,6 +375,8 @@ async function buildSection(p: Period): Promise<Section> {
       assinantes_ativos_agora: panel.active_now,
       taxa_retencao_pct: panel.churn.retention_rate,
       taxa_retencao_periodo_anterior_pct: panel.churn.compare.retention_rate,
+      taxa_churn_pct: churnRate,
+      taxa_churn_periodo_anterior_pct: churnRateCompare,
     },
   };
 }
