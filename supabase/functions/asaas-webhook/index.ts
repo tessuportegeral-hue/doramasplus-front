@@ -180,6 +180,80 @@ async function dispararPixel(phone: string, email: string | null, value: number,
   }
 }
 
+// ✅ 31/07: compra pelo SITE nunca disparava evento pro Meta CAPI — só o
+// caminho do bot WhatsApp (dispararPixel acima) mandava. Isso deixava o
+// Meta "cego" pra vendas do site, otimizando anúncio sem saber quando uma
+// venda de verdade fecha por ali. Usa as credenciais gerais (mesmas do
+// infinitepay-reconcile, action_source "website"), não as _WA do bot —
+// e, diferente do infinitepay-reconcile, já manda fbc/fbp quando disponível
+// (capturados no checkout, ver SubscriptionPlans.jsx) pra melhorar o match.
+// META_ACCESS_TOKEN tem uma variante com typo já vista em outra função
+// (META_ACESS_TOKEN, 1 C) — lê os dois nomes por segurança.
+async function dispararPixelSite(opts: {
+  email: string | null;
+  value: number;
+  plan: string;
+  eventId: string;
+  pixPaymentId?: string;
+  fbclid?: string | null;
+  fbp?: string | null;
+}) {
+  const pixelId = Deno.env.get("META_PIXEL_ID") || "";
+  const token = Deno.env.get("META_ACCESS_TOKEN") || Deno.env.get("META_ACESS_TOKEN") || "";
+  if (!pixelId || !token) {
+    console.warn("[meta-site] credenciais ausentes: pixelId=", pixelId ? "OK" : "VAZIO", "token=", token ? "OK" : "VAZIO");
+    if (opts.pixPaymentId) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      await supabase.from("pix_payments").update({ meta_error: "credenciais ausentes (site)" }).eq("id", opts.pixPaymentId);
+    }
+    return false;
+  }
+  try {
+    const emailHash = opts.email ? await sha256hex(opts.email) : null;
+    const contentName = opts.plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
+    const userData: Record<string, any> = {};
+    if (emailHash) userData.em = [emailHash];
+    if (opts.fbp) userData.fbp = opts.fbp;
+    if (opts.fbclid) userData.fbc = `fb.1.${Date.now()}.${opts.fbclid}`;
+
+    const body = {
+      data: [
+        {
+          event_name: "Purchase",
+          event_time: Math.floor(Date.now() / 1000),
+          event_id: opts.eventId,
+          action_source: "website",
+          user_data: userData,
+          custom_data: { value: opts.value, currency: "BRL", content_name: contentName, content_type: "product" },
+        },
+      ],
+    };
+    const url = `https://graph.facebook.com/v20.0/${pixelId}/events?access_token=${token}`;
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const resText = await res.text();
+    let resBody: any = {};
+    try { resBody = JSON.parse(resText); } catch {}
+    const ok = res.ok && Number(resBody?.events_received ?? 0) >= 1;
+    console.log("[meta-site] resultado:", ok ? "SUCESSO" : "FALHA", resText.slice(0, 300));
+    if (opts.pixPaymentId) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      if (ok) {
+        await supabase.from("pix_payments").update({ meta_sent: true, meta_error: null }).eq("id", opts.pixPaymentId);
+      } else {
+        await supabase.from("pix_payments").update({ meta_error: `status=${res.status} body=${resText.slice(0, 300)}` }).eq("id", opts.pixPaymentId);
+      }
+    }
+    return ok;
+  } catch (e) {
+    console.error("[meta-site] erro:", e);
+    if (opts.pixPaymentId) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      await supabase.from("pix_payments").update({ meta_error: "exception: " + String(e) }).eq("id", opts.pixPaymentId);
+    }
+    return false;
+  }
+}
+
 async function ensureProfile(supabase: any, phoneDigits: string) {
   const fakeEmail = `${phoneDigits}@doramasplus.com`.toLowerCase();
   let userId: string | null = null;
@@ -246,7 +320,7 @@ Deno.serve(async (req) => {
 
       const { data: existingSitePay } = await supabase
         .from("pix_payments")
-        .select("id, status, meta_sent")
+        .select("id, status, meta_sent, fbclid, fbp, event_id")
         .eq("order_nsu", externalReference)
         .maybeSingle();
 
@@ -323,6 +397,18 @@ Deno.serve(async (req) => {
 
       const { data: profSite } = await supabase.from("profiles").select("name, email, phone").eq("id", userId).maybeSingle();
       await notifySale({ source: "site", plan, amountCents: amountCentsSite, name: profSite?.name || null, email: profSite?.email || null, phone: profSite?.phone || null });
+
+      if (!existingSitePay?.meta_sent) {
+        await dispararPixelSite({
+          email: profSite?.email || null,
+          value: amountCentsSite / 100,
+          plan,
+          eventId: existingSitePay?.event_id || externalReference,
+          pixPaymentId: existingSitePay?.id,
+          fbclid: existingSitePay?.fbclid || null,
+          fbp: existingSitePay?.fbp || null,
+        });
+      }
 
       if (plan !== "trial3") {
         try {

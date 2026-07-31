@@ -339,6 +339,18 @@ const SubscriptionPlans = () => {
         } catch {}
       }
 
+      // ✅ 31/07: _fbp é o cookie de "browser id" que o próprio script do
+      // Pixel do Meta seta sozinho (fb.1.<ts>.<random>) — junto com o fbc
+      // (derivado do fbclid no webhook), melhora a qualidade do match do
+      // evento de compra server-side (CAPI) pra quem paga pelo site.
+      let fbp = '';
+      try {
+        fbp = document.cookie
+          .split('; ')
+          .find((r) => r.startsWith('_fbp='))
+          ?.split('=')[1] || '';
+      } catch {}
+
       const functionName =
         PIX_PROVIDER === 'asaas' ? 'asaas-create-checkout' : 'infinitepay-create-checkout';
 
@@ -355,6 +367,7 @@ const SubscriptionPlans = () => {
             utm_campaign,
             utm_content,
             fbclid,
+            fbp,
           },
           headers: { Authorization: `Bearer ${token}` },
         }
