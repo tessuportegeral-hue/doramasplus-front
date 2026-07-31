@@ -471,6 +471,11 @@ export default function AdminAnalytics() {
     return mrrTotal / denom;
   }, [metrics.active_now, mrrTotal]);
 
+  // "Taxa real de recuperação" só conta quem pagou de novo DEPOIS do fim do
+  // período — se o período selecionado ainda não fechou (ex.: "Este mês"),
+  // trava em 0% sempre, não é bug. Usado pra avisar isso na tela.
+  const periodStillOpen = useMemo(() => periodEnd.getTime() > Date.now() - 5 * 60 * 1000, [periodEnd]);
+
   // “Janela” explicativa da Retenção D30 (pra não confundir com o filtro do período)
   const retentionWindowLabel = useMemo(() => {
     const today = new Date();
@@ -940,11 +945,17 @@ export default function AdminAnalytics() {
                     formatPct(churn.period.winback_rate),
                     <TrendingUp className="w-5 h-5 text-green-300" />,
                     `${churn.period.winback} de quem perdeu já voltou a pagar`,
-                    "ok",
-                    "De quem perdeu a assinatura NESSE período específico, quantos % já voltaram a pagar DEPOIS que o período fechou. Diferente da retenção: esse número só sobe com o tempo (nunca cai) e pode demorar dias/semanas pra aparecer — é normal ficar baixo logo depois do período fechar."
+                    periodStillOpen ? "warn" : "ok",
+                    "De quem perdeu a assinatura NESSE período específico, quantos % já voltaram a pagar DEPOIS que o período fechou. Diferente da retenção: esse número só sobe com o tempo (nunca cai). Só funciona direito em período JÁ FECHADO (ex.: 'Mês passado') — em período ainda em andamento (ex.: 'Este mês'), trava em 0% sempre, porque ainda não existe 'depois' pra medir."
                   )}
                 </div>
               </div>
+              {periodStillOpen ? (
+                <div className="mt-2 text-xs text-yellow-200/70">
+                  ⚠️ O período selecionado ainda está em andamento — essa taxa sempre fica em 0% aqui até o período
+                  fechar. Selecione "Mês passado" (ou um período personalizado já encerrado) pra ver o número real.
+                </div>
+              ) : null}
 
               <div className="mt-4 text-xs text-white/50">Comparação — {compareLabel}</div>
               <div className="mt-2 grid grid-cols-1 md:grid-cols-12 gap-3">
