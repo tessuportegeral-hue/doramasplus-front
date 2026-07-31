@@ -156,6 +156,31 @@ Deno.serve(async (req) => {
         from subscription_renewals sr, period
         where sr.is_renewal = false and sr.renewed_at between period.p_start and period.p_end
       ),
+      -- ✅ 01/08: "taxa real de recuperação" — de quem tinha assinatura ativa
+      -- no início do período e a perdeu, quantos JÁ VOLTARAM a pagar DEPOIS
+      -- do período fechar. Precisa congelar quem perdeu usando o HISTÓRICO
+      -- (subscription_renewals, nunca muda) em vez da tabela subscriptions
+      -- (mutável — se usasse ela, quem já voltou some da lista de "perdeu" e
+      -- a recuperação nunca aparece, mesmo quando existe de verdade).
+      last_by_period_end_a as (
+        select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+        from subscription_renewals sr, period
+        where sr.user_id in (select user_id from cohort_a_active)
+          and sr.renewed_at < period.p_end
+        order by sr.user_id, sr.renewed_at desc
+      ),
+      churned_users_a as (
+        select user_id from last_by_period_end_a, period
+        where not ((end_at is null and provider is null) or end_at > period.p_end)
+      ),
+      winback_a as (
+        select count(distinct cu.user_id) as qtd
+        from churned_users_a cu, period
+        where exists (
+          select 1 from subscription_renewals sr2
+          where sr2.user_id = cu.user_id and sr2.is_renewal = true and sr2.renewed_at >= period.p_end
+        )
+      ),
       compare_period as (
         select '${comparePeriodStart}'::timestamptz as c_start, '${comparePeriodEnd}'::timestamptz as c_end
       ),
@@ -181,6 +206,25 @@ Deno.serve(async (req) => {
         select count(distinct sr.user_id) as qtd
         from subscription_renewals sr, compare_period
         where sr.is_renewal = false and sr.renewed_at between compare_period.c_start and compare_period.c_end
+      ),
+      last_by_period_end_b as (
+        select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+        from subscription_renewals sr, compare_period
+        where sr.user_id in (select user_id from cohort_b_active)
+          and sr.renewed_at < compare_period.c_end
+        order by sr.user_id, sr.renewed_at desc
+      ),
+      churned_users_b as (
+        select user_id from last_by_period_end_b, compare_period
+        where not ((end_at is null and provider is null) or end_at > compare_period.c_end)
+      ),
+      winback_b as (
+        select count(distinct cu.user_id) as qtd
+        from churned_users_b cu, compare_period
+        where exists (
+          select 1 from subscription_renewals sr2
+          where sr2.user_id = cu.user_id and sr2.is_renewal = true and sr2.renewed_at >= compare_period.c_end
+        )
       )
       select
         (select total from pix) as pix_total,
@@ -200,7 +244,11 @@ Deno.serve(async (req) => {
         (select qtd from new_a) as churn_a_new,
         (select count(*) from cohort_b_active) as churn_b_cohort,
         (select count(*) from retained_b) as churn_b_retained,
-        (select qtd from new_b) as churn_b_new
+        (select qtd from new_b) as churn_b_new,
+        (select count(*) from churned_users_a) as churn_a_frozen_churned,
+        (select qtd from winback_a) as churn_a_winback,
+        (select count(*) from churned_users_b) as churn_b_frozen_churned,
+        (select qtd from winback_b) as churn_b_winback
     `;
 
     const { data: revRows, error: revErr } = await admin.rpc('exec_sql', { q: revenueQuery });
@@ -263,6 +311,10 @@ Deno.serve(async (req) => {
     const churnARetained = Number(rev.churn_a_retained || 0);
     const churnBCohort = Number(rev.churn_b_cohort || 0);
     const churnBRetained = Number(rev.churn_b_retained || 0);
+    const churnAFrozen = Number(rev.churn_a_frozen_churned || 0);
+    const churnAWinback = Number(rev.churn_a_winback || 0);
+    const churnBFrozen = Number(rev.churn_b_frozen_churned || 0);
+    const churnBWinback = Number(rev.churn_b_winback || 0);
 
     return json({
       sold_total: soldTotal,
@@ -289,6 +341,8 @@ Deno.serve(async (req) => {
           retained: churnARetained,
           churned: churnACohort - churnARetained,
           retention_rate: churnACohort > 0 ? Math.round((churnARetained / churnACohort) * 10000) / 100 : 0,
+          winback: churnAWinback,
+          winback_rate: churnAFrozen > 0 ? Math.round((churnAWinback / churnAFrozen) * 10000) / 100 : 0,
         },
         compare_period: {
           new: Number(rev.churn_b_new || 0),
@@ -296,6 +350,8 @@ Deno.serve(async (req) => {
           retained: churnBRetained,
           churned: churnBCohort - churnBRetained,
           retention_rate: churnBCohort > 0 ? Math.round((churnBRetained / churnBCohort) * 10000) / 100 : 0,
+          winback: churnBWinback,
+          winback_rate: churnBFrozen > 0 ? Math.round((churnBWinback / churnBFrozen) * 10000) / 100 : 0,
           period_start: comparePeriodStart,
           period_end: comparePeriodEnd,
         },

@@ -16,6 +16,7 @@ import {
   TrendingDown,
   UserPlus,
   UserMinus,
+  HelpCircle,
 } from "lucide-react";
 
 /**
@@ -159,8 +160,8 @@ export default function AdminAnalytics() {
 
   // Churn / retenção do período (+ período de comparação)
   const [churn, setChurn] = useState({
-    period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0 },
-    compare_period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0, period_start: null, period_end: null },
+    period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0, winback: 0, winback_rate: 0 },
+    compare_period: { new: 0, cohort: 0, retained: 0, churned: 0, retention_rate: 0, winback: 0, winback_rate: 0, period_start: null, period_end: null },
   });
 
 
@@ -417,6 +418,8 @@ export default function AdminAnalytics() {
           retained: safeNum(churnPeriod.retained),
           churned: safeNum(churnPeriod.churned),
           retention_rate: safeNum(churnPeriod.retention_rate),
+          winback: safeNum(churnPeriod.winback),
+          winback_rate: safeNum(churnPeriod.winback_rate),
         },
         compare_period: {
           new: safeNum(churnCompare.new),
@@ -424,6 +427,8 @@ export default function AdminAnalytics() {
           retained: safeNum(churnCompare.retained),
           churned: safeNum(churnCompare.churned),
           retention_rate: safeNum(churnCompare.retention_rate),
+          winback: safeNum(churnCompare.winback),
+          winback_rate: safeNum(churnCompare.winback_rate),
           period_start: churnCompare.period_start || null,
           period_end: churnCompare.period_end || null,
         },
@@ -475,7 +480,7 @@ export default function AdminAnalytics() {
   }, []);
 
   // UI
-  const renderCard = (title, value, icon, subtitle, tone = "default") => {
+  const renderCard = (title, value, icon, subtitle, tone = "default", tooltip = null) => {
     const toneClasses =
       tone === "ok"
         ? "border-green-500/30"
@@ -489,7 +494,10 @@ export default function AdminAnalytics() {
       <div className={`rounded-2xl bg-white/5 border ${toneClasses} p-4 md:p-5 shadow-sm`}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xs md:text-sm text-white/70 font-medium">{title}</div>
+            <div className="text-xs md:text-sm text-white/70 font-medium flex items-center gap-1">
+              {title}
+              <InfoTooltip text={tooltip} />
+            </div>
             <div className="text-2xl md:text-3xl font-semibold mt-1 truncate">{value}</div>
             {subtitle ? <div className="text-xs md:text-sm text-white/50 mt-1">{subtitle}</div> : null}
           </div>
@@ -770,7 +778,8 @@ export default function AdminAnalytics() {
                   `${metrics.active_now}`,
                   <Users className="w-5 h-5 text-green-300" />,
                   `Mensal: ${metrics.active_now_monthly} • Trimestral: ${metrics.active_now_quarterly}`,
-                  "ok"
+                  "ok",
+                  "Quantas pessoas estão com assinatura válida agora, neste exato segundo. Não é do período do filtro lá em cima — é o retrato de agora."
                 )}
               </div>
 
@@ -780,7 +789,8 @@ export default function AdminAnalytics() {
                   `${metrics.pending_now}`,
                   <Clock className="w-5 h-5 text-yellow-300" />,
                   "Pix pendente (agora)",
-                  "warn"
+                  "warn",
+                  "Pessoas que geraram um Pix pra pagar mas ainda não pagaram. Ainda não é dinheiro no bolso, é só uma intenção de compra."
                 )}
               </div>
 
@@ -789,7 +799,9 @@ export default function AdminAnalytics() {
                   "Faturamento (período)",
                   formatBRL(revenuePeriod),
                   <CreditCard className="w-5 h-5 text-blue-300" />,
-                  "Aproximação: soma das vendas no período"
+                  "Aproximação: soma das vendas no período",
+                  "default",
+                  "Quanto dinheiro entrou de verdade (pagamentos já confirmados) dentro do período que você escolheu no filtro."
                 )}
               </div>
 
@@ -798,7 +810,9 @@ export default function AdminAnalytics() {
                   "MRR (total)",
                   formatBRL(mrrTotal),
                   <BarChart3 className="w-5 h-5 text-purple-300" />,
-                  "Mensal + (Trimestral ÷ 3)"
+                  "Mensal + (Trimestral ÷ 3)",
+                  "default",
+                  "Quanto essa base de assinantes vale por mês, tipo 'piloto automático'. Se ninguém entrasse nem saísse, é esse valor que cairia todo mês."
                 )}
               </div>
             </div>
@@ -810,7 +824,9 @@ export default function AdminAnalytics() {
                   "MRR Mensal",
                   formatBRL(mrrMonthly),
                   <CreditCard className="w-5 h-5 text-white/70" />,
-                  `${metrics.active_now_monthly} assinaturas`
+                  `${metrics.active_now_monthly} assinaturas`,
+                  "default",
+                  "A fatia do MRR (valor mensal recorrente) que vem só de quem paga o plano mensal."
                 )}
               </div>
               <div className="md:col-span-6">
@@ -818,7 +834,9 @@ export default function AdminAnalytics() {
                   "MRR Trimestral (÷ 3)",
                   formatBRL(mrrQuarterly),
                   <CreditCard className="w-5 h-5 text-yellow-300" />,
-                  `${metrics.active_now_quarterly} assinaturas`
+                  `${metrics.active_now_quarterly} assinaturas`,
+                  "default",
+                  "A fatia do MRR de quem paga trimestral, dividida por 3 — senão contaria os 3 meses de uma vez e inflaria o número."
                 )}
               </div>
             </div>
@@ -833,7 +851,9 @@ export default function AdminAnalytics() {
                     "Base com 30 dias",
                     `${retD30.base_com_30_dias}`,
                     <Users className="w-5 h-5 text-white/70" />,
-                    "Pagaram entre 60 e 30 dias atrás"
+                    "Pagaram entre 60 e 30 dias atrás",
+                    "default",
+                    "Quantas pessoas pagaram a assinatura há entre 30 e 60 dias. É esse grupo que a gente observa pra ver se voltou a pagar."
                   )}
                 </div>
 
@@ -843,7 +863,8 @@ export default function AdminAnalytics() {
                     `${retD30.ainda_ativos}`,
                     <CheckIcon />,
                     "Pagaram novamente nos últimos 30 dias",
-                    "ok"
+                    "ok",
+                    "Dessa mesma turma de cima, quantos pagaram de novo nos últimos 30 dias — ou seja, continuaram assinando."
                   )}
                 </div>
 
@@ -853,7 +874,8 @@ export default function AdminAnalytics() {
                     formatPct(retD30.retencao_d30),
                     <TrendingUp className="w-5 h-5 text-green-300" />,
                     "via edge function admin-analytics",
-                    "ok"
+                    "ok",
+                    "De quem pagou há 30-60 dias, quantos % continuaram pagando depois. Se fosse 100%, ninguém teria saído."
                   )}
                 </div>
               </div>
@@ -872,7 +894,8 @@ export default function AdminAnalytics() {
                     `${churn.period.new}`,
                     <UserPlus className="w-5 h-5 text-green-300" />,
                     "Primeira assinatura no período",
-                    "ok"
+                    "ok",
+                    "Gente que assinou PELA PRIMEIRA VEZ dentro do período escolhido — nunca tinha pago antes."
                   )}
                 </div>
 
@@ -882,7 +905,8 @@ export default function AdminAnalytics() {
                     `${churn.period.churned}`,
                     <UserMinus className="w-5 h-5 text-red-300" />,
                     `De ${churn.period.cohort} ativos no início do período`,
-                    churn.period.churned > 0 ? "bad" : "default"
+                    churn.period.churned > 0 ? "bad" : "default",
+                    "Imagina um balde com água: de quem já pagava assinatura no começo do período, esses aqui 'vazaram' — pararam de pagar e perderam o acesso até o fim do período."
                   )}
                 </div>
 
@@ -891,7 +915,9 @@ export default function AdminAnalytics() {
                     "Retidos no período",
                     `${churn.period.retained}`,
                     <Users className="w-5 h-5 text-white/70" />,
-                    `De ${churn.period.cohort} ativos no início do período`
+                    `De ${churn.period.cohort} ativos no início do período`,
+                    "default",
+                    "O oposto de quem saiu: de quem já pagava no começo do período, esses continuaram pagando até o fim dele. Ficaram dentro do balde."
                   )}
                 </div>
 
@@ -901,7 +927,21 @@ export default function AdminAnalytics() {
                     formatPct(churn.period.retention_rate),
                     <TrendingUp className="w-5 h-5 text-green-300" />,
                     "Retidos ÷ ativos no início",
-                    "ok"
+                    "ok",
+                    "Retidos dividido por quem tinha assinatura no início, em %. É o espelho do churn: Retenção% + Churn% sempre soma 100%."
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Taxa real de recuperação",
+                    formatPct(churn.period.winback_rate),
+                    <TrendingUp className="w-5 h-5 text-green-300" />,
+                    `${churn.period.winback} de quem perdeu já voltou a pagar`,
+                    "ok",
+                    "De quem perdeu a assinatura NESSE período específico, quantos % já voltaram a pagar DEPOIS que o período fechou. Diferente da retenção: esse número só sobe com o tempo (nunca cai) e pode demorar dias/semanas pra aparecer — é normal ficar baixo logo depois do período fechar."
                   )}
                 </div>
               </div>
@@ -913,7 +953,9 @@ export default function AdminAnalytics() {
                     "Entraram (comparação)",
                     `${churn.compare_period.new}`,
                     <UserPlus className="w-5 h-5 text-white/50" />,
-                    "Primeira assinatura no período comparado"
+                    "Primeira assinatura no período comparado",
+                    "default",
+                    "O mesmo de 'Entraram no período', só que calculado pro período de comparação — pra você ver se melhorou ou piorou."
                   )}
                 </div>
 
@@ -922,7 +964,9 @@ export default function AdminAnalytics() {
                     "Saíram (comparação)",
                     `${churn.compare_period.churned}`,
                     <UserMinus className="w-5 h-5 text-white/50" />,
-                    `De ${churn.compare_period.cohort} ativos no início`
+                    `De ${churn.compare_period.cohort} ativos no início`,
+                    "default",
+                    "O mesmo do 'balde furado' de 'Saíram no período', só que calculado pro período de comparação."
                   )}
                 </div>
 
@@ -931,7 +975,9 @@ export default function AdminAnalytics() {
                     "Retidos (comparação)",
                     `${churn.compare_period.retained}`,
                     <Users className="w-5 h-5 text-white/50" />,
-                    `De ${churn.compare_period.cohort} ativos no início`
+                    `De ${churn.compare_period.cohort} ativos no início`,
+                    "default",
+                    "O mesmo de 'Retidos no período', só que calculado pro período de comparação."
                   )}
                 </div>
 
@@ -947,7 +993,8 @@ export default function AdminAnalytics() {
                     churn.period.retention_rate >= churn.compare_period.retention_rate
                       ? "Retenção do período está melhor"
                       : "Retenção do período está pior",
-                    churn.period.retention_rate >= churn.compare_period.retention_rate ? "ok" : "bad"
+                    churn.period.retention_rate >= churn.compare_period.retention_rate ? "ok" : "bad",
+                    "A retenção (retidos ÷ ativos no início), só que do período de comparação — o ícone mostra se a retenção do período principal está melhor (seta verde) ou pior (seta vermelha) que essa aqui."
                   )}
                 </div>
               </div>
@@ -969,7 +1016,8 @@ export default function AdminAnalytics() {
                     `${metrics.sold_total}`,
                     <Users className="w-5 h-5 text-green-300" />,
                     `Mensal: ${metrics.sold_monthly} • Trimestral: ${metrics.sold_quarterly}`,
-                    "ok"
+                    "ok",
+                    "Quantos pagamentos (novos ou renovações) fecharam dentro do período, somando mensal + trimestral."
                   )}
                 </div>
 
@@ -978,7 +1026,9 @@ export default function AdminAnalytics() {
                     "Vendas (mensal)",
                     `${metrics.sold_monthly}`,
                     <CreditCard className="w-5 h-5 text-white/70" />,
-                    `Preço: ${formatBRL(PRICE_MONTHLY)}`
+                    `Preço: ${formatBRL(PRICE_MONTHLY)}`,
+                    "default",
+                    "O mesmo de cima, mas só contando quem pagou o plano mensal."
                   )}
                 </div>
 
@@ -987,7 +1037,9 @@ export default function AdminAnalytics() {
                     "Vendas (trimestral)",
                     `${metrics.sold_quarterly}`,
                     <CreditCard className="w-5 h-5 text-yellow-300" />,
-                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`
+                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`,
+                    "default",
+                    "O mesmo de cima, mas só contando quem pagou o plano trimestral."
                   )}
                 </div>
               </div>
@@ -1015,6 +1067,19 @@ export default function AdminAnalytics() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** "?" com explicação simples ao passar o mouse por cima */
+function InfoTooltip({ text }) {
+  if (!text) return null;
+  return (
+    <span className="relative inline-flex group align-middle">
+      <HelpCircle className="w-3.5 h-3.5 text-white/40 hover:text-white/70 cursor-help" />
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-60 rounded-lg bg-black/95 border border-white/15 px-3 py-2 text-xs font-normal normal-case text-white/90 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+        {text}
+      </span>
+    </span>
   );
 }
 
