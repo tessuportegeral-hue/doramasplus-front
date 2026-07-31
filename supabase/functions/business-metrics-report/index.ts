@@ -1,9 +1,8 @@
 // business-metrics-report: roda 1x/dia via pg_cron (9h BRT) e manda um email
 // com números de negócio (cadastros, conversão, renovação, perda de acesso)
 // + os mesmos números do painel /admin/analytics (mesma query, pra nunca
-// divergir do que já é mostrado lá) + comparação com 3 meses atrás + uma
-// opinião gerada por IA (Claude, mesma chave usada no dora-chat) sobre o
-// momento do negócio.
+// divergir do que já é mostrado lá) + uma opinião gerada por IA (Claude,
+// mesma chave usada no dora-chat) sobre o momento do negócio.
 //
 // Cadência de período:
 // - Dia normal: números do DIA ANTERIOR.
@@ -67,24 +66,6 @@ function addDaysIso(iso: string, days: number): string {
   return d.toISOString();
 }
 
-function lastDayOfMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
-}
-
-// Desloca uma data BRT-midnight em N meses (preserva dia-do-mês quando
-// possível, clampando pro último dia do mês alvo se não existir, ex.: 31
-// de um mês de 30 dias).
-function shiftMonthsIso(iso: string, monthsDelta: number): string {
-  const y = Number(iso.slice(0, 4));
-  const m = Number(iso.slice(5, 7));
-  const d = Number(iso.slice(8, 10));
-  let totalMonths = (y * 12 + (m - 1)) + monthsDelta;
-  const newYear = Math.floor(totalMonths / 12);
-  const newMonth = (totalMonths % 12) + 1;
-  const clampedDay = Math.min(d, lastDayOfMonth(newYear, newMonth));
-  return brtMidnightIso(newYear, newMonth, clampedDay);
-}
-
 type Period = { start: string; end: string; compareStart: string; compareEnd: string; label: string };
 
 function buildDailyPeriod(today: { year: number; month: number; day: number }): Period {
@@ -94,17 +75,23 @@ function buildDailyPeriod(today: { year: number; month: number; day: number }): 
   return { start: yestStart, end: todayStart, compareStart: dayBeforeStart, compareEnd: yestStart, label: "Dia anterior" };
 }
 
+function buildMonthlyPeriodForMonth(year: number, month: number): Period {
+  const start = brtMidnightIso(year, month, 1);
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = brtMidnightIso(nextYear, nextMonth, 1);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const compareStart = brtMidnightIso(prevYear, prevMonth, 1);
+  return { start, end, compareStart, compareEnd: start, label: "Mês inteiro" };
+}
+
 // ✅ 01/08: dispara no DIA 1 do mês (não mais no último dia) — assim o mês
 // reportado já está totalmente fechado, sem faltar o próprio dia.
 function buildMonthlyPeriod(today: { year: number; month: number; day: number }): Period {
-  const thisMonthStart = brtMidnightIso(today.year, today.month, 1);
   const prevMonth = today.month === 1 ? 12 : today.month - 1;
   const prevMonthYear = today.month === 1 ? today.year - 1 : today.year;
-  const prevMonthStart = brtMidnightIso(prevMonthYear, prevMonth, 1);
-  const twoMonthsAgoMonth = prevMonth === 1 ? 12 : prevMonth - 1;
-  const twoMonthsAgoYear = prevMonth === 1 ? prevMonthYear - 1 : prevMonthYear;
-  const twoMonthsAgoStart = brtMidnightIso(twoMonthsAgoYear, twoMonthsAgoMonth, 1);
-  return { start: prevMonthStart, end: thisMonthStart, compareStart: twoMonthsAgoStart, compareEnd: prevMonthStart, label: "Mês inteiro" };
+  return buildMonthlyPeriodForMonth(prevMonthYear, prevMonth);
 }
 
 function buildWeeklyPeriod(today: { year: number; month: number; day: number }): Period {
@@ -319,33 +306,13 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
-function pctChange(current: number, before: number): string {
-  if (before === 0) return current > 0 ? "novo" : "0%";
-  const delta = ((current - before) / before) * 100;
-  const sign = delta >= 0 ? "+" : "";
-  return `${sign}${Math.round(delta * 10) / 10}%`;
-}
-
 async function buildSection(p: Period): Promise<Section> {
-  const threeMonthsAgoPeriod: Period = {
-    start: shiftMonthsIso(p.start, -3),
-    end: shiftMonthsIso(p.end, -3),
-    compareStart: shiftMonthsIso(p.compareStart, -3),
-    compareEnd: shiftMonthsIso(p.compareEnd, -3),
-    label: "3 meses atrás",
-  };
-
-  const [custom, panel, custom3mo, panel3mo] = await Promise.all([
-    computeCustomMetrics(p),
-    computePanelMetrics(p),
-    computeCustomMetrics(threeMonthsAgoPeriod),
-    computePanelMetrics(threeMonthsAgoPeriod),
-  ]);
+  const [custom, panel] = await Promise.all([computeCustomMetrics(p), computePanelMetrics(p)]);
 
   const conversionRate = custom.signups > 0 ? Math.round((custom.paidOfSignups / custom.signups) * 10000) / 100 : 0;
-  // ✅ 01/08: % de renovação em relação a quem TINHA assinatura ativa no
-  // início do período (mesmo cohort que o painel usa pra retenção).
-  const renewalRate = panel.churn.cohort > 0 ? Math.round((custom.renewals / panel.churn.cohort) * 10000) / 100 : 0;
+  // ✅ 01/08: % de renovação em relação a quem PERDEU assinatura ativa no
+  // período (renovações vs. churn, não mais vs. cohort ativo do painel).
+  const renewalRate = custom.churned > 0 ? Math.round((custom.renewals / custom.churned) * 10000) / 100 : custom.renewals > 0 ? 100 : 0;
 
   const html = `
     <div style="margin-bottom:20px;">
@@ -353,19 +320,14 @@ async function buildSection(p: Period): Promise<Section> {
       <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
         <tr><td style="padding:4px 0;">📝 Cadastros novos</td><td style="text-align:right;font-weight:bold;">${custom.signups}</td></tr>
         <tr><td style="padding:4px 0;">💳 Desses, pagaram</td><td style="text-align:right;font-weight:bold;">${custom.paidOfSignups} (${conversionRate}%)</td></tr>
-        <tr><td style="padding:4px 0;">🔄 Renovações</td><td style="text-align:right;font-weight:bold;">${custom.renewals} (${renewalRate}% de quem tinha assinatura ativa)</td></tr>
         <tr><td style="padding:4px 0;">📉 Perderam assinatura ativa</td><td style="text-align:right;font-weight:bold;color:#e74c3c;">${custom.churned}</td></tr>
+        <tr><td style="padding:4px 0;">🔄 Renovações</td><td style="text-align:right;font-weight:bold;">${custom.renewals} (${renewalRate}% em relação à perda de assinatura ativa)</td></tr>
         <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Painel (mesma conta do /admin/analytics)</td></tr>
         <tr><td style="padding:4px 0;">💰 Faturamento do período</td><td style="text-align:right;font-weight:bold;">${fmtBRL(panel.revenue_period)}</td></tr>
         <tr><td style="padding:4px 0;">🧾 Vendas no período (mensal/trimestral)</td><td style="text-align:right;">${panel.sold_total} (${panel.sold_monthly}/${panel.sold_quarterly})</td></tr>
         <tr><td style="padding:4px 0;">✅ Assinantes ativos agora</td><td style="text-align:right;font-weight:bold;">${panel.active_now} (${panel.active_now_monthly} mensal / ${panel.active_now_quarterly} trimestral)</td></tr>
         <tr><td style="padding:4px 0;">⏳ Pix pendente agora</td><td style="text-align:right;">${panel.pending_now}</td></tr>
         <tr><td style="padding:4px 0;">📊 Retenção do período</td><td style="text-align:right;">${panel.churn.retention_rate}% (${panel.churn.retained}/${panel.churn.cohort}) — período anterior: ${panel.churn.compare.retention_rate}%</td></tr>
-        <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Comparado com 3 meses atrás (${fmtDate(threeMonthsAgoPeriod.start)} a ${fmtDate(addDaysIso(threeMonthsAgoPeriod.end, -1))})</td></tr>
-        <tr><td style="padding:4px 0;">💰 Faturamento</td><td style="text-align:right;">${fmtBRL(panel3mo.revenue_period)} → ${pctChange(panel.revenue_period, panel3mo.revenue_period)}</td></tr>
-        <tr><td style="padding:4px 0;">✅ Ativos</td><td style="text-align:right;">${panel3mo.active_now} → ${pctChange(panel.active_now, panel3mo.active_now)}</td></tr>
-        <tr><td style="padding:4px 0;">📝 Cadastros</td><td style="text-align:right;">${custom3mo.signups} → ${pctChange(custom.signups, custom3mo.signups)}</td></tr>
-        <tr><td style="padding:4px 0;">💳 Conversão</td><td style="text-align:right;">${custom3mo.signups > 0 ? Math.round((custom3mo.paidOfSignups / custom3mo.signups) * 10000) / 100 : 0}% → ${pctChange(conversionRate, custom3mo.signups > 0 ? (custom3mo.paidOfSignups / custom3mo.signups) * 100 : 0)}</td></tr>
       </table>
     </div>`;
 
@@ -378,15 +340,12 @@ async function buildSection(p: Period): Promise<Section> {
       pagaram: custom.paidOfSignups,
       taxa_conversao_pct: conversionRate,
       renovacoes: custom.renewals,
-      taxa_renovacao_pct: renewalRate,
+      taxa_renovacao_vs_perda_pct: renewalRate,
       perderam_assinatura: custom.churned,
       faturamento: panel.revenue_period,
-      faturamento_3_meses_atras: panel3mo.revenue_period,
       assinantes_ativos_agora: panel.active_now,
-      assinantes_ativos_3_meses_atras: panel3mo.active_now,
       taxa_retencao_pct: panel.churn.retention_rate,
       taxa_retencao_periodo_anterior_pct: panel.churn.compare.retention_rate,
-      cadastros_3_meses_atras: custom3mo.signups,
     },
   };
 }
@@ -456,16 +415,24 @@ Deno.serve(async (req) => {
   }
 
   // ✅ 01/08: força o tipo de período pra facilitar testar/conferir preview
-  // sem esperar a data real (ex.: ver o "mês inteiro" sem ser dia 1). Uso
-  // normal do cron não manda body, cai no auto-detect por data.
+  // sem esperar a data real (ex.: ver o "mês inteiro" sem ser dia 1). month/
+  // year opcionais junto de force_period:"monthly" pra mirar um mês
+  // específico (senão usa o mês anterior ao de hoje). Uso normal do cron
+  // não manda body, cai no auto-detect por data.
   const body = await req.json().catch(() => ({}));
   const forcePeriod = typeof body?.force_period === "string" ? body.force_period : null;
+  const forceMonth = typeof body?.month === "number" ? body.month : null;
+  const forceYear = typeof body?.year === "number" ? body.year : null;
 
   const today = getBrasiliaTodayParts();
   const isFirstDay = forcePeriod ? forcePeriod === "monthly" : today.day === 1;
   const isSunday = forcePeriod ? forcePeriod === "weekly" : today.weekday === "Sun";
 
-  const mainPeriod = isFirstDay ? buildMonthlyPeriod(today) : buildDailyPeriod(today);
+  const mainPeriod = isFirstDay
+    ? forceMonth && forceYear
+      ? buildMonthlyPeriodForMonth(forceYear, forceMonth)
+      : buildMonthlyPeriod(today)
+    : buildDailyPeriod(today);
   const sections: Section[] = [await buildSection(mainPeriod)];
 
   if (isSunday) {
