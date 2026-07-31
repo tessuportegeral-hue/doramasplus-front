@@ -325,7 +325,7 @@ async function fireMetaCAPI(phone: string, plan: string, sessionData: any, recei
       ? Deno.env.get("META_ACCESS_TOKEN_WA_8218") || ""
       : Deno.env.get("META_ACCESS_TOKEN_WA") || "";
     if (!token) { console.error("[meta capi] token vazio para conta", account); return; }
-    const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 16.90;
+    const value = plan === "quarterly" ? 47.90 : plan === "series" ? 10.00 : 17.90;
     const contentName = plan === "series" ? "DoramasPlus 1 Serie" : plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
     const hashedPhone = await sha256hex(digitsOnly(phone));
     const userData: Record<string, unknown> = { ph: [hashedPhone] };
@@ -709,7 +709,7 @@ async function createUserAccount(name: string, phone: string, email?: string) {
 }
 async function createAsaasPix(userEmail: string, userName: string, plan: "monthly"|"quarterly"|"series", phone: string, extra?: Record<string,unknown>) {
   const key=getAsaasKey();
-  const amountCents=plan==="quarterly"?4790:plan==="series"?1000:1690;
+  const amountCents=plan==="quarterly"?4790:plan==="series"?1000:1790;
   const amount=amountCents/100;
   const externalReference=`salesbot_asaas|${digitsOnly(phone)}|${plan}|${Date.now()}`;
   const description=plan==="quarterly"?"DoramasPlus Trimestral":plan==="series"?"DoramasPlus 1 Serie":"DoramasPlus Mensal";
@@ -862,7 +862,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     const change=detectPlanChange(msg);
     if(change==="series"){await gerarPixSeries(fromE164,sessionData,receivingPhoneNumberId);return;}
     if(change==="menu"){
-      await sendText(fromE164,`Sem problema! 😊 Qual voce prefere?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$16,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+      await sendText(fromE164,`Sem problema! 😊 Qual voce prefere?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$17,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
       await updateSession(fromE164,"choose_plan",sessionData);
       return;
     }
@@ -872,7 +872,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
       if(email&&name){
         await finalizarCadastro(fromE164,name,email,{...sessionData,plan:change},receivingPhoneNumberId);
       } else {
-        const lbl=change==="quarterly"?"Trimestral (R$47,90)":"Mensal (R$16,90)";
+        const lbl=change==="quarterly"?"Trimestral (R$47,90)":"Mensal (R$17,90)";
         await sendText(fromE164,`Perfeito, vamos de ${lbl}! 😊\n\nMe passa seu *nome* e *email* pra eu criar sua conta:\n\nExemplo: _Joao Silva / joao@gmail.com_`);
         await updateSession(fromE164,"collect_info",{...sessionData,plan:change});
       }
@@ -890,12 +890,12 @@ async function processMessage(fromE164: string, messageText: string, displayName
     }
     if(existing&&!existing.subscription){
       const name=existing.profile.name||displayName||"";
-      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$16,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`,receivingPhoneNumberId);
+      await sendText(fromE164,`Oi${name?" "+name:""}! 😊 Encontrei sua conta aqui.\n\nSua assinatura venceu, mas e facil renovar!\n\n1️⃣ 1 Serie — R$10,00\n2️⃣ Mensal — R$17,90\n3️⃣ Trimestral — R$47,90\n\nResponda *1*, *2* ou *3*!`,receivingPhoneNumberId);
       await updateSession(fromE164,"choose_plan",{...sessionData,email:existing.profile.email,is_renewal:true});
       return;
     }
     await sendText(fromE164,
-      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$16,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\n_✏️ Escreva *voltar* a qualquer momento para trocar de opcao_\n\nResponda *1*, *2* ou *3*!`,
+      `Oiie! Tudo bem? 🫰\nMuito Prazer, me chamo Stefano!\nFundador do www.doramasplus.com.br\n\n🚨 Promocao valida somente HOJE\n\nE sim temos a serie do anuncio que voce acabou de ver e muito mais!!!\n\n📦 Escolha seu pacote:\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (voce recebe aqui no WhatsApp)\n2️⃣ *1 MES no APP* — R$17,90 (acesso completo)\n3️⃣ *TRIMESTRAL no APP* — R$47,90 (melhor custo-beneficio!)\n\n_✏️ Escreva *voltar* a qualquer momento para trocar de opcao_\n\nResponda *1*, *2* ou *3*!`,
       receivingPhoneNumberId
     );
     await updateSession(fromE164,"choose_plan",{...sessionData,is_renewal:false});
@@ -904,7 +904,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
 
   if(step==="choose_plan"){
     const option=detectOption(msg);
-    if(!option){await sendText(fromE164,`Responde *1* (1 Serie R$10), *2* (Mensal R$16,90) ou *3* (Trimestral R$47,90) 😊`);return;}
+    if(!option){await sendText(fromE164,`Responde *1* (1 Serie R$10), *2* (Mensal R$17,90) ou *3* (Trimestral R$47,90) 😊`);return;}
     if(option==="series"){
       await gerarPixSeries(fromE164, sessionData, receivingPhoneNumberId);
     } else {
@@ -1045,7 +1045,7 @@ async function processMessage(fromE164: string, messageText: string, displayName
     return;
   }
 
-  await sendText(fromE164,`Oiie! 🫰 Quer aproveitar nossos pacotes?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$16,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
+  await sendText(fromE164,`Oiie! 🫰 Quer aproveitar nossos pacotes?\n\n1️⃣ *1 Serie (a do anuncio) por R$10,00* (recebe aqui no WhatsApp)\n2️⃣ *Mensal* — R$17,90\n3️⃣ *Trimestral* — R$47,90\n\nResponda *1*, *2* ou *3*!`);
   await updateSession(fromE164,"choose_plan",sessionData);
 }
 
@@ -1053,7 +1053,7 @@ async function finalizarCadastro(fromE164: string, name: string, email: string, 
   if (!(await cbAllowPix())) return;
   if (!(await pixDayAllow(fromE164))) return;
   const plan=(sessionData.plan as "monthly"|"quarterly")||"monthly";
-  const planLabel=plan==="quarterly"?"Trimestral — R$47,90":"Mensal — R$16,90";
+  const planLabel=plan==="quarterly"?"Trimestral — R$47,90":"Mensal — R$17,90";
   const acc=await createUserAccount(name,fromE164,email);
   let pix:any=null;
   try{pix=await createAsaasPix(email,name,plan,fromE164,{
