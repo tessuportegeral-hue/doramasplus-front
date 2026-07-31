@@ -13,6 +13,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.33.0";
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
+const FROM_EMAIL = "\"DoramasPlus\" <noreply@doramasplus.com.br>";
+const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 
 // mesmo padrão de segredo hardcoded já usado no cron job da whatsapp-sales-bot
 // (x-followup-secret) — a função é verify_jwt:false pra ser chamada pelo pg_cron.
@@ -27,6 +30,39 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+// ✅ 31/07: antes essa auditoria só gravava em stripe_active_audit_log, sem
+// nunca avisar ninguém — passa a mandar email TODO DIA (mesmo sem
+// divergência), pro admin saber que rodou e não confundir "silêncio" com
+// "travou". Mesmo padrão do asaas-integrity-check.
+async function sendEmail(mismatchRows: any[], checked: number, checkFailures: number) {
+  if (!RESEND_API_KEY || !ALERT_EMAIL) return;
+  const hasIssues = mismatchRows.length > 0;
+  const list = mismatchRows
+    .map((r) => `• user_id ${r.user_id} — banco diz "${r.db_status}", Stripe diz "${r.stripe_status}" — sub ${r.stripe_subscription_id}`)
+    .join("<br>");
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+    body: JSON.stringify({
+      from: FROM_EMAIL,
+      to: [ALERT_EMAIL],
+      subject: hasIssues
+        ? `⚠️ Stripe: ${mismatchRows.length} assinatura(s) divergente(s) do painel`
+        : `✅ Stripe: checagem diária ok, 0 divergências`,
+      html: hasIssues
+        ? `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
+        <p>Checagem diária Stripe conferiu ${checked} assinatura(s) "ativa(s)" no banco contra o status real na Stripe e achou divergência(s) — provável webhook de cancelamento perdido.</p>
+        <p>${list}</p>
+        ${checkFailures ? `<p style="color:#c0392b">${checkFailures} verificação(ões) falharam ao consultar a Stripe.</p>` : ""}
+        <p style="color:#888">Isso não corrige nada automaticamente. Detalhe completo em stripe_active_audit_log. Verificar manualmente antes de cortar acesso.</p>
+      </div>`
+        : `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
+        <p>Checagem diária Stripe conferiu ${checked} assinatura(s) "ativa(s)" no banco contra a Stripe e não encontrou nenhuma divergência. Tudo certo. ✅</p>
+      </div>`,
+    }),
+  }).catch((e) => console.error("[stripe-active-audit] email fail:", String(e)));
 }
 
 serve(async (req) => {
@@ -102,6 +138,9 @@ serve(async (req) => {
         );
       }
     }
+
+    const mismatchRows = logRows.filter((r) => r.mismatch);
+    await sendEmail(mismatchRows, rows.length, checkFailures);
 
     return new Response(
       JSON.stringify({

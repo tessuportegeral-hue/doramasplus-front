@@ -14,18 +14,28 @@ const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") || "tessuportegeral@gmail.com";
 // ✅ 25/07: WhatsApp texto livre só entrega com janela de conversa aberta
 // (24h) — mesma limitação do disjuntor do whatsapp-sales-bot. Email sempre
 // vai junto como canal confiável; WhatsApp é bônus best-effort.
-async function sendEmail(text: string) {
-  if (!RESEND_API_KEY || !ALERT_EMAIL) return;
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: [ALERT_EMAIL],
-      subject: "📋 DoramasPlus — Relatório",
-      html: `<pre style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">${text}</pre>`,
-    }),
-  }).catch((e) => console.error("[admin-notify] email fail:", String(e)));
+async function sendEmail(text: string): Promise<{ ok: boolean; status?: number; body?: unknown; reason?: string }> {
+  if (!RESEND_API_KEY || !ALERT_EMAIL) {
+    return { ok: false, reason: !RESEND_API_KEY ? "missing_RESEND_API_KEY" : "missing_ALERT_EMAIL" };
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: [ALERT_EMAIL],
+        subject: "📋 DoramasPlus — Relatório",
+        html: `<pre style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">${text}</pre>`,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) console.error("[admin-notify] email rejected:", res.status, JSON.stringify(body));
+    return { ok: res.ok, status: res.status, body };
+  } catch (e) {
+    console.error("[admin-notify] email fail:", String(e));
+    return { ok: false, reason: String(e) };
+  }
 }
 
 async function sendWhatsApp(text: string) {
@@ -73,7 +83,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, error: "missing message" }), { status: 400 });
   }
 
-  const [, waResult] = await Promise.all([sendEmail(message), sendWhatsApp(message)]);
+  const [emailResult, waResult] = await Promise.all([sendEmail(message), sendWhatsApp(message)]);
 
-  return new Response(JSON.stringify({ ok: true, whatsapp: waResult }), { status: 200 });
+  return new Response(JSON.stringify({ ok: true, email: emailResult, whatsapp: waResult }), { status: 200 });
 });
