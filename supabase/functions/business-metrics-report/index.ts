@@ -406,6 +406,101 @@ async function buildSection(p: Period): Promise<Section> {
   };
 }
 
+// ✅ 01/08: "funil de lealdade" — composição da base ativa por número de
+// renovações já feitas (0, 1, 2, 3...) + % de renovação de referência
+// (último mês fechado). Só entra no relatório MENSAL (não no diário/semanal).
+// Sem limite fixo de faixa — abre sozinho conforme a base for envelhecendo.
+// Só conta a partir de 18/03/2026 (implantação do subscription_renewals).
+async function buildLoyaltyTierHtml(): Promise<string> {
+  const tierRows = await runSql(`
+    with ativos as (
+      select s.user_id
+      from subscriptions s
+      where s.status in ('active','trialing','paid')
+        and (
+          (coalesce(s.end_at, s.current_period_end) is null and s.provider is null)
+          or coalesce(s.end_at, s.current_period_end) > now()
+        )
+    ),
+    contagem as (
+      select a.user_id,
+        (select count(*) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as qtd_renovacoes
+      from ativos a
+    )
+    select qtd_renovacoes as faixa, count(*) as qtd
+    from contagem
+    group by 1
+    order by 1
+  `);
+
+  const tierRetRows = await runSql(`
+    with period as (
+      select date_trunc('month', now()) - interval '1 month' as p_start, date_trunc('month', now()) as p_end
+    ),
+    cohort_a as (
+      select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+      from subscription_renewals sr, period
+      where sr.renewed_at <= period.p_start
+      order by sr.user_id, sr.renewed_at desc
+    ),
+    cohort_a_active as (
+      select user_id from cohort_a, period
+      where (end_at is null and provider is null) or end_at > period.p_start
+    ),
+    tiered as (
+      select ca.user_id,
+        (select count(*) from subscription_renewals sr, period where sr.user_id = ca.user_id and sr.is_renewal = true and sr.renewed_at <= period.p_start) as faixa
+      from cohort_a_active ca, period
+    ),
+    retained as (
+      select t.user_id, t.faixa
+      from tiered t
+      join subscriptions s on s.user_id = t.user_id, period
+      where s.status in ('active','trialing','paid')
+        and ( (coalesce(s.end_at,s.current_period_end) is null and s.provider is null)
+              or coalesce(s.end_at,s.current_period_end) > period.p_end )
+    )
+    select faixa, count(*) as cohort, (select count(*) from retained r where r.faixa = tiered.faixa) as retidos
+    from tiered
+    group by faixa
+    order by faixa
+  `);
+
+  const totalAtivos = tierRows.reduce((acc, r) => acc + Number(r.qtd || 0), 0);
+  const retMap = new Map(tierRetRows.map((r) => [Number(r.faixa), r]));
+
+  const rowsHtml = tierRows
+    .map((r) => {
+      const faixa = Number(r.faixa || 0);
+      const qtd = Number(r.qtd || 0);
+      const pct = totalAtivos > 0 ? Math.round((qtd / totalAtivos) * 1000) / 10 : 0;
+      const ref = retMap.get(faixa);
+      const label = faixa === 0 ? "0 (1º ciclo)" : `${faixa}x`;
+      const refCohort = ref ? Number(ref.cohort || 0) : 0;
+      const refRetidos = ref ? Number(ref.retidos || 0) : 0;
+      const refTaxa = refCohort > 0 ? Math.round((refRetidos / refCohort) * 1000) / 10 : null;
+      const refLabel = refTaxa !== null ? `${refTaxa}% (${refRetidos}/${refCohort})` : "—";
+      return `<tr><td style="padding:4px 8px 4px 0;">${label}</td><td style="padding:4px 8px;text-align:right;font-weight:bold;">${qtd}</td><td style="padding:4px 8px;text-align:right;color:#aaa;">${pct}%</td><td style="padding:4px 0;text-align:right;color:#aaa;">${refLabel}</td></tr>`;
+    })
+    .join("");
+
+  return `
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#fff;margin:0 0 8px 0;">🪜 Funil de lealdade (por número de renovações)</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
+        <tr style="color:#888;font-size:11px;"><td style="padding:0 8px 4px 0;">Faixa</td><td style="padding:0 8px;text-align:right;">Ativos agora</td><td style="padding:0 8px;text-align:right;">% da base</td><td style="padding:0;text-align:right;">Renovação (mês passado)</td></tr>
+        ${rowsHtml}
+      </table>
+      <p style="color:#888;font-size:11px;margin-top:8px;">
+        Cada renovação sobe a pessoa uma faixa. Faixa 0 é quem nunca renovou (maior risco, ~20% continuam); quanto
+        mais alta a faixa, mais resistente ao cancelamento (a % de renovação sobe junto). Só conta a partir de
+        18/03/2026 (quando começamos a guardar esse histórico) — antes disso a tabela de assinaturas era
+        sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa já tinha renovado. Faixas abrem sozinhas
+        conforme mais gente for acumulando renovações.
+      </p>
+    </div>`;
+}
+
 async function generateOpinion(sectionsData: Record<string, unknown>[]): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) return null;
   try {
@@ -437,7 +532,7 @@ async function generateOpinion(sectionsData: Record<string, unknown>[]): Promise
   }
 }
 
-async function sendEmail(sections: Section[], subjectLabel: string) {
+async function sendEmail(sections: Section[], subjectLabel: string, extraHtml: string = "") {
   if (!RESEND_API_KEY || !ALERT_EMAIL) return;
   const opinion = await generateOpinion(sections.map((s) => s.forOpinion));
   const opinionHtml = opinion
@@ -450,6 +545,7 @@ async function sendEmail(sections: Section[], subjectLabel: string) {
     <div style="font-family:Arial,sans-serif;background:#0f0f0f;padding:20px;">
       <h2 style="color:#fff;">📈 DoramasPlus — Relatório de negócio (${subjectLabel})</h2>
       ${sections.map((s) => s.html).join("")}
+      ${extraHtml}
       ${opinionHtml}
       <p style="color:#888;font-size:11px;margin-top:16px;">Gerado às ${new Date().toISOString()}.</p>
     </div>`;
@@ -495,8 +591,11 @@ Deno.serve(async (req) => {
     sections.push(await buildSection(buildWeeklyPeriod(today)));
   }
 
+  // ✅ 01/08: funil de lealdade só entra no relatório mensal
+  const extraHtml = isFirstDay ? await buildLoyaltyTierHtml() : "";
+
   const subjectLabel = isFirstDay ? "mês inteiro" : isSunday ? "diário + semanal" : "diário";
-  await sendEmail(sections, subjectLabel);
+  await sendEmail(sections, subjectLabel, extraHtml);
 
   return new Response(JSON.stringify({ ok: true, is_first_day: isFirstDay, is_sunday: isSunday, sections: sections.map((s) => s.title) }), {
     status: 200,

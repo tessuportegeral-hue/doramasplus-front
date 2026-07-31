@@ -347,6 +347,86 @@ Deno.serve(async (req) => {
     const loyalTwice = Number(loyalRow.fieis_2x || 0);
     const loyalTotal = Number(loyalRow.ativos_total || 0);
 
+    // ✅ 01/08: composição da base ativa por número de renovações já feitas
+    // (0 = 1º ciclo, 1, 2, 3...) — mostra o "funil de lealdade". SEM limite
+    // fixo (nada de "4+") — agrupa pelo valor exato, então conforme os meses
+    // passam e gente acumula mais renovações, novas faixas aparecem sozinhas.
+    const tierQuery = `
+      with ativos as (
+        select s.user_id
+        from subscriptions s
+        where s.status in ('active','trialing','paid')
+          and (
+            (coalesce(s.end_at, s.current_period_end) is null and s.provider is null)
+            or coalesce(s.end_at, s.current_period_end) > now()
+          )
+      ),
+      contagem as (
+        select a.user_id,
+          (select count(*) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as qtd_renovacoes
+        from ativos a
+      )
+      select qtd_renovacoes as faixa, count(*) as qtd
+      from contagem
+      group by 1
+      order by 1
+    `;
+    const { data: tierRowsRaw, error: tierErr } = await admin.rpc('exec_sql', { q: tierQuery });
+    if (tierErr) console.error('[admin-analytics] tier_query_failed:', tierErr);
+    const tierComposition = (tierRowsRaw || []).map((r: any) => ({
+      faixa: Number(r.faixa || 0),
+      qtd: Number(r.qtd || 0),
+    }));
+
+    // % de renovação de cada faixa, usando o último mês FECHADO como
+    // referência (não dá pra medir isso "agora" — precisa de um período
+    // fechado inteiro pra comparar início x fim). Mesma lógica sem limite
+    // fixo de faixa.
+    const tierRetentionQuery = `
+      with period as (
+        select date_trunc('month', now()) - interval '1 month' as p_start, date_trunc('month', now()) as p_end
+      ),
+      cohort_a as (
+        select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+        from subscription_renewals sr, period
+        where sr.renewed_at <= period.p_start
+        order by sr.user_id, sr.renewed_at desc
+      ),
+      cohort_a_active as (
+        select user_id from cohort_a, period
+        where (end_at is null and provider is null) or end_at > period.p_start
+      ),
+      tiered as (
+        select ca.user_id,
+          (select count(*) from subscription_renewals sr, period where sr.user_id = ca.user_id and sr.is_renewal = true and sr.renewed_at <= period.p_start) as faixa
+        from cohort_a_active ca, period
+      ),
+      retained as (
+        select t.user_id, t.faixa
+        from tiered t
+        join subscriptions s on s.user_id = t.user_id, period
+        where s.status in ('active','trialing','paid')
+          and ( (coalesce(s.end_at,s.current_period_end) is null and s.provider is null)
+                or coalesce(s.end_at,s.current_period_end) > period.p_end )
+      )
+      select faixa, count(*) as cohort, (select count(*) from retained r where r.faixa = tiered.faixa) as retidos
+      from tiered
+      group by faixa
+      order by faixa
+    `;
+    const { data: tierRetRowsRaw, error: tierRetErr } = await admin.rpc('exec_sql', { q: tierRetentionQuery });
+    if (tierRetErr) console.error('[admin-analytics] tier_retention_query_failed:', tierRetErr);
+    const tierRetention = (tierRetRowsRaw || []).map((r: any) => {
+      const cohort = Number(r.cohort || 0);
+      const retidos = Number(r.retidos || 0);
+      return {
+        faixa: Number(r.faixa || 0),
+        cohort,
+        retidos,
+        taxa_pct: cohort > 0 ? Math.round((retidos / cohort) * 10000) / 100 : 0,
+      };
+    });
+
     const churnACohort = Number(rev.churn_a_cohort || 0);
     const churnARetained = Number(rev.churn_a_retained || 0);
     const churnBCohort = Number(rev.churn_b_cohort || 0);
@@ -379,6 +459,8 @@ Deno.serve(async (req) => {
         renewed_once: loyalOnce,
         renewed_twice_plus: loyalTwice,
       },
+      tier_composition: tierComposition,
+      tier_retention_reference: tierRetention,
       churn: {
         period: {
           new: Number(rev.churn_a_new || 0),

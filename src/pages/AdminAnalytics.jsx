@@ -167,6 +167,11 @@ export default function AdminAnalytics() {
     renewed_twice_plus: 0,
   });
 
+  // Composição por faixa de renovações (0, 1, 2, 3...) + % de renovação de
+  // referência por faixa (baseada no último mês fechado)
+  const [tierComposition, setTierComposition] = useState([]);
+  const [tierRetention, setTierRetention] = useState([]);
+
   // Retenção D30
   const [retD30, setRetD30] = useState({
     base_com_30_dias: 0,
@@ -431,6 +436,9 @@ export default function AdminAnalytics() {
         renewed_once: safeNum(loyalData.renewed_once),
         renewed_twice_plus: safeNum(loyalData.renewed_twice_plus),
       });
+
+      setTierComposition(Array.isArray(pix.tier_composition) ? pix.tier_composition : []);
+      setTierRetention(Array.isArray(pix.tier_retention_reference) ? pix.tier_retention_reference : []);
 
       const churnPeriod = pix.churn?.period || {};
       const churnCompare = pix.churn?.compare_period || {};
@@ -942,6 +950,57 @@ export default function AdminAnalytics() {
               <div className="mt-2 text-xs text-white/45">
                 Atualiza sempre que a página recarrega ou o filtro muda (não é um número fixo salvo em algum lugar).
                 Baseado em subscription_renewals (histórico de pagamentos) — não usa nenhum número externo (comunidade, etc.).
+              </div>
+            </div>
+
+            {/* Funil de lealdade — composição por número de renovações */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                Funil de lealdade (por número de renovações)
+                <InfoTooltip text="Cada vez que a pessoa paga de novo (renova), ela sobe uma casinha nessa escada. Quem nunca pagou de novo tá na casinha 0 — é o mais fácil de sumir (só ~20% desses continuam). Quanto mais casinha a pessoa sobe, mais difícil ela abandonar (a % de quem continua vai subindo). É tipo uma peneira: a cada mês, uma parte cai fora, e quem sobra vai ficando cada vez mais 'grudado'." />
+              </div>
+
+              <div className="rounded-2xl bg-white/5 border border-white/10 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-white/50 text-xs border-b border-white/10">
+                      <th className="px-4 py-2 font-medium">Faixa</th>
+                      <th className="px-4 py-2 font-medium text-right">Ativos agora</th>
+                      <th className="px-4 py-2 font-medium text-right">% da base</th>
+                      <th className="px-4 py-2 font-medium text-right">
+                        <span className="inline-flex items-center gap-1">
+                          Renovação estimada
+                          <InfoTooltip text="Não dá pra medir 'agora' — precisa de um período fechado inteiro pra comparar quem tinha no início com quem sobrou no fim. Por isso essa coluna usa o ÚLTIMO MÊS FECHADO como referência, não o momento atual." />
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tierComposition.map((row) => {
+                      const totalAtivos = tierComposition.reduce((acc, r) => acc + r.qtd, 0);
+                      const pct = totalAtivos > 0 ? ((row.qtd / totalAtivos) * 100).toFixed(1) : "0.0";
+                      const refRow = tierRetention.find((r) => r.faixa === row.faixa);
+                      const label = row.faixa === 0 ? "0 (1º ciclo)" : `${row.faixa}x`;
+                      return (
+                        <tr key={row.faixa} className="border-b border-white/5 last:border-0">
+                          <td className="px-4 py-2 text-white/80">{label}</td>
+                          <td className="px-4 py-2 text-right font-medium">{row.qtd}</td>
+                          <td className="px-4 py-2 text-right text-white/60">{pct}%</td>
+                          <td className="px-4 py-2 text-right text-white/60">
+                            {refRow ? `${refRow.taxa_pct}% (${refRow.retidos}/${refRow.cohort})` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
+                disso a tabela de assinaturas era sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa
+                já tinha renovado. Quem já assinava antes dessa data pode aparecer numa faixa mais baixa do que
+                realmente é. As faixas abrem sozinhas conforme mais gente for acumulando renovações com o tempo.
               </div>
             </div>
 
