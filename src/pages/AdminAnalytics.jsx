@@ -160,6 +160,13 @@ export default function AdminAnalytics() {
     mrr_quarterly_estimated: 0,
   });
 
+  // "Assinantes fiéis" (estimativa) — sempre "agora", independe do filtro de período
+  const [loyal, setLoyal] = useState({
+    active_total: 0,
+    renewed_once: 0,
+    renewed_twice_plus: 0,
+  });
+
   // Retenção D30
   const [retD30, setRetD30] = useState({
     base_com_30_dias: 0,
@@ -416,6 +423,13 @@ export default function AdminAnalytics() {
         base_com_30_dias: safeNum(pix.d30_base),
         ainda_ativos: safeNum(pix.d30_retained),
         retencao_d30: safeNum(pix.d30_rate),
+      });
+
+      const loyalData = pix.loyal || {};
+      setLoyal({
+        active_total: safeNum(loyalData.active_total),
+        renewed_once: safeNum(loyalData.renewed_once),
+        renewed_twice_plus: safeNum(loyalData.renewed_twice_plus),
       });
 
       const churnPeriod = pix.churn?.period || {};
@@ -895,6 +909,40 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
+            </div>
+
+            {/* Assinantes fiéis (estimativa) — sempre "agora", não depende do filtro de período */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2">Assinantes fiéis (estimativa)</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-6">
+                  {renderCard(
+                    "Fiéis (já renovaram 1x+)",
+                    `${loyal.renewed_once}`,
+                    <Users className="w-5 h-5 text-green-300" />,
+                    `De ${loyal.active_total} ativos agora`,
+                    "ok",
+                    "De quem está pagando agora, quantos já renovaram pelo menos 1 vez — ou seja, já provaram que voltam a pagar, não estão só no primeiro ciclo. É a melhor estimativa de 'público fiel de verdade' que dá pra tirar do banco (confiança ~75-85%: a lógica é sólida, mas depende do histórico de renovações estar completo desde o início)."
+                  )}
+                </div>
+
+                <div className="md:col-span-6">
+                  {renderCard(
+                    "Fiéis raiz (2x+ renovações)",
+                    `${loyal.renewed_twice_plus}`,
+                    <Users className="w-5 h-5 text-purple-300" />,
+                    `De ${loyal.active_total} ativos agora`,
+                    "default",
+                    "Versão mais dura: só quem já renovou 2 vezes ou mais (ficou pelo menos 3 ciclos de pagamento). É o núcleo mais resistente da base, tende a ser mais estável que o número de cima."
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                Atualiza sempre que a página recarrega ou o filtro muda (não é um número fixo salvo em algum lugar).
+                Baseado em subscription_renewals (histórico de pagamentos) — não usa nenhum número externo (comunidade, etc.).
+              </div>
             </div>
 
             {/* Churn / Retenção (período selecionado vs. comparação) */}

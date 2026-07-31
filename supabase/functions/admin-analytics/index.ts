@@ -313,6 +313,40 @@ Deno.serve(async (req) => {
     const d30Base = d30BaseIds.length;
     const d30Rate = d30Base > 0 ? Math.round((d30Retained / d30Base) * 10000) / 100 : 0;
 
+    // ✅ 01/08: "assinantes fiéis" — de quem está ativo AGORA, quantos já
+    // renovaram pelo menos 1x (não é o primeiro ciclo, já provou que volta a
+    // pagar). Independe do filtro de período (é sempre "agora"), mesma lógica
+    // usada na conversa com o usuário pra estimar a base fiel (~1.184 batendo
+    // perto do público da comunidade WhatsApp, ~1.040).
+    const loyalQuery = `
+      with ativos as (
+        select s.user_id
+        from subscriptions s
+        where s.status in ('active','trialing','paid')
+          and (
+            (coalesce(s.end_at, s.current_period_end) is null and s.provider is null)
+            or coalesce(s.end_at, s.current_period_end) > now()
+          )
+      ),
+      flagged as (
+        select a.user_id,
+          exists(select 1 from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as renewed_once,
+          (select count(*) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) >= 2 as renewed_twice
+        from ativos a
+      )
+      select
+        count(*) as ativos_total,
+        count(*) filter (where renewed_once) as fieis_1x,
+        count(*) filter (where renewed_twice) as fieis_2x
+      from flagged
+    `;
+    const { data: loyalRows, error: loyalErr } = await admin.rpc('exec_sql', { q: loyalQuery });
+    if (loyalErr) console.error('[admin-analytics] loyal_query_failed:', loyalErr);
+    const loyalRow = (loyalRows && loyalRows[0]) || {};
+    const loyalOnce = Number(loyalRow.fieis_1x || 0);
+    const loyalTwice = Number(loyalRow.fieis_2x || 0);
+    const loyalTotal = Number(loyalRow.ativos_total || 0);
+
     const churnACohort = Number(rev.churn_a_cohort || 0);
     const churnARetained = Number(rev.churn_a_retained || 0);
     const churnBCohort = Number(rev.churn_b_cohort || 0);
@@ -340,6 +374,11 @@ Deno.serve(async (req) => {
       d30_base: d30Base,
       d30_retained: d30Retained,
       d30_rate: d30Rate,
+      loyal: {
+        active_total: loyalTotal,
+        renewed_once: loyalOnce,
+        renewed_twice_plus: loyalTwice,
+      },
       churn: {
         period: {
           new: Number(rev.churn_a_new || 0),
