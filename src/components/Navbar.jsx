@@ -4,7 +4,6 @@ import DeleteAccountModal from '@/components/DeleteAccountModal';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { motion } from 'framer-motion';
 import {
-  Play,
   User,
   LogOut,
   Menu,
@@ -353,7 +352,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               whileHover={{ scale: 1.1, rotate: 360 }}
               transition={{ duration: 0.3 }}
             >
-              <Play className="w-8 h-8 text-purple-500 fill-purple-500" />
+              <img src="/logo-d-mark.png" alt="DoramasPlus" className="w-8 h-8 object-contain" />
             </motion.div>
             <span className="text-xl font-bold text-gradient">DoramasPlus</span>
           </Link>
