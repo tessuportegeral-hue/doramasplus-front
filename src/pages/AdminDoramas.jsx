@@ -95,6 +95,10 @@ export default function AdminDoramas() {
   const [requestsTab, setRequestsTab] = useState('pendentes');
   const [requestsHistory, setRequestsHistory] = useState([]);
 
+  // separa quem já recebeu o aviso "aguardar" pra não misturar com pedido recém-chegado
+  const pendentesNaoAvisados = doramaRequests.filter((g) => !g.any_acknowledged);
+  const aguardandoGrupos = doramaRequests.filter((g) => g.any_acknowledged);
+
   // ✅ Paginação 10 em 10
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -753,7 +757,18 @@ export default function AdminDoramas() {
                     : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                 }`}
               >
-                Pendentes
+                Pendentes{pendentesNaoAvisados.length > 0 ? ` (${pendentesNaoAvisados.length})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRequestsTab('aguardando')}
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  requestsTab === 'aguardando'
+                    ? 'bg-amber-600 text-white border-amber-500'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                ⏳ Aguardando{aguardandoGrupos.length > 0 ? ` (${aguardandoGrupos.length})` : ''}
               </button>
               <button
                 type="button"
@@ -805,11 +820,15 @@ export default function AdminDoramas() {
                   ))}
                 </div>
               )
-            ) : doramaRequests.length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum pedido pendente no momento.</p>
+            ) : (requestsTab === 'aguardando' ? aguardandoGrupos : pendentesNaoAvisados).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {requestsTab === 'aguardando'
+                  ? 'Nenhum pedido aguardando no momento.'
+                  : 'Nenhum pedido pendente no momento.'}
+              </p>
             ) : (
               <div className="space-y-2">
-                {doramaRequests.map((g) => {
+                {(requestsTab === 'aguardando' ? aguardandoGrupos : pendentesNaoAvisados).map((g) => {
                   const key = g.dorama_name;
                   const isOpen = expandedRequestGroup === key;
                   return (
