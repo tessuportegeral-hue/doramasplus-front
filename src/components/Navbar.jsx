@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import DeleteAccountModal from '@/components/DeleteAccountModal';
-import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { motion } from 'framer-motion';
 import {
   User,
@@ -21,10 +19,6 @@ import {
   HeartHandshake,
   Eye,
   Sparkles,
-  Gift,
-  KeyRound,
-  Trash2,
-  UserCircle,
   Heart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,8 +37,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { user, isAuthenticated } = useAuth();
 
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
@@ -382,7 +374,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="text-slate-300 hover:text-white flex items-center gap-1"
+                      className="text-slate-300 hover:text-white hover:bg-transparent border border-slate-700 hover:border-slate-600 rounded-full h-9 px-4 flex items-center gap-1 transition"
                     >
                       Categorias <ChevronDown className="w-4 h-4 ml-1" />
                     </Button>
@@ -429,19 +421,24 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                 <Button
                   variant="ghost"
                   onClick={() => navigate('/favoritos')}
-                  className={`text-slate-300 hover:text-white flex items-center gap-1.5 ${
-                    location.pathname === '/favoritos' ? 'text-red-400 hover:text-red-300' : ''
+                  className={`hover:bg-transparent border rounded-full h-9 px-4 flex items-center gap-1.5 transition ${
+                    location.pathname === '/favoritos'
+                      ? 'text-red-400 border-red-500/40 hover:text-red-300 hover:border-red-500/60'
+                      : 'text-slate-300 border-slate-700 hover:text-white hover:border-slate-600'
                   }`}
                 >
-                  <Heart className="w-5 h-5" />
+                  <Heart className="w-4 h-4" />
                   Favoritos
                 </Button>
 
                 {isAdmin && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="text-slate-300 hover:text-white">
-                        <Settings className="w-6 h-6" />
+                      <Button
+                        variant="ghost"
+                        className="text-slate-300 hover:text-white hover:bg-transparent border border-slate-700 hover:border-slate-600 rounded-full w-9 h-9 p-0 flex items-center justify-center transition"
+                      >
+                        <Settings className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="bg-slate-900 border-slate-800 text-slate-200 w-56 p-2">
@@ -477,7 +474,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="flex items-center gap-2 px-2 py-1.5 rounded-full hover:bg-slate-800/60 transition group"
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-full border border-slate-700 hover:border-slate-600 hover:bg-slate-800/60 transition group"
                       >
                         <div className="w-8 h-8 rounded-full bg-purple-500/15 border border-purple-500/30 flex items-center justify-center">
                           <User className="w-4 h-4 text-purple-300" />
@@ -540,37 +537,11 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                         onClick={() => navigate('/minha-conta')}
                         className="cursor-pointer focus:bg-slate-800"
                       >
-                        <UserCircle className="w-4 h-4 text-purple-300" />
-                        <span className="ml-2">Minha Assinatura</span>
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onClick={() => navigate('/indicar')}
-                        className="cursor-pointer focus:bg-slate-800"
-                      >
-                        <Gift className="w-4 h-4 text-emerald-300" />
-                        <span className="ml-2">
-                          🎁 Indicar e ganhar dias grátis
-                        </span>
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onClick={() => setChangePasswordOpen(true)}
-                        className="cursor-pointer focus:bg-slate-800"
-                      >
-                        <KeyRound className="w-4 h-4 text-blue-300" />
-                        <span className="ml-2">Trocar senha</span>
+                        <Settings className="w-4 h-4 text-purple-300" />
+                        <span className="ml-2">Configurações</span>
                       </DropdownMenuItem>
 
                       <DropdownMenuSeparator className="bg-slate-800" />
-
-                      <DropdownMenuItem
-                        onClick={() => setDeleteModalOpen(true)}
-                        className="cursor-pointer focus:bg-red-500/10 text-red-400 focus:text-red-300"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="ml-2">Excluir conta</span>
-                      </DropdownMenuItem>
 
                       <DropdownMenuItem
                         onClick={handleLogout}
@@ -699,28 +670,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       onClick={() => { setMobileMenuOpen(false); navigate('/minha-conta'); }}
                       className="flex items-center gap-2 text-slate-200 text-sm text-left"
                     >
-                      <UserCircle className="w-4 h-4 text-purple-300" /> Minha Assinatura
-                    </button>
-
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); navigate('/indicar'); }}
-                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
-                    >
-                      <Gift className="w-4 h-4 text-emerald-300" /> 🎁 Indicar e ganhar dias grátis
-                    </button>
-
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); setChangePasswordOpen(true); }}
-                      className="flex items-center gap-2 text-slate-200 text-sm text-left"
-                    >
-                      <KeyRound className="w-4 h-4 text-blue-300" /> Trocar senha
-                    </button>
-
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); setDeleteModalOpen(true); }}
-                      className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm text-left"
-                    >
-                      <Trash2 className="w-4 h-4" /> Excluir conta
+                      <Settings className="w-4 h-4 text-purple-300" /> Configurações
                     </button>
 
                     <button
@@ -804,16 +754,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
         </div>
       )}
     </nav>
-
-    <DeleteAccountModal
-      isOpen={deleteModalOpen}
-      onClose={() => setDeleteModalOpen(false)}
-    />
-
-    <ChangePasswordModal
-      isOpen={changePasswordOpen}
-      onClose={() => setChangePasswordOpen(false)}
-    />
     </>
   );
 };

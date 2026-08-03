@@ -80,6 +80,13 @@ export default function AdminDoramas() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
 
+  // ✅ Pedidos de dorama (dorama_requests) — o que as pessoas estão pedindo
+  const [doramaRequests, setDoramaRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [requestsTotal, setRequestsTotal] = useState(0);
+  const [requestsError, setRequestsError] = useState('');
+  const [expandedRequestGroup, setExpandedRequestGroup] = useState(null);
+
   // ✅ Paginação 10 em 10
   const PAGE_SIZE = 10;
   const [currentPage, setCurrentPage] = useState(1);
@@ -143,10 +150,35 @@ export default function AdminDoramas() {
         navigate('/');
       } else {
         fetchDoramas();
+        fetchDoramaRequests();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isAuthorized, navigate]);
+
+  const fetchDoramaRequests = async () => {
+    try {
+      setRequestsLoading(true);
+      setRequestsError('');
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const res = await fetch(
+        'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-dorama-requests',
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Erro ao carregar pedidos');
+      setDoramaRequests(data.grouped || []);
+      setRequestsTotal(data.total || 0);
+    } catch (err) {
+      setRequestsError('Não foi possível carregar os pedidos agora.');
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
 
   // ✅ quando trocar aba ou busca, volta pra página 1
   useEffect(() => {
@@ -572,6 +604,70 @@ export default function AdminDoramas() {
             {/* Abas do admin */}
             <AdminTopNav current="doramas" />
           </header>
+
+          {/* Pedidos de dorama — o que as pessoas estão pedindo (via Dora ou via Configurações) */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                📋 Pedidos de Dorama
+                {requestsTotal > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 font-semibold">
+                    {requestsTotal} pendente{requestsTotal > 1 ? 's' : ''}
+                  </span>
+                )}
+              </h2>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fetchDoramaRequests}
+                className="border-slate-700 text-slate-300 hover:bg-slate-800 h-8 px-3 text-xs"
+              >
+                Atualizar
+              </Button>
+            </div>
+
+            {requestsLoading ? (
+              <div className="h-14 rounded-lg bg-slate-800/60 animate-pulse" />
+            ) : requestsError ? (
+              <p className="text-sm text-red-400">{requestsError}</p>
+            ) : doramaRequests.length === 0 ? (
+              <p className="text-sm text-slate-500">Nenhum pedido pendente no momento.</p>
+            ) : (
+              <div className="space-y-2">
+                {doramaRequests.map((g) => {
+                  const key = g.dorama_name;
+                  const isOpen = expandedRequestGroup === key;
+                  return (
+                    <div key={key} className="rounded-lg bg-slate-800/40 border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRequestGroup(isOpen ? null : key)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left"
+                      >
+                        <span className="text-sm font-semibold text-white">{g.dorama_name}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-200 flex-shrink-0">
+                          {g.count} pedido{g.count > 1 ? 's' : ''}
+                        </span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-4 pb-3 space-y-1.5 border-t border-slate-800/80 pt-2">
+                          {g.requests.map((r) => (
+                            <p key={r.id} className="text-xs text-slate-400">
+                              {r.requester_name || r.requester_email || 'Anônimo'}
+                              {r.requester_email && r.requester_name ? ` (${r.requester_email})` : ''}
+                              {' — '}
+                              {new Date(r.created_at).toLocaleDateString('pt-BR')}
+                              {r.source === 'whatsapp' ? ' · via WhatsApp' : ' · via site'}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left Column: Form */}
