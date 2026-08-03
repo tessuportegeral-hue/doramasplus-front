@@ -92,6 +92,8 @@ export default function AdminDoramas() {
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState([]);
   const [requestActionBusy, setRequestActionBusy] = useState(false);
+  const [requestsTab, setRequestsTab] = useState('pendentes');
+  const [requestsHistory, setRequestsHistory] = useState([]);
 
   // ✅ Paginação 10 em 10
   const PAGE_SIZE = 10;
@@ -162,7 +164,7 @@ export default function AdminDoramas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isAuthorized, navigate]);
 
-  const fetchDoramaRequests = async () => {
+  const fetchDoramaRequests = async (wantHistory) => {
     try {
       setRequestsLoading(true);
       setRequestsError('');
@@ -173,12 +175,20 @@ export default function AdminDoramas() {
 
       const res = await fetch(
         'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-dorama-requests',
-        { headers: { Authorization: `Bearer ${session.access_token}` } }
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ history: !!wantHistory }),
+        }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Erro ao carregar pedidos');
       setDoramaRequests(data.grouped || []);
       setRequestsTotal(data.total || 0);
+      if (wantHistory) setRequestsHistory(data.history || []);
     } catch (err) {
       setRequestsError('Não foi possível carregar os pedidos agora.');
     } finally {
@@ -223,7 +233,7 @@ export default function AdminDoramas() {
       setSearchingGroup(null);
       setDismissingGroup(null);
       setDismissReason('');
-      await fetchDoramaRequests();
+      await fetchDoramaRequests(false);
     } catch {
       toast({ title: 'Erro ao avisar', variant: 'destructive' });
     } finally {
@@ -258,7 +268,7 @@ export default function AdminDoramas() {
       setSearchingGroup(null);
       setCatalogQuery('');
       setCatalogResults([]);
-      await fetchDoramaRequests();
+      await fetchDoramaRequests(false);
     } catch {
       toast({ title: 'Erro ao avisar', variant: 'destructive' });
     } finally {
@@ -705,17 +715,75 @@ export default function AdminDoramas() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={fetchDoramaRequests}
+                onClick={() => fetchDoramaRequests(requestsTab === 'historico')}
                 className="border-slate-700 text-slate-300 hover:bg-slate-800 h-8 px-3 text-xs"
               >
                 Atualizar
               </Button>
             </div>
 
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setRequestsTab('pendentes')}
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  requestsTab === 'pendentes'
+                    ? 'bg-purple-600 text-white border-purple-500'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                Pendentes
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestsTab('historico');
+                  fetchDoramaRequests(true);
+                }}
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  requestsTab === 'historico'
+                    ? 'bg-purple-600 text-white border-purple-500'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                Histórico
+              </button>
+            </div>
+
             {requestsLoading ? (
               <div className="h-14 rounded-lg bg-slate-800/60 animate-pulse" />
             ) : requestsError ? (
               <p className="text-sm text-red-400">{requestsError}</p>
+            ) : requestsTab === 'historico' ? (
+              requestsHistory.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhuma decisão registrada ainda.</p>
+              ) : (
+                <div className="space-y-2">
+                  {requestsHistory.map((h) => (
+                    <div
+                      key={h.id}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-slate-800/40 border border-slate-800 px-4 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{h.dorama_name}</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(h.when).toLocaleDateString('pt-BR')}
+                          {h.status === 'dismissed' && h.reason ? ` — "${h.reason}"` : ''}
+                        </p>
+                      </div>
+                      {h.status === 'resolved' ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 font-semibold flex-shrink-0">
+                          ✅ Adicionado{h.linked_dorama ? ` — ${h.linked_dorama.title}` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-600/20 text-red-300 font-semibold flex-shrink-0">
+                          🚫 Não disponível
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
             ) : doramaRequests.length === 0 ? (
               <p className="text-sm text-slate-500">Nenhum pedido pendente no momento.</p>
             ) : (
@@ -752,10 +820,15 @@ export default function AdminDoramas() {
                               type="button"
                               disabled={requestActionBusy}
                               onClick={() => {
-                                setSearchingGroup(searchingGroup === key ? null : key);
+                                const opening = searchingGroup !== key;
+                                setSearchingGroup(opening ? key : null);
                                 setDismissingGroup(null);
-                                setCatalogQuery('');
-                                setCatalogResults([]);
+                                if (opening) {
+                                  searchCatalog(g.dorama_name);
+                                } else {
+                                  setCatalogQuery('');
+                                  setCatalogResults([]);
+                                }
                               }}
                               className="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 text-xs"
                             >
