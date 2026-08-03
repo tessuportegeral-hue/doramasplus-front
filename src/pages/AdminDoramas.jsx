@@ -86,6 +86,12 @@ export default function AdminDoramas() {
   const [requestsTotal, setRequestsTotal] = useState(0);
   const [requestsError, setRequestsError] = useState('');
   const [expandedRequestGroup, setExpandedRequestGroup] = useState(null);
+  const [searchingGroup, setSearchingGroup] = useState(null);
+  const [dismissingGroup, setDismissingGroup] = useState(null);
+  const [dismissReason, setDismissReason] = useState('');
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [catalogResults, setCatalogResults] = useState([]);
+  const [requestActionBusy, setRequestActionBusy] = useState(false);
 
   // ✅ Paginação 10 em 10
   const PAGE_SIZE = 10;
@@ -177,6 +183,86 @@ export default function AdminDoramas() {
       setRequestsError('Não foi possível carregar os pedidos agora.');
     } finally {
       setRequestsLoading(false);
+    }
+  };
+
+  const callResolveDoramaRequest = async (body) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return null;
+    const res = await fetch(
+      'https://fbngdxhkaueaolnyswgn.supabase.co/functions/v1/admin-resolve-dorama-request',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    return res.json().catch(() => ({}));
+  };
+
+  const handleDismissGroup = async (group, reason) => {
+    try {
+      setRequestActionBusy(true);
+      const ids = group.requests.map((r) => r.id);
+      const result = await callResolveDoramaRequest({
+        action: 'dismiss',
+        ids,
+        dorama_name: group.dorama_name,
+        reason: (reason || '').trim(),
+      });
+      toast({
+        title: 'Aviso enviado',
+        description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) sobre "${group.dorama_name}".`,
+      });
+      setExpandedRequestGroup(null);
+      setSearchingGroup(null);
+      setDismissingGroup(null);
+      setDismissReason('');
+      await fetchDoramaRequests();
+    } catch {
+      toast({ title: 'Erro ao avisar', variant: 'destructive' });
+    } finally {
+      setRequestActionBusy(false);
+    }
+  };
+
+  const searchCatalog = async (q) => {
+    setCatalogQuery(q);
+    if (!q.trim()) {
+      setCatalogResults([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('doramas')
+      .select('id, title, slug')
+      .ilike('title', `%${q.trim()}%`)
+      .limit(6);
+    setCatalogResults(data || []);
+  };
+
+  const handleResolveGroup = async (group, doramaId, doramaTitle) => {
+    try {
+      setRequestActionBusy(true);
+      const ids = group.requests.map((r) => r.id);
+      const result = await callResolveDoramaRequest({ action: 'resolve', ids, dorama_id: doramaId });
+      toast({
+        title: 'Avisado! 🎬',
+        description: `"${doramaTitle}" — ${result?.notified_conversations ?? 0} pessoa(s) avisada(s).`,
+      });
+      setExpandedRequestGroup(null);
+      setSearchingGroup(null);
+      setCatalogQuery('');
+      setCatalogResults([]);
+      await fetchDoramaRequests();
+    } catch {
+      toast({ title: 'Erro ao avisar', variant: 'destructive' });
+    } finally {
+      setRequestActionBusy(false);
     }
   };
 
@@ -660,6 +746,84 @@ export default function AdminDoramas() {
                               {r.source === 'whatsapp' ? ' · via WhatsApp' : ' · via site'}
                             </p>
                           ))}
+
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            <Button
+                              type="button"
+                              disabled={requestActionBusy}
+                              onClick={() => {
+                                setSearchingGroup(searchingGroup === key ? null : key);
+                                setDismissingGroup(null);
+                                setCatalogQuery('');
+                                setCatalogResults([]);
+                              }}
+                              className="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 text-xs"
+                            >
+                              ✅ Já tenho
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={requestActionBusy}
+                              onClick={() => {
+                                setDismissingGroup(dismissingGroup === key ? null : key);
+                                setSearchingGroup(null);
+                                setDismissReason('');
+                              }}
+                              variant="outline"
+                              className="border-red-500/40 text-red-300 hover:bg-red-500/10 h-8 px-3 text-xs"
+                            >
+                              🚫 Não tenho
+                            </Button>
+                          </div>
+
+                          {dismissingGroup === key && (
+                            <div className="pt-2 space-y-2">
+                              <textarea
+                                autoFocus
+                                value={dismissReason}
+                                onChange={(e) => setDismissReason(e.target.value)}
+                                placeholder="Motivo (opcional) — vai junto no aviso pra pessoa. Ex: direitos não liberados no Brasil."
+                                rows={2}
+                                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-red-500/60 resize-none"
+                              />
+                              <Button
+                                type="button"
+                                disabled={requestActionBusy}
+                                onClick={() => handleDismissGroup(g, dismissReason)}
+                                className="bg-red-600 hover:bg-red-700 h-8 px-3 text-xs"
+                              >
+                                {requestActionBusy ? 'Enviando…' : 'Confirmar e avisar'}
+                              </Button>
+                            </div>
+                          )}
+
+                          {searchingGroup === key && (
+                            <div className="pt-2">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={catalogQuery}
+                                onChange={(e) => searchCatalog(e.target.value)}
+                                placeholder="Busca o título no catálogo pra linkar..."
+                                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/60"
+                              />
+                              {catalogResults.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                  {catalogResults.map((d) => (
+                                    <button
+                                      key={d.id}
+                                      type="button"
+                                      disabled={requestActionBusy}
+                                      onClick={() => handleResolveGroup(g, d.id, d.title)}
+                                      className="w-full text-left text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-emerald-600/20 border border-slate-700 hover:border-emerald-500/40 text-slate-200"
+                                    >
+                                      {d.title}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

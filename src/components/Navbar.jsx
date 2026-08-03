@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import PedirDoramaPopover from '@/components/PedirDoramaPopover';
 import {
   User,
   LogOut,
@@ -20,6 +21,7 @@ import {
   Eye,
   Sparkles,
   Heart,
+  Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -431,6 +433,8 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   Favoritos
                 </Button>
 
+                <PedirDoramaPopover />
+
                 {isAdmin && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -602,6 +606,12 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
                   >
                     <Heart className="w-4 h-4 text-red-400" /> Favoritos
+                  </button>
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); navigate('/minha-conta'); }}
+                    className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
+                  >
+                    <Send className="w-4 h-4 text-purple-300" /> Pedir um dorama
                   </button>
                   <button onClick={() => scrollToSection('top')} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Sparkles className="w-4 h-4 text-purple-300" /> Início

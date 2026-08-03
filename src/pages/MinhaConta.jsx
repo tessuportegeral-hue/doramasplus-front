@@ -321,11 +321,16 @@ function IndicacaoCard({ user }) {
   );
 }
 
+const LIMITE_JANELA_DIAS = 20;
+const LIMITE_PEDIDOS = 15;
+
 function PedirDoramaCard({ user }) {
   const [titulo, setTitulo] = useState('');
   const [sending, setSending] = useState(false);
   const [meusPedidos, setMeusPedidos] = useState([]);
   const [loadingPedidos, setLoadingPedidos] = useState(true);
+  const [diasParaLiberar, setDiasParaLiberar] = useState(null);
+  const [jaTem, setJaTem] = useState(null);
 
   const loadMeusPedidos = async () => {
     if (!user?.id) {
@@ -336,11 +341,29 @@ function PedirDoramaCard({ user }) {
       setLoadingPedidos(true);
       const { data } = await supabase
         .from('dorama_requests')
-        .select('id, dorama_name, notified_at, created_at')
+        .select('id, dorama_name, notified_at, dismissed_at, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(LIMITE_PEDIDOS);
       setMeusPedidos(data || []);
+
+      // conta só os pedidos dentro da janela de 20 dias (o que realmente conta pro limite)
+      const janelaInicio = Date.now() - LIMITE_JANELA_DIAS * 86400000;
+      const { data: recentes } = await supabase
+        .from('dorama_requests')
+        .select('created_at')
+        .eq('user_id', user.id)
+        .gte('created_at', new Date(janelaInicio).toISOString())
+        .order('created_at', { ascending: true });
+
+      const recentesRows = recentes || [];
+      if (recentesRows.length >= LIMITE_PEDIDOS) {
+        const maisAntigo = new Date(recentesRows[0].created_at).getTime();
+        const diasPassados = (Date.now() - maisAntigo) / 86400000;
+        setDiasParaLiberar(Math.max(1, Math.ceil(LIMITE_JANELA_DIAS - diasPassados)));
+      } else {
+        setDiasParaLiberar(null);
+      }
     } finally {
       setLoadingPedidos(false);
     }
@@ -356,6 +379,21 @@ function PedirDoramaCard({ user }) {
     if (!nome || !user?.id) return;
     try {
       setSending(true);
+
+      // já tem no catálogo? avisa na hora em vez de registrar pedido à toa
+      const { data: encontrados } = await supabase.rpc('search_doramas_fuzzy', { query: nome });
+      const achado = (encontrados || []).find((d) => d.sim > 0.4);
+      if (achado) {
+        setTitulo('');
+        setJaTem(achado);
+        toast({
+          title: 'Esse a gente já tem! 🎉',
+          description: `"${achado.title}" já está no catálogo.`,
+        });
+        return;
+      }
+      setJaTem(null);
+
       const { error } = await supabase
         .from('dorama_requests')
         .insert({ user_id: user.id, dorama_name: nome, source: 'site' });
@@ -367,15 +405,21 @@ function PedirDoramaCard({ user }) {
       });
       await loadMeusPedidos();
     } catch (err) {
+      const limite = String(err?.message || '').includes('dorama_request_limit_reached');
       toast({
-        title: 'Não foi possível registrar seu pedido',
-        description: 'Tente novamente em instantes.',
+        title: limite ? 'Limite de pedidos atingido' : 'Não foi possível registrar seu pedido',
+        description: limite
+          ? `Você já pediu ${LIMITE_PEDIDOS} doramas nos últimos ${LIMITE_JANELA_DIAS} dias. Aguarde pra pedir mais.`
+          : 'Tente novamente em instantes.',
         variant: 'destructive',
       });
+      await loadMeusPedidos();
     } finally {
       setSending(false);
     }
   };
+
+  const limiteAtingido = diasParaLiberar !== null;
 
   return (
     <div className={cardClass}>
@@ -385,25 +429,46 @@ function PedirDoramaCard({ user }) {
         subtitle="Não achou o que procurava? Peça aqui — avisamos quando adicionarmos"
       />
 
-      <div className="flex flex-col sm:flex-row gap-2 mb-4">
-        <input
-          type="text"
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handlePedir()}
-          placeholder="Nome do dorama que você quer assistir"
-          className="flex-1 rounded-lg bg-white/5 border border-slate-700 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-500/60"
-        />
-        <Button
-          type="button"
-          onClick={handlePedir}
-          disabled={!titulo.trim() || sending}
-          className="bg-purple-600 hover:bg-purple-700 flex items-center gap-2"
+      {jaTem && (
+        <Link
+          to={`/dorama/${jaTem.slug}`}
+          className="flex items-center justify-between rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-4 py-3 mb-4 hover:bg-emerald-500/15 transition"
         >
-          <Send className="w-4 h-4" />
-          {sending ? 'Enviando…' : 'Pedir'}
-        </Button>
-      </div>
+          <span className="text-sm text-emerald-200">
+            🎉 Já temos <span className="font-semibold">{jaTem.title}</span>!
+          </span>
+          <span className="text-xs text-emerald-300 font-semibold flex-shrink-0">Assistir →</span>
+        </Link>
+      )}
+
+      {limiteAtingido ? (
+        <p className="text-sm text-amber-300 mb-4">
+          Você atingiu o limite de {LIMITE_PEDIDOS} pedidos nos últimos {LIMITE_JANELA_DIAS} dias.{' '}
+          {diasParaLiberar === 1
+            ? 'Libera espaço pra pedir de novo em 1 dia.'
+            : `Libera espaço pra pedir de novo em ${diasParaLiberar} dias.`}
+        </p>
+      ) : (
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <input
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handlePedir()}
+            placeholder="Nome do dorama que você quer assistir"
+            className="flex-1 rounded-lg bg-white/5 border border-slate-700 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-500/60"
+          />
+          <Button
+            type="button"
+            onClick={handlePedir}
+            disabled={!titulo.trim() || sending}
+            className="bg-purple-600 hover:bg-purple-700 flex items-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            {sending ? 'Enviando…' : 'Pedir'}
+          </Button>
+        </div>
+      )}
 
       {!loadingPedidos && meusPedidos.length > 0 && (
         <div className="space-y-1.5">
@@ -413,8 +478,10 @@ function PedirDoramaCard({ user }) {
               <span className="text-slate-300">{p.dorama_name}</span>
               {p.notified_at ? (
                 <span className="text-emerald-400 font-semibold">Adicionado</span>
+              ) : p.dismissed_at ? (
+                <span className="text-slate-600">Não disponível</span>
               ) : (
-                <span className="text-slate-500">Aguardando</span>
+                <span className="text-slate-500">Em análise</span>
               )}
             </div>
           ))}
