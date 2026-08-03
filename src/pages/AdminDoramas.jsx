@@ -880,7 +880,7 @@ export default function AdminDoramas() {
                                 placeholder="Busca o título no catálogo pra linkar..."
                                 className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500/60"
                               />
-                              {catalogResults.length > 0 && (
+                              {catalogResults.length > 0 ? (
                                 <div className="mt-2 space-y-1">
                                   {catalogResults.map((d) => (
                                     <button
@@ -894,7 +894,11 @@ export default function AdminDoramas() {
                                     </button>
                                   ))}
                                 </div>
-                              )}
+                              ) : catalogQuery.trim() ? (
+                                <p className="mt-2 text-xs text-slate-500">
+                                  Nenhum título encontrado no catálogo com esse nome — ajuste a busca ou, se ainda não tem esse dorama, use "🚫 Não tenho".
+                                </p>
+                              ) : null}
                             </div>
                           )}
                         </div>
