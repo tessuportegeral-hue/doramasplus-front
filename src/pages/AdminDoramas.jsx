@@ -241,6 +241,27 @@ export default function AdminDoramas() {
     }
   };
 
+  const handleAcknowledgeGroup = async (group) => {
+    try {
+      setRequestActionBusy(true);
+      const ids = group.requests.map((r) => r.id);
+      const result = await callResolveDoramaRequest({
+        action: 'acknowledge',
+        ids,
+        dorama_name: group.dorama_name,
+      });
+      toast({
+        title: 'Aviso enviado',
+        description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" ainda está na fila.`,
+      });
+      await fetchDoramaRequests(false);
+    } catch {
+      toast({ title: 'Erro ao avisar', variant: 'destructive' });
+    } finally {
+      setRequestActionBusy(false);
+    }
+  };
+
   const searchCatalog = async (q) => {
     setCatalogQuery(q);
     if (!q.trim()) {
@@ -833,6 +854,15 @@ export default function AdminDoramas() {
                               className="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 text-xs"
                             >
                               ✅ Já tenho
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={requestActionBusy || g.all_acknowledged}
+                              onClick={() => handleAcknowledgeGroup(g)}
+                              variant="outline"
+                              className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-8 px-3 text-xs disabled:opacity-50"
+                            >
+                              {g.all_acknowledged ? '⏳ Já avisado' : '⏳ Aguardar'}
                             </Button>
                             <Button
                               type="button"

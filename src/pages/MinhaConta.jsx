@@ -321,8 +321,8 @@ function IndicacaoCard({ user }) {
   );
 }
 
-const LIMITE_JANELA_DIAS = 20;
-const LIMITE_PEDIDOS = 15;
+const LIMITE_JANELA_HORAS = 24;
+const LIMITE_PEDIDOS = 5;
 
 function PedirDoramaCard({ user }) {
   const [titulo, setTitulo] = useState('');
@@ -330,7 +330,7 @@ function PedirDoramaCard({ user }) {
   const [meusPedidos, setMeusPedidos] = useState([]);
   const [pedidosDoramasById, setPedidosDoramasById] = useState({});
   const [loadingPedidos, setLoadingPedidos] = useState(true);
-  const [diasParaLiberar, setDiasParaLiberar] = useState(null);
+  const [horasParaLiberar, setHorasParaLiberar] = useState(null);
   const [jaTem, setJaTem] = useState(null);
 
   const loadMeusPedidos = async () => {
@@ -361,8 +361,8 @@ function PedirDoramaCard({ user }) {
         setPedidosDoramasById({});
       }
 
-      // conta só os pedidos dentro da janela de 20 dias (o que realmente conta pro limite)
-      const janelaInicio = Date.now() - LIMITE_JANELA_DIAS * 86400000;
+      // conta só os pedidos dentro da janela de 24h (o que realmente conta pro limite)
+      const janelaInicio = Date.now() - LIMITE_JANELA_HORAS * 3600000;
       const { data: recentes } = await supabase
         .from('dorama_requests')
         .select('created_at')
@@ -373,10 +373,10 @@ function PedirDoramaCard({ user }) {
       const recentesRows = recentes || [];
       if (recentesRows.length >= LIMITE_PEDIDOS) {
         const maisAntigo = new Date(recentesRows[0].created_at).getTime();
-        const diasPassados = (Date.now() - maisAntigo) / 86400000;
-        setDiasParaLiberar(Math.max(1, Math.ceil(LIMITE_JANELA_DIAS - diasPassados)));
+        const horasPassadas = (Date.now() - maisAntigo) / 3600000;
+        setHorasParaLiberar(Math.max(1, Math.ceil(LIMITE_JANELA_HORAS - horasPassadas)));
       } else {
-        setDiasParaLiberar(null);
+        setHorasParaLiberar(null);
       }
     } finally {
       setLoadingPedidos(false);
@@ -423,7 +423,7 @@ function PedirDoramaCard({ user }) {
       toast({
         title: limite ? 'Limite de pedidos atingido' : 'Não foi possível registrar seu pedido',
         description: limite
-          ? `Você já pediu ${LIMITE_PEDIDOS} doramas nos últimos ${LIMITE_JANELA_DIAS} dias. Aguarde pra pedir mais.`
+          ? `Você já pediu ${LIMITE_PEDIDOS} doramas nas últimas ${LIMITE_JANELA_HORAS} horas. Aguarde pra pedir mais.`
           : 'Tente novamente em instantes.',
         variant: 'destructive',
       });
@@ -433,7 +433,7 @@ function PedirDoramaCard({ user }) {
     }
   };
 
-  const limiteAtingido = diasParaLiberar !== null;
+  const limiteAtingido = horasParaLiberar !== null;
 
   return (
     <div className={cardClass}>
@@ -457,10 +457,10 @@ function PedirDoramaCard({ user }) {
 
       {limiteAtingido ? (
         <p className="text-sm text-amber-300 mb-4">
-          Você atingiu o limite de {LIMITE_PEDIDOS} pedidos nos últimos {LIMITE_JANELA_DIAS} dias.{' '}
-          {diasParaLiberar === 1
-            ? 'Libera espaço pra pedir de novo em 1 dia.'
-            : `Libera espaço pra pedir de novo em ${diasParaLiberar} dias.`}
+          Você atingiu o limite de {LIMITE_PEDIDOS} pedidos por dia.{' '}
+          {horasParaLiberar === 1
+            ? 'Libera espaço pra pedir de novo em 1 hora.'
+            : `Libera espaço pra pedir de novo em ${horasParaLiberar} horas.`}
         </p>
       ) : (
         <div className="flex flex-col sm:flex-row gap-2 mb-4">
