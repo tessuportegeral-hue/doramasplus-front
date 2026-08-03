@@ -328,6 +328,7 @@ function PedirDoramaCard({ user }) {
   const [titulo, setTitulo] = useState('');
   const [sending, setSending] = useState(false);
   const [meusPedidos, setMeusPedidos] = useState([]);
+  const [pedidosDoramasById, setPedidosDoramasById] = useState({});
   const [loadingPedidos, setLoadingPedidos] = useState(true);
   const [diasParaLiberar, setDiasParaLiberar] = useState(null);
   const [jaTem, setJaTem] = useState(null);
@@ -341,11 +342,24 @@ function PedirDoramaCard({ user }) {
       setLoadingPedidos(true);
       const { data } = await supabase
         .from('dorama_requests')
-        .select('id, dorama_name, notified_at, dismissed_at, created_at')
+        .select('id, dorama_name, dorama_id, notified_at, dismissed_at, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(LIMITE_PEDIDOS);
       setMeusPedidos(data || []);
+
+      const doramaIds = [...new Set((data || []).map((p) => p.dorama_id).filter(Boolean))];
+      if (doramaIds.length) {
+        const { data: doramasData } = await supabase
+          .from('doramas')
+          .select('id, title, slug')
+          .in('id', doramaIds);
+        setPedidosDoramasById(
+          Object.fromEntries((doramasData || []).map((d) => [d.id, d]))
+        );
+      } else {
+        setPedidosDoramasById({});
+      }
 
       // conta só os pedidos dentro da janela de 20 dias (o que realmente conta pro limite)
       const janelaInicio = Date.now() - LIMITE_JANELA_DIAS * 86400000;
@@ -473,18 +487,28 @@ function PedirDoramaCard({ user }) {
       {!loadingPedidos && meusPedidos.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-xs text-slate-500 mb-1">Seus pedidos</p>
-          {meusPedidos.map((p) => (
-            <div key={p.id} className="flex items-center justify-between text-xs">
-              <span className="text-slate-300">{p.dorama_name}</span>
-              {p.notified_at ? (
-                <span className="text-emerald-400 font-semibold">Adicionado</span>
-              ) : p.dismissed_at ? (
-                <span className="text-slate-600">Não disponível</span>
-              ) : (
-                <span className="text-slate-500">Em análise</span>
-              )}
-            </div>
-          ))}
+          {meusPedidos.map((p) => {
+            const doramaLinkado = p.dorama_id ? pedidosDoramasById[p.dorama_id] : null;
+            return (
+              <div key={p.id} className="flex items-center justify-between text-xs gap-2">
+                <span className="text-slate-300 truncate">{p.dorama_name}</span>
+                {p.notified_at && doramaLinkado ? (
+                  <Link
+                    to={`/dorama/${doramaLinkado.slug}`}
+                    className="text-emerald-400 font-semibold hover:text-emerald-300 flex-shrink-0"
+                  >
+                    Adicionado — Assistir →
+                  </Link>
+                ) : p.notified_at ? (
+                  <span className="text-emerald-400 font-semibold flex-shrink-0">Adicionado</span>
+                ) : p.dismissed_at ? (
+                  <span className="text-slate-600 flex-shrink-0">Não disponível</span>
+                ) : (
+                  <span className="text-slate-500 flex-shrink-0">Em análise</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
