@@ -124,7 +124,7 @@ export default function AdminAnalytics() {
   }, []);
 
   // Filtro de período
-  const [quickPeriod, setQuickPeriod] = useState("this_month"); // this_month | last_month | custom
+  const [quickPeriod, setQuickPeriod] = useState("today"); // today | this_month | last_month | custom
   const [startDateStr, setStartDateStr] = useState("");
   const [endDateStr, setEndDateStr] = useState("");
 
@@ -190,6 +190,16 @@ export default function AdminAnalytics() {
   const { periodStart, periodEnd, periodLabel } = useMemo(() => {
     const now = new Date();
 
+    if (quickPeriod === "today") {
+      const s = startOfDay(now);
+      const e = endOfDay(now);
+      return {
+        periodStart: s,
+        periodEnd: e,
+        periodLabel: `Período: hoje (${toDateInputValue(now).split("-").reverse().join("/")})`,
+      };
+    }
+
     if (quickPeriod === "last_month") {
       const ref = addMonths(now, -1);
       const s = startOfMonth(ref);
@@ -235,7 +245,7 @@ export default function AdminAnalytics() {
       };
     }
 
-    // this_month (default) — vai do dia 1 até HOJE, não até o fim do mês
+    // this_month (fallback) — vai do dia 1 até HOJE, não até o fim do mês
     // (mês ainda em andamento; mostrar "até dia 30" quando só estamos no dia
     // 14 confundia e não representava os dados de verdade).
     const s = startOfMonth(now);
@@ -252,6 +262,10 @@ export default function AdminAnalytics() {
   // Inicializa inputs quando muda o quickPeriod
   useEffect(() => {
     const now = new Date();
+    if (quickPeriod === "today") {
+      setStartDateStr(toDateInputValue(now));
+      setEndDateStr(toDateInputValue(now));
+    }
     if (quickPeriod === "this_month") {
       const s = startOfMonth(now);
       const e = endOfMonth(now);
@@ -678,6 +692,7 @@ export default function AdminAnalytics() {
                 className="mt-1 w-full rounded-lg bg-[#0b0f17] border border-white/15 px-3 py-2 text-sm outline-none text-white"
                 style={{ colorScheme: "dark" }}
               >
+                <option value="today">Hoje</option>
                 <option value="this_month">Este mês</option>
                 <option value="last_month">Mês passado</option>
                 <option value="custom">Personalizado</option>
