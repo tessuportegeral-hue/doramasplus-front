@@ -25,6 +25,7 @@ import {
   Moon,
   Tv,
   Flag,
+  ChevronDown,
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -86,6 +87,9 @@ export default function AdminDoramas() {
   const [requestsTotal, setRequestsTotal] = useState(0);
   const [requestsError, setRequestsError] = useState('');
   const [expandedRequestGroup, setExpandedRequestGroup] = useState(null);
+  // ✅ Minimizada por padrão — lista longa de pedidos não deve atrapalhar
+  // a visão dos doramas cadastrados logo abaixo.
+  const [requestsCollapsed, setRequestsCollapsed] = useState(true);
   const [searchingGroup, setSearchingGroup] = useState(null);
   const [dismissingGroup, setDismissingGroup] = useState(null);
   const [dismissReason, setDismissReason] = useState('');
@@ -728,7 +732,11 @@ export default function AdminDoramas() {
 
           {/* Pedidos de dorama — o que as pessoas estão pedindo (via Dora ou via Configurações) */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8">
-            <div className="flex items-center justify-between gap-3 mb-3">
+            <button
+              type="button"
+              onClick={() => setRequestsCollapsed((v) => !v)}
+              className="w-full flex items-center justify-between gap-3 text-left"
+            >
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 📋 Pedidos de Dorama
                 {requestsTotal > 0 && (
@@ -737,6 +745,14 @@ export default function AdminDoramas() {
                   </span>
                 )}
               </h2>
+              <ChevronDown
+                className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ${requestsCollapsed ? '' : 'rotate-180'}`}
+              />
+            </button>
+
+            {!requestsCollapsed && (
+              <>
+            <div className="flex items-center justify-end gap-3 mt-3 mb-3">
               <Button
                 type="button"
                 variant="outline"
@@ -956,6 +972,8 @@ export default function AdminDoramas() {
                   );
                 })}
               </div>
+            )}
+              </>
             )}
           </div>
 
