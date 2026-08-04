@@ -192,11 +192,37 @@ export default function AdminDora() {
     }
   }
 
+  // Zera o "precisa de humano" quando o admin abre a conversa pra ler — antes só
+  // sumia se alguém mandasse uma mensagem nova depois da escalada, o que na
+  // prática fazia a tag ficar presa pra sempre em conversas que o admin já viu
+  // e resolveu (por WhatsApp, por exemplo) sem responder aqui dentro.
+  async function clearNeedsHuman(sessionId) {
+    try {
+      const { error } = await supabase
+        .from("dora_conversations")
+        .update({ needs_human: false })
+        .eq("session_id", sessionId)
+        .eq("role", "assistant")
+        .eq("needs_human", true);
+      if (error) {
+        console.error("[Dora] clearNeedsHuman error:", error);
+        return;
+      }
+      setRows((prev) =>
+        prev.map((r) => (r.session_id === sessionId && r.role === "assistant" ? { ...r, needs_human: false } : r))
+      );
+    } catch (e) {
+      console.error("[Dora] clearNeedsHuman exception:", e);
+    }
+  }
+
   function openChat(sessionId) {
     setSelectedSessionId(sessionId);
     setHasNewMsgs(false);
     setText("");
     loadMessages(sessionId, { scroll: true, behavior: "auto" });
+    const conv = conversations.find((c) => c.session_id === sessionId);
+    if (conv?.needs_human) clearNeedsHuman(sessionId);
   }
 
   async function sendMessage() {
