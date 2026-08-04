@@ -78,15 +78,21 @@ const PedirDoramaPopover = () => {
         }
       }}
     >
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          title="Pedir um dorama"
-          className="text-slate-300 hover:text-white hover:bg-transparent border border-slate-700 hover:border-slate-600 rounded-full w-9 h-9 p-0 flex items-center justify-center transition"
-        >
-          <Send className="w-4 h-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <div className="relative inline-block">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-0.5 rounded-full bg-purple-500 opacity-60 blur-md animate-pulse"
+        />
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            title="Pedir um dorama"
+            className="relative text-purple-300 hover:text-white hover:bg-transparent border border-purple-500/70 hover:border-purple-400 rounded-full w-9 h-9 p-0 flex items-center justify-center transition"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+      </div>
 
       <DropdownMenuContent
         align="end"
