@@ -26,7 +26,7 @@ const PIX_PROVIDER = 'asaas'; // 'infinitepay' | 'asaas' — ✅ 04/08: link do 
 const PLAN_META = {
   trial3: { name: 'DoramasPlus Passe Teste', value: 2.99 },
   monthly: { name: 'DoramasPlus Padrão', value: 17.9 },
-  quarterly: { name: 'DoramasPlus Trimestral', value: 47.9 },
+  quarterly: { name: 'DoramasPlus Trimestral', value: 49.9 },
 };
 
 const SubscriptionPlans = () => {
@@ -184,7 +184,7 @@ const SubscriptionPlans = () => {
       // ✅ dispara InitiateCheckout no clique do Cartão também
       const planName =
         planType === 'quarterly' ? 'DoramasPlus Trimestral' : 'DoramasPlus Padrão';
-      const value = planType === 'quarterly' ? 47.9 : 16.9;
+      const value = planType === 'quarterly' ? 49.9 : 16.9;
 
       fireInitiateCheckout({ planType, planName, value });
 
@@ -560,7 +560,7 @@ const SubscriptionPlans = () => {
 
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="text-4xl font-bold text-purple-400">
-                  R$ 47,90
+                  R$ 49,90
                 </span>
                 <span className="text-slate-400">/3 meses</span>
               </div>
