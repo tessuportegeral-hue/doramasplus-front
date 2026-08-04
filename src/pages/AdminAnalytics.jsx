@@ -436,6 +436,9 @@ export default function AdminAnalytics() {
         mrr_total_estimated: mrrTotalVal,
         mrr_monthly_estimated: mrrMonthlyVal,
         mrr_quarterly_estimated: mrrQuarterlyVal,
+        avulso_total: safeNum(pix.avulso?.total),
+        avulso_qtd_vendas: safeNum(pix.avulso?.qtd_vendas),
+        avulso_qtd_pessoas: safeNum(pix.avulso?.qtd_pessoas),
       });
 
       setRetD30({
@@ -509,6 +512,9 @@ export default function AdminAnalytics() {
     () => safeNum(metrics.mrr_quarterly_estimated),
     [metrics.mrr_quarterly_estimated]
   );
+  const avulsoTotal = useMemo(() => safeNum(metrics.avulso_total), [metrics.avulso_total]);
+  const avulsoQtdPessoas = useMemo(() => safeNum(metrics.avulso_qtd_pessoas), [metrics.avulso_qtd_pessoas]);
+  const avulsoQtdVendas = useMemo(() => safeNum(metrics.avulso_qtd_vendas), [metrics.avulso_qtd_vendas]);
 
   const avgTicket = useMemo(() => {
     const denom = safeNum(metrics.active_now);
@@ -864,6 +870,20 @@ export default function AdminAnalytics() {
                   "Mensal + (Trimestral ÷ 3)",
                   "default",
                   "Quanto essa base de assinantes vale por mês, tipo 'piloto automático'. Se ninguém entrasse nem saísse, é esse valor que cairia todo mês."
+                )}
+              </div>
+            </div>
+
+            {/* Vendas avulsas (R$10, dorama único via bot WhatsApp) — separado do faturamento acima */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="md:col-span-4">
+                {renderCard(
+                  "Vendas avulsas (R$ 10)",
+                  formatBRL(avulsoTotal),
+                  <CreditCard className="w-5 h-5 text-pink-300" />,
+                  `${avulsoQtdPessoas} pessoa${avulsoQtdPessoas === 1 ? "" : "s"} • ${avulsoQtdVendas} venda${avulsoQtdVendas === 1 ? "" : "s"} no período`,
+                  "default",
+                  "Vendas do dorama avulso de R$ 10,00 (link único, vendido pelo bot do WhatsApp). Esse valor é separado e NÃO entra na conta do \"Faturamento (período)\" acima, pra não te confundir com o faturamento de assinatura."
                 )}
               </div>
             </div>
