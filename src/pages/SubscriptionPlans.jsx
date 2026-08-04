@@ -20,7 +20,7 @@ const TRIAL_TEST_EMAIL = 'tesagencia@gmail.com';
 // (checkout.infinitepay.io), diferente do Asaas que é inline. Código do
 // Asaas mantido do lado (não removido) — pra voltar rápido é só trocar
 // esta constante pra 'asaas'.
-const PIX_PROVIDER = 'infinitepay'; // 'infinitepay' | 'asaas'
+const PIX_PROVIDER = 'asaas'; // 'infinitepay' | 'asaas' — ✅ 04/08: link do checkout InfinityPay caiu, volta pro Asaas
 
 // ✅ metadados dos planos (nome + valor exibido no InitiateCheckout)
 const PLAN_META = {
