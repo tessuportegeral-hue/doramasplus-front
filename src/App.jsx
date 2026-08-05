@@ -49,6 +49,13 @@ const ExclusiveDoramas = lazy(() => import('@/pages/ExclusiveDoramas'));
 const NewDoramas = lazy(() => import('@/pages/NewDoramas'));
 const RecommendedDoramas = lazy(() => import('@/pages/RecommendedDoramas'));
 const DubbedDoramas = lazy(() => import('@/pages/DubbedDoramas'));
+const BabyDoramas = lazy(() => import('@/pages/BabyDoramas'));
+const TabooDoramas = lazy(() => import('@/pages/TabooDoramas'));
+const WolfVampireDoramas = lazy(() => import('@/pages/WolfVampireDoramas'));
+const BlGlDoramas = lazy(() => import('@/pages/BlGlDoramas'));
+const BrasileiroDoramas = lazy(() => import('@/pages/BrasileiroDoramas'));
+const AnimeDoramas = lazy(() => import('@/pages/AnimeDoramas'));
+const HiddenIdentityDoramas = lazy(() => import('@/pages/HiddenIdentityDoramas'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 
 // ✅ (ADICIONADO) Página do vídeo
@@ -464,6 +471,62 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <DubbedDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/gravidez-e-bebe"
+                  element={
+                    <ProtectedRoute>
+                      <BabyDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/relacionamento-tabu"
+                  element={
+                    <ProtectedRoute>
+                      <TabooDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/lobos-e-vampiros"
+                  element={
+                    <ProtectedRoute>
+                      <WolfVampireDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/bl-gl"
+                  element={
+                    <ProtectedRoute>
+                      <BlGlDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/brasileiros"
+                  element={
+                    <ProtectedRoute>
+                      <BrasileiroDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/animes"
+                  element={
+                    <ProtectedRoute>
+                      <AnimeDoramas />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/identidade-escondida"
+                  element={
+                    <ProtectedRoute>
+                      <HiddenIdentityDoramas />
                     </ProtectedRoute>
                   }
                 />

@@ -22,6 +22,9 @@ import {
   Sparkles,
   Heart,
   Send,
+  Moon,
+  Flag,
+  Tv,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
@@ -388,32 +391,52 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                       <span className="ml-2">Início</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('novos')}>
+                    <DropdownMenuItem onClick={() => navigate('/novos')}>
                       <Sparkles className="w-4 h-4 text-purple-400" />
                       <span className="ml-2">Novos Lançamentos</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('dublados')}>
+                    <DropdownMenuItem onClick={() => navigate('/dublados')}>
                       <Globe className="w-4 h-4 text-blue-400" />
                       <span className="ml-2">Séries Dubladas</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('baby')}>
+                    <DropdownMenuItem onClick={() => navigate('/gravidez-e-bebe')}>
                       <Baby className="w-4 h-4 text-pink-400" />
                       <span className="ml-2">Bebês e Gravidezes</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('taboo')}>
+                    <DropdownMenuItem onClick={() => navigate('/relacionamento-tabu')}>
                       <HeartHandshake className="w-4 h-4 text-red-400" />
                       <span className="ml-2">Relacionamento Tabu</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('hidden')}>
+                    <DropdownMenuItem onClick={() => navigate('/lobos-e-vampiros')}>
+                      <Moon className="w-4 h-4 text-indigo-400" />
+                      <span className="ml-2">Lobos & Vampiros</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem onClick={() => navigate('/bl-gl')}>
+                      <Heart className="w-4 h-4 text-rose-400" />
+                      <span className="ml-2">BL & GL</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem onClick={() => navigate('/brasileiros')}>
+                      <Flag className="w-4 h-4 text-emerald-400" />
+                      <span className="ml-2">Brasileiros</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem onClick={() => navigate('/animes')}>
+                      <Tv className="w-4 h-4 text-cyan-400" />
+                      <span className="ml-2">Animes</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem onClick={() => navigate('/identidade-escondida')}>
                       <Eye className="w-4 h-4 text-teal-400" />
                       <span className="ml-2">Identidade Escondida</span>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={() => scrollToSection('recomendados')}>
+                    <DropdownMenuItem onClick={() => navigate('/recomendados')}>
                       <Star className="w-4 h-4 text-amber-400" />
                       <span className="ml-2">Recomendados Para Você</span>
                     </DropdownMenuItem>
@@ -616,22 +639,34 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   <button onClick={() => scrollToSection('top')} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Sparkles className="w-4 h-4 text-purple-300" /> Início
                   </button>
-                  <button onClick={() => scrollToSection('novos')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/novos'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Sparkles className="w-4 h-4 text-purple-400" /> Novos Lançamentos
                   </button>
-                  <button onClick={() => scrollToSection('dublados')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/dublados'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Globe className="w-4 h-4 text-blue-400" /> Séries Dubladas
                   </button>
-                  <button onClick={() => scrollToSection('baby')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/gravidez-e-bebe'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Baby className="w-4 h-4 text-pink-400" /> Bebês e Gravidezes
                   </button>
-                  <button onClick={() => scrollToSection('taboo')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/relacionamento-tabu'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <HeartHandshake className="w-4 h-4 text-red-400" /> Relacionamento Tabu
                   </button>
-                  <button onClick={() => scrollToSection('hidden')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/lobos-e-vampiros'); }} className="flex items-center gap-2 text-slate-200 text-sm">
+                    <Moon className="w-4 h-4 text-indigo-400" /> Lobos & Vampiros
+                  </button>
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/bl-gl'); }} className="flex items-center gap-2 text-slate-200 text-sm">
+                    <Heart className="w-4 h-4 text-rose-400" /> BL & GL
+                  </button>
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/brasileiros'); }} className="flex items-center gap-2 text-slate-200 text-sm">
+                    <Flag className="w-4 h-4 text-emerald-400" /> Brasileiros
+                  </button>
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/animes'); }} className="flex items-center gap-2 text-slate-200 text-sm">
+                    <Tv className="w-4 h-4 text-cyan-400" /> Animes
+                  </button>
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/identidade-escondida'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Eye className="w-4 h-4 text-teal-400" /> Identidade Escondida
                   </button>
-                  <button onClick={() => scrollToSection('recomendados')} className="flex items-center gap-2 text-slate-200 text-sm">
+                  <button onClick={() => { setMobileMenuOpen(false); navigate('/recomendados'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Star className="w-4 h-4 text-amber-400" /> Recomendados Para Você
                   </button>
                 </div>
