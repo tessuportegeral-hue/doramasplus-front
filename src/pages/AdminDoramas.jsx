@@ -100,8 +100,11 @@ export default function AdminDoramas() {
   const [requestsHistory, setRequestsHistory] = useState([]);
 
   // separa quem já recebeu o aviso "aguardar" pra não misturar com pedido recém-chegado
+  // e separa quem foi marcado como "tempo indeterminado" (sem previsão nenhuma) do
+  // "aguardando" comum (que ainda tem alguma expectativa de prazo)
   const pendentesNaoAvisados = doramaRequests.filter((g) => !g.any_acknowledged);
-  const aguardandoGrupos = doramaRequests.filter((g) => g.any_acknowledged);
+  const aguardandoGrupos = doramaRequests.filter((g) => g.any_acknowledged && !g.any_indefinite);
+  const indeterminadoGrupos = doramaRequests.filter((g) => g.any_indefinite);
 
   // ✅ Paginação 10 em 10
   const PAGE_SIZE = 10;
@@ -261,6 +264,27 @@ export default function AdminDoramas() {
       toast({
         title: 'Aviso enviado',
         description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" ainda está na fila.`,
+      });
+      await fetchDoramaRequests(false);
+    } catch {
+      toast({ title: 'Erro ao avisar', variant: 'destructive' });
+    } finally {
+      setRequestActionBusy(false);
+    }
+  };
+
+  const handleAcknowledgeIndefiniteGroup = async (group) => {
+    try {
+      setRequestActionBusy(true);
+      const ids = group.requests.map((r) => r.id);
+      const result = await callResolveDoramaRequest({
+        action: 'acknowledge_indefinite',
+        ids,
+        dorama_name: group.dorama_name,
+      });
+      toast({
+        title: 'Aviso enviado',
+        description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" não tem previsão de chegada.`,
       });
       await fetchDoramaRequests(false);
     } catch {
@@ -788,6 +812,17 @@ export default function AdminDoramas() {
               </button>
               <button
                 type="button"
+                onClick={() => setRequestsTab('indeterminado')}
+                className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                  requestsTab === 'indeterminado'
+                    ? 'bg-slate-500 text-white border-slate-400'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                ♾️ Tempo indeterminado{indeterminadoGrupos.length > 0 ? ` (${indeterminadoGrupos.length})` : ''}
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setRequestsTab('historico');
                   fetchDoramaRequests(true);
@@ -802,7 +837,21 @@ export default function AdminDoramas() {
               </button>
             </div>
 
-            {requestsLoading ? (
+            {(() => {
+              const activeGroups =
+                requestsTab === 'aguardando'
+                  ? aguardandoGrupos
+                  : requestsTab === 'indeterminado'
+                  ? indeterminadoGrupos
+                  : pendentesNaoAvisados;
+              const emptyMessage =
+                requestsTab === 'aguardando'
+                  ? 'Nenhum pedido aguardando no momento.'
+                  : requestsTab === 'indeterminado'
+                  ? 'Nenhum pedido em tempo indeterminado no momento.'
+                  : 'Nenhum pedido pendente no momento.';
+              return (
+            requestsLoading ? (
               <div className="h-14 rounded-lg bg-slate-800/60 animate-pulse" />
             ) : requestsError ? (
               <p className="text-sm text-red-400">{requestsError}</p>
@@ -836,15 +885,11 @@ export default function AdminDoramas() {
                   ))}
                 </div>
               )
-            ) : (requestsTab === 'aguardando' ? aguardandoGrupos : pendentesNaoAvisados).length === 0 ? (
-              <p className="text-sm text-slate-500">
-                {requestsTab === 'aguardando'
-                  ? 'Nenhum pedido aguardando no momento.'
-                  : 'Nenhum pedido pendente no momento.'}
-              </p>
+            ) : activeGroups.length === 0 ? (
+              <p className="text-sm text-slate-500">{emptyMessage}</p>
             ) : (
               <div className="space-y-2">
-                {(requestsTab === 'aguardando' ? aguardandoGrupos : pendentesNaoAvisados).map((g) => {
+                {activeGroups.map((g) => {
                   const key = g.dorama_name;
                   const isOpen = expandedRequestGroup === key;
                   return (
@@ -898,6 +943,15 @@ export default function AdminDoramas() {
                               className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-8 px-3 text-xs disabled:opacity-50"
                             >
                               {g.all_acknowledged ? '⏳ Já avisado' : '⏳ Aguardar'}
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={requestActionBusy || g.all_indefinite}
+                              onClick={() => handleAcknowledgeIndefiniteGroup(g)}
+                              variant="outline"
+                              className="border-slate-500/40 text-slate-300 hover:bg-slate-500/10 h-8 px-3 text-xs disabled:opacity-50"
+                            >
+                              {g.all_indefinite ? '♾️ Já avisado' : '♾️ Tempo indeterminado'}
                             </Button>
                             <Button
                               type="button"
@@ -972,7 +1026,9 @@ export default function AdminDoramas() {
                   );
                 })}
               </div>
-            )}
+            )
+              );
+            })()}
               </>
             )}
           </div>
