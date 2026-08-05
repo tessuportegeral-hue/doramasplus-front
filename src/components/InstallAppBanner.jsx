@@ -38,6 +38,15 @@ async function isRelatedAppInstalled() {
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
 
+// ✅ 05/08: o app de verdade (TWA instalado via Play Store) sempre abre com
+// esse referrer — é o único jeito confiável de diferenciar ele do atalho
+// antigo de "adicionar à tela de início" (que também cai em
+// display-mode:standalone, mas nunca tem esse referrer).
+function isRealNativeApp() {
+  if (typeof document === "undefined") return false;
+  return document.referrer.startsWith("android-app://br.com.doramasplus.twa");
+}
+
 export default function InstallAppBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showAndroid, setShowAndroid] = useState(false);
@@ -47,8 +56,18 @@ export default function InstallAppBanner() {
   useEffect(() => {
     let cancelled = false;
 
-    // Não mostra se já está instalado (standalone)
-    if (isInStandaloneMode()) return;
+    if (isInStandaloneMode()) {
+      // ✅ 05/08: pouca adesão ao app do Play Store vinha desse atalho
+      // antigo confundindo — quem tinha adicionado à tela antes do fix de
+      // 27/07 nunca via nenhum aviso pra baixar o app de verdade, porque
+      // essa checagem parava aqui sem diferenciar os dois. Só Android:
+      // bloqueia esse atalho velho e manda direto pro Play Store. iPhone
+      // não tem app nativo, continua sem mexer.
+      if (isAndroidMobile() && !isRealNativeApp()) {
+        window.location.replace(PLAY_STORE_URL);
+      }
+      return;
+    }
 
     if (isIOS()) {
       setShowIOS(true);
