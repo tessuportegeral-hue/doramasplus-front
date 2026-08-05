@@ -97,6 +97,43 @@ Deno.serve(async (req) => {
           and coalesce(plan,'') <> 'series'
           and created_at between period.p_start and period.p_end
       ),
+      -- ✅ 04/08: vendas avulsas de R$10 (plan='series', link único via bot
+      -- WhatsApp) contadas À PARTE — de propósito NÃO entram no faturamento
+      -- acima (pix CTE já exclui plan='series'). user_id/whatsapp_conversation_id
+      -- sempre nulos nessas linhas; telefone do comprador vem embutido em
+      -- order_nsu como "salesbot_asaas|<telefone>|series|<timestamp>", por
+      -- isso conta pessoa distinta via split_part.
+      avulso as (
+        select coalesce(sum(amount_cents),0)/100.0 as total,
+          count(*) as qtd_vendas,
+          count(distinct split_part(order_nsu, '|', 2)) as qtd_pessoas
+        from pix_payments, period
+        where status = 'paid' and provider in ('infinitepay','asaas')
+          and plan = 'series'
+          and created_at between period.p_start and period.p_end
+      ),
+      -- ✅ 05/08: separa as vendas de assinatura (mesmo universo da CTE
+      -- "pix" acima — infinitepay+asaas, sem venda avulsa) por canal, usando
+      -- pix_payments.source (não dá pra usar "provider": Asaas hoje atende
+      -- tanto o bot quanto vendas diretas do site, então provider sozinho
+      -- mistura os dois). "bot" = veio da conversa com o bot de vendas do
+      -- WhatsApp; "site" = todo o resto (checkout direto, ads, lembretes de
+      -- renovação por WhatsApp/email, Dora chat, linhas antigas sem source).
+      canal as (
+        select
+          count(*) filter (where source = 'whatsapp_sales_bot') as bot_qtd,
+          count(*) filter (where source = 'whatsapp_sales_bot' and plan = 'quarterly') as bot_trimestral,
+          count(*) filter (where source = 'whatsapp_sales_bot' and (plan <> 'quarterly' or plan is null)) as bot_mensal,
+          coalesce(sum(amount_cents) filter (where source = 'whatsapp_sales_bot'),0)/100.0 as bot_total_reais,
+          count(*) filter (where source is distinct from 'whatsapp_sales_bot') as site_pix_qtd,
+          count(*) filter (where source is distinct from 'whatsapp_sales_bot' and plan = 'quarterly') as site_pix_trimestral,
+          count(*) filter (where source is distinct from 'whatsapp_sales_bot' and (plan <> 'quarterly' or plan is null)) as site_pix_mensal,
+          coalesce(sum(amount_cents) filter (where source is distinct from 'whatsapp_sales_bot'),0)/100.0 as site_pix_total_reais
+        from pix_payments, period
+        where status = 'paid' and provider in ('infinitepay','asaas')
+          and coalesce(plan,'') <> 'series'
+          and created_at between period.p_start and period.p_end
+      ),
       stripe_ren as (
         select
           count(*) filter (where coalesce(sr.plan_interval,'') = 'quarter' or coalesce(sr.plan_name,'') ilike '%trimestral%') as qtd_trimestral,
@@ -133,7 +170,7 @@ Deno.serve(async (req) => {
             or coalesce(s.end_at, s.current_period_end) > now()
           )
       ),
-      -- Entraram / saíram / retenção no período principal (A) e no de comparação (B).
+      -- Entraram / sairam / retencao no periodo principal (A) e no de comparacao (B).
       -- "Cohort no inicio de X" = pra cada usuario, pega o evento de renovacao mais
       -- recente registrado ATE o inicio de X (subscription_renewals so loga quando
       -- status vira 'active', entao isso reconstroi quem estava coberto naquele
@@ -237,6 +274,17 @@ Deno.serve(async (req) => {
         (select qtd from pix) as pix_qtd,
         (select qtd_mensal from pix) as pix_qtd_mensal,
         (select qtd_trimestral from pix) as pix_qtd_trimestral,
+        (select total from avulso) as avulso_total,
+        (select qtd_vendas from avulso) as avulso_qtd_vendas,
+        (select qtd_pessoas from avulso) as avulso_qtd_pessoas,
+        (select bot_qtd from canal) as bot_qtd,
+        (select bot_mensal from canal) as bot_mensal,
+        (select bot_trimestral from canal) as bot_trimestral,
+        (select bot_total_reais from canal) as bot_total_reais,
+        (select site_pix_qtd from canal) as site_pix_qtd,
+        (select site_pix_mensal from canal) as site_pix_mensal,
+        (select site_pix_trimestral from canal) as site_pix_trimestral,
+        (select site_pix_total_reais from canal) as site_pix_total_reais,
         (select qtd_mensal * ${PRICE_MONTHLY} + qtd_trimestral * ${PRICE_QUARTERLY} from stripe_ren) as stripe_total,
         (select qtd_mensal from stripe_ren) as stripe_qtd_mensal,
         (select qtd_trimestral from stripe_ren) as stripe_qtd_trimestral,
@@ -264,6 +312,9 @@ Deno.serve(async (req) => {
     const pixTotal = Number(rev.pix_total || 0);
     const stripeTotal = Number(rev.stripe_total || 0);
     const manualTotal = Number(rev.manual_total || 0);
+    const avulsoTotal = Number(rev.avulso_total || 0);
+    const avulsoQtdVendas = Number(rev.avulso_qtd_vendas || 0);
+    const avulsoQtdPessoas = Number(rev.avulso_qtd_pessoas || 0);
 
     const soldMonthly =
       Number(rev.pix_qtd_mensal || 0) + Number(rev.stripe_qtd_mensal || 0) + Number(rev.manual_qtd || 0);
@@ -273,6 +324,25 @@ Deno.serve(async (req) => {
       Number(rev.stripe_qtd_mensal || 0) +
       Number(rev.stripe_qtd_trimestral || 0) +
       Number(rev.manual_qtd || 0);
+
+    // ✅ 05/08: vendas por canal (bot do WhatsApp x site) — bot é sempre
+    // pix_payments.source = 'whatsapp_sales_bot'; Stripe e PIX manual do
+    // admin nunca passam pelo bot, então entram inteiros como "site".
+    const botMensal = Number(rev.bot_mensal || 0);
+    const botTrimestral = Number(rev.bot_trimestral || 0);
+    const botQtd = Number(rev.bot_qtd || 0);
+    const botTotalReais = Number(rev.bot_total_reais || 0);
+
+    const sitePixMensal = Number(rev.site_pix_mensal || 0);
+    const sitePixTrimestral = Number(rev.site_pix_trimestral || 0);
+    const sitePixQtd = Number(rev.site_pix_qtd || 0);
+    const sitePixTotalReais = Number(rev.site_pix_total_reais || 0);
+
+    const siteMensal = sitePixMensal + Number(rev.stripe_qtd_mensal || 0) + Number(rev.manual_qtd || 0);
+    const siteTrimestral = sitePixTrimestral + Number(rev.stripe_qtd_trimestral || 0);
+    const siteQtd =
+      sitePixQtd + Number(rev.stripe_qtd_mensal || 0) + Number(rev.stripe_qtd_trimestral || 0) + Number(rev.manual_qtd || 0);
+    const siteTotalReais = sitePixTotalReais + stripeTotal + manualTotal;
 
     // PIX pendentes agora
     const { count: pendingNow } = await admin
@@ -427,6 +497,73 @@ Deno.serve(async (req) => {
       };
     });
 
+    // ✅ 05/08 (pedido do usuário): conversão avulso → assinante — de quem
+    // comprou o dorama avulso de R$10 pelo bot do WhatsApp, quantos depois
+    // criaram conta e assinaram de verdade. Métrica "lifetime" (não filtra
+    // por período) porque a conversão pode acontecer meses depois da compra.
+    // Limitação conhecida (documentada pro usuário): venda avulsa NUNCA
+    // grava user_id (só entrega o link pro telefone e some — ver comentário
+    // na CTE "avulso" acima), então só dá pra casar quem usa o MESMO
+    // telefone no cadastro do site. Quem assina com telefone diferente do
+    // que usou no bot fica invisível aqui — os números abaixo são um PISO,
+    // não o total real de conversão.
+    const avulsoConversionQuery = `
+      with avulso as (
+        select created_at, split_part(order_nsu, '|', 2) as raw_phone
+        from pix_payments
+        where status = 'paid' and provider in ('infinitepay','asaas') and plan = 'series'
+      ),
+      avulso_norm as (
+        select
+          created_at,
+          raw_phone,
+          case when left(raw_phone,2) = '55' and length(raw_phone) in (12,13)
+            then substring(raw_phone from 3) else raw_phone end as phone_no55
+        from avulso
+      ),
+      pessoas as (
+        select phone_no55, raw_phone, min(created_at) as primeira_compra
+        from avulso_norm
+        group by 1, 2
+      ),
+      matched as (
+        select pr.id as user_id, p.primeira_compra
+        from pessoas p
+        join profiles pr on pr.phone = p.phone_no55 or pr.phone = p.raw_phone
+      ),
+      first_sub_after as (
+        select m.user_id, m.primeira_compra,
+          (select min(sr.renewed_at) from subscription_renewals sr
+             where sr.user_id = m.user_id and sr.renewed_at > m.primeira_compra) as assinou_em
+        from matched m
+      ),
+      ativos_agora as (
+        select distinct m.user_id
+        from matched m
+        join subscriptions s on s.user_id = m.user_id
+        where s.status in ('active','trialing','paid')
+          and ( (coalesce(s.end_at,s.current_period_end) is null and s.provider is null)
+                or coalesce(s.end_at,s.current_period_end) > now() )
+      )
+      select
+        (select count(distinct phone_no55) from pessoas) as pessoas_total,
+        (select count(distinct user_id) from matched) as com_cadastro,
+        (select count(distinct user_id) from matched m
+           where exists (select 1 from subscriptions s where s.user_id = m.user_id)) as ja_assinaram,
+        (select count(distinct user_id) from first_sub_after where assinou_em is not null) as assinaram_depois,
+        (select count(*) from ativos_agora) as ativos_agora
+    `;
+    const { data: avConvRows, error: avConvErr } = await admin.rpc('exec_sql', { q: avulsoConversionQuery });
+    if (avConvErr) console.error('[admin-analytics] avulso_conversion_query_failed:', avConvErr);
+    const avConvRow = (avConvRows && avConvRows[0]) || {};
+    const avulsoConversion = {
+      pessoas_total: Number(avConvRow.pessoas_total || 0),
+      com_cadastro: Number(avConvRow.com_cadastro || 0),
+      ja_assinaram: Number(avConvRow.ja_assinaram || 0),
+      assinaram_depois: Number(avConvRow.assinaram_depois || 0),
+      ativos_agora: Number(avConvRow.ativos_agora || 0),
+    };
+
     const churnACohort = Number(rev.churn_a_cohort || 0);
     const churnARetained = Number(rev.churn_a_retained || 0);
     const churnBCohort = Number(rev.churn_b_cohort || 0);
@@ -440,12 +577,40 @@ Deno.serve(async (req) => {
       sold_total: soldTotal,
       sold_monthly: soldMonthly,
       sold_quarterly: soldQuarterly,
+      // ✅ 05/08: mesmo total de sold_monthly/sold_quarterly, só que
+      // discriminado por canal — pedido depois de reclamação de que "hoje
+      // tá bagunçado, não consigo saber o quanto vendeu no bot x no site".
+      sold_by_channel: {
+        bot: {
+          total: botQtd,
+          mensal: botMensal,
+          trimestral: botTrimestral,
+          revenue_estimated: botTotalReais,
+        },
+        site: {
+          total: siteQtd,
+          mensal: siteMensal,
+          trimestral: siteTrimestral,
+          revenue_estimated: siteTotalReais,
+        },
+      },
       revenue_period: pixTotal + stripeTotal + manualTotal,
       revenue_breakdown: {
         pix_infinitepay_asaas: pixTotal,
         stripe_estimated: stripeTotal,
         manual_estimated: manualTotal,
       },
+      // ✅ 04/08: vendas avulsas de R$10 (dorama avulso via bot WhatsApp) —
+      // de propósito FORA de revenue_period/revenue_breakdown, pra não
+      // misturar com o faturamento de assinatura.
+      avulso: {
+        total: avulsoTotal,
+        qtd_vendas: avulsoQtdVendas,
+        qtd_pessoas: avulsoQtdPessoas,
+      },
+      // ✅ 05/08: quantos de quem comprou avulso viraram assinante depois
+      // (ver limitação de matching por telefone no comentário acima).
+      avulso_conversion: avulsoConversion,
       active_now: Number(rev.ativos_total || 0),
       active_now_monthly: Number(rev.ativos_mensal || 0),
       active_now_quarterly: Number(rev.ativos_trimestral || 0),

@@ -180,6 +180,16 @@ export default function AdminAnalytics() {
   const [tierComposition, setTierComposition] = useState([]);
   const [tierRetention, setTierRetention] = useState([]);
 
+  // Avulso → assinante (vitalício, não filtra por período) — ver comentário
+  // na edge function sobre a limitação de matching por telefone.
+  const [avulsoConversion, setAvulsoConversion] = useState({
+    pessoas_total: 0,
+    com_cadastro: 0,
+    ja_assinaram: 0,
+    assinaram_depois: 0,
+    ativos_agora: 0,
+  });
+
   // Retenção D30
   const [retD30, setRetD30] = useState({
     base_com_30_dias: 0,
@@ -468,6 +478,15 @@ export default function AdminAnalytics() {
         base_com_30_dias: safeNum(pix.d30_base),
         ainda_ativos: safeNum(pix.d30_retained),
         retencao_d30: safeNum(pix.d30_rate),
+      });
+
+      const avConv = pix.avulso_conversion || {};
+      setAvulsoConversion({
+        pessoas_total: safeNum(avConv.pessoas_total),
+        com_cadastro: safeNum(avConv.com_cadastro),
+        ja_assinaram: safeNum(avConv.ja_assinaram),
+        assinaram_depois: safeNum(avConv.assinaram_depois),
+        ativos_agora: safeNum(avConv.ativos_agora),
       });
 
       const loyalData = pix.loyal || {};
@@ -907,6 +926,17 @@ export default function AdminAnalytics() {
                   `${avulsoQtdPessoas} pessoa${avulsoQtdPessoas === 1 ? "" : "s"} • ${avulsoQtdVendas} venda${avulsoQtdVendas === 1 ? "" : "s"} no período`,
                   "default",
                   "Vendas do dorama avulso de R$ 10,00 (link único, vendido pelo bot do WhatsApp). Esse valor é separado e NÃO entra na conta do \"Faturamento (período)\" acima, pra não te confundir com o faturamento de assinatura."
+                )}
+              </div>
+
+              <div className="md:col-span-8">
+                {renderCard(
+                  "Avulso → assinante (vitalício)",
+                  `${avulsoConversion.assinaram_depois} converteram`,
+                  <Users className="w-5 h-5 text-pink-300" />,
+                  `De ${avulsoConversion.pessoas_total} pessoas que já compraram avulso, só ${avulsoConversion.com_cadastro} têm conta com o mesmo telefone • ${avulsoConversion.ativos_agora} estão assinantes ativos agora`,
+                  "default",
+                  "De TODO MUNDO que já comprou o avulso de R$10 (histórico completo, não é só o período do filtro), quantos depois criaram conta e assinaram de verdade. LIMITAÇÃO: a compra avulsa não salva conta de usuário, só o telefone — então só enxergamos quem assinou usando o MESMO número de telefone que usou no bot. Quem assinou com outro número não aparece aqui, então esse número é um piso (o real tende a ser maior)."
                 )}
               </div>
             </div>
