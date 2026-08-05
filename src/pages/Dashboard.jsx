@@ -33,10 +33,72 @@ import {
   Gift,
   Bot,
   Smartphone,
+  Plus,
 } from "lucide-react";
 
 const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
 const RECOMMENDED_LIMIT = 100; // antes: 400
+
+// ✅ definição única do filtro de cada categoria (fileira da home), reusada
+// tanto na carga inicial quanto no "Carregar mais" — antes cada fileira só
+// carregava esse limite fixo e nunca mais, sem jeito de ver o resto sem
+// entrar na página dedicada da categoria.
+const CATEGORY_QUERIES = {
+  new: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_new", true).order("created_at", { ascending: false }),
+  },
+  dubbed: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase
+        .from("doramas")
+        .select(selectStr)
+        .or("language.eq.dublado,alt_bunny_url.not.is.null")
+        .order("created_at", { ascending: false }),
+  },
+  baby: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_baby_pregnancy", true).order("created_at", { ascending: false }),
+  },
+  taboo: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_taboo_relationship", true).order("created_at", { ascending: false }),
+  },
+  lobos_vampiros: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_lobos_vampiros", true).order("created_at", { ascending: false }),
+  },
+  bl_gl: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_bl_gl", true).order("created_at", { ascending: false }),
+  },
+  brasileiro: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_brasileiro", true).order("created_at", { ascending: false }),
+  },
+  anime: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_anime", true).order("created_at", { ascending: false }),
+  },
+  hidden: {
+    limit: LIST_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_hidden_identity", true).order("created_at", { ascending: false }),
+  },
+  recommended: {
+    limit: RECOMMENDED_LIMIT,
+    build: (selectStr) =>
+      supabase.from("doramas").select(selectStr).eq("is_recommended", true).order("created_at", { ascending: false }),
+  },
+};
 
 // ✅ Seletores em fallback (pra NUNCA quebrar por coluna inexistente)
 const SELECT_LEVELS = [
@@ -281,7 +343,18 @@ const HeroSection = ({ featuredDoramas, loading }) => {
 };
 
 // ---------------- SECTION BLOCK (CARROSSEL COM SETAS) ----------------
-const DoramaSection = ({ title, icon, doramas, loading, error, id, hideDubladoBadge = false }) => {
+const DoramaSection = ({
+  title,
+  icon,
+  doramas,
+  loading,
+  error,
+  id,
+  hideDubladoBadge = false,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore = () => {},
+}) => {
   const listRef = useRef(null);
 
   const handleScroll = (direction) => {
@@ -341,6 +414,26 @@ const DoramaSection = ({ title, icon, doramas, loading, error, id, hideDubladoBa
                 <DoramaCard dorama={d} index={index} hideYear hideDubladoBadge={hideDubladoBadge} />
               </div>
             ))}
+
+            {hasMore && (
+              <div className="min-w-[150px] sm:min-w-[180px] md:min-w-[200px]">
+                <button
+                  type="button"
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                  className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 hover:bg-slate-800/60 hover:border-slate-600 transition-colors text-slate-300 text-sm font-medium disabled:opacity-60"
+                >
+                  {loadingMore ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="w-6 h-6" />
+                      Carregar mais
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
 
           {doramas.length > 0 && (
@@ -440,6 +533,22 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     brasileiro: false,
     anime: false,
   });
+
+  // ✅ "Carregar mais" nas fileiras da home — hasMore/loadingMore por
+  // categoria (featured não entra, é só o banner, não pagina)
+  const [hasMore, setHasMore] = useState({
+    new: false,
+    recommended: false,
+    dubbed: false,
+    baby: false,
+    taboo: false,
+    hidden: false,
+    lobos_vampiros: false,
+    bl_gl: false,
+    brasileiro: false,
+    anime: false,
+  });
+  const [loadingMore, setLoadingMore] = useState({});
 
   const [continueWatching, setContinueWatching] = useState([]);
   const [loadingContinue, setLoadingContinue] = useState(true);
@@ -612,8 +721,33 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     }
 
     setDoramas((prev) => ({ ...prev, [category]: data || [] }));
+    if (CATEGORY_QUERIES[category]) {
+      setHasMore((prev) => ({ ...prev, [category]: (data || []).length === limit }));
+    }
     setLoading((prev) => ({ ...prev, [category]: false }));
   }, []);
+
+  // ✅ "Carregar mais" na fileira da home — pega a partir de onde já carregou
+  // (doramas[category].length vira o offset) e concatena no que já tem.
+  const loadMoreCategory = async (category) => {
+    const cfg = CATEGORY_QUERIES[category];
+    if (!cfg || loadingMore[category] || !hasMore[category]) return;
+
+    setLoadingMore((prev) => ({ ...prev, [category]: true }));
+
+    const offset = doramas[category]?.length || 0;
+    const { data, error: err } = await runQueryWithFallback((selectStr) =>
+      cfg.build(selectStr).range(offset, offset + cfg.limit - 1)
+    );
+
+    if (err) {
+      console.error(`[${category}] load_more erro:`, err);
+    } else {
+      setDoramas((prev) => ({ ...prev, [category]: [...(prev[category] || []), ...data] }));
+      setHasMore((prev) => ({ ...prev, [category]: data.length === cfg.limit }));
+    }
+    setLoadingMore((prev) => ({ ...prev, [category]: false }));
+  };
 
   // Carregar categorias
   useEffect(() => {
@@ -630,115 +764,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       10
     );
 
-    fetchCategory(
-      "new",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_new", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "recommended",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_recommended", true)
-          .order("created_at", { ascending: false }),
-      RECOMMENDED_LIMIT
-    );
-
-    fetchCategory(
-      "dubbed",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .or("language.eq.dublado,alt_bunny_url.not.is.null")
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "baby",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_baby_pregnancy", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "taboo",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_taboo_relationship", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "lobos_vampiros",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_lobos_vampiros", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "bl_gl",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_bl_gl", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "brasileiro",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_brasileiro", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "anime",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_anime", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
-
-    fetchCategory(
-      "hidden",
-      (selectStr) =>
-        supabase
-          .from("doramas")
-          .select(selectStr)
-          .eq("is_hidden_identity", true)
-          .order("created_at", { ascending: false }),
-      LIST_LIMIT
-    );
+    Object.entries(CATEGORY_QUERIES).forEach(([key, cfg]) => {
+      fetchCategory(key, cfg.build, cfg.limit);
+    });
   }, [authLoading, fetchCategory]);
 
   // ✅ BUSCA: ILIKE + slug (acentos) + Fuse.js (typos)
@@ -1261,6 +1289,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.new}
             loading={loading.new}
             error={error.new}
+            hasMore={hasMore.new}
+            loadingMore={loadingMore.new}
+            onLoadMore={() => loadMoreCategory("new")}
           />
         )}
 
@@ -1273,6 +1304,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loading={loading.dubbed}
             error={error.dubbed}
             hideDubladoBadge
+            hasMore={hasMore.dubbed}
+            loadingMore={loadingMore.dubbed}
+            onLoadMore={() => loadMoreCategory("dubbed")}
           />
         )}
 
@@ -1284,6 +1318,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.baby}
             loading={loading.baby}
             error={error.baby}
+            hasMore={hasMore.baby}
+            loadingMore={loadingMore.baby}
+            onLoadMore={() => loadMoreCategory("baby")}
           />
         )}
 
@@ -1295,6 +1332,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.taboo}
             loading={loading.taboo}
             error={error.taboo}
+            hasMore={hasMore.taboo}
+            loadingMore={loadingMore.taboo}
+            onLoadMore={() => loadMoreCategory("taboo")}
           />
         )}
 
@@ -1306,6 +1346,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.lobos_vampiros}
             loading={loading.lobos_vampiros}
             error={error.lobos_vampiros}
+            hasMore={hasMore.lobos_vampiros}
+            loadingMore={loadingMore.lobos_vampiros}
+            onLoadMore={() => loadMoreCategory("lobos_vampiros")}
           />
         )}
 
@@ -1317,6 +1360,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.bl_gl}
             loading={loading.bl_gl}
             error={error.bl_gl}
+            hasMore={hasMore.bl_gl}
+            loadingMore={loadingMore.bl_gl}
+            onLoadMore={() => loadMoreCategory("bl_gl")}
           />
         )}
 
@@ -1328,6 +1374,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.brasileiro}
             loading={loading.brasileiro}
             error={error.brasileiro}
+            hasMore={hasMore.brasileiro}
+            loadingMore={loadingMore.brasileiro}
+            onLoadMore={() => loadMoreCategory("brasileiro")}
           />
         )}
 
@@ -1339,6 +1388,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.anime}
             loading={loading.anime}
             error={error.anime}
+            hasMore={hasMore.anime}
+            loadingMore={loadingMore.anime}
+            onLoadMore={() => loadMoreCategory("anime")}
           />
         )}
 
@@ -1350,6 +1402,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.hidden}
             loading={loading.hidden}
             error={error.hidden}
+            hasMore={hasMore.hidden}
+            loadingMore={loadingMore.hidden}
+            onLoadMore={() => loadMoreCategory("hidden")}
           />
         )}
 
@@ -1361,6 +1416,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             doramas={doramas.recommended}
             loading={loading.recommended}
             error={error.recommended}
+            hasMore={hasMore.recommended}
+            loadingMore={loadingMore.recommended}
+            onLoadMore={() => loadMoreCategory("recommended")}
           />
         )}
       </main>
