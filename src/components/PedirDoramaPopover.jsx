@@ -25,24 +25,31 @@ const PedirDoramaPopover = () => {
     setAvisoLimite('');
   };
 
-  const handlePedir = async () => {
+  // ✅ 05/08: o "já temos X" é uma SUGESTÃO, não pode travar o pedido — antes,
+  // quando o fuzzy match achava algo parecido (sim > 0.4, que é bem permissivo),
+  // o pedido simplesmente não ia pra frente e não tinha como continuar mesmo
+  // sendo outro título. Agora, se não for forçado, mostra a sugestão mas
+  // mantém o texto digitado; a pessoa decide se quer pedir mesmo assim.
+  const handlePedir = async (forcar = false) => {
     const nome = titulo.trim();
     if (!nome) return;
     try {
       setSending(true);
-      resetFeedback();
 
-      const { data: encontrados } = await supabase.rpc('search_doramas_fuzzy', { query: nome });
-      const achado = (encontrados || []).find((d) => d.sim > 0.4);
-      if (achado) {
-        setTitulo('');
-        setJaTem(achado);
-        toast({
-          title: 'Esse a gente já tem! 🎉',
-          description: `"${achado.title}" já está no catálogo.`,
-        });
-        return;
+      if (!forcar) {
+        setAvisoLimite('');
+        const { data: encontrados } = await supabase.rpc('search_doramas_fuzzy', { query: nome });
+        const achado = (encontrados || []).find((d) => d.sim > 0.4);
+        if (achado) {
+          setJaTem(achado);
+          toast({
+            title: 'Esse a gente já tem! 🎉',
+            description: `"${achado.title}" já está no catálogo. Se não for o que você procura, pode pedir mesmo assim.`,
+          });
+          return;
+        }
       }
+      resetFeedback();
 
       const { error } = await supabase
         .from('dorama_requests')
@@ -105,17 +112,29 @@ const PedirDoramaPopover = () => {
           <p className="text-sm font-semibold text-white">Pedir um Dorama</p>
         </div>
 
-        {jaTem ? (
-          <Link
-            to={`/dorama/${jaTem.slug}`}
-            className="flex items-center justify-between rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2.5 hover:bg-emerald-500/15 transition"
-          >
-            <span className="text-xs text-emerald-200">
-              🎉 Já temos <span className="font-semibold">{jaTem.title}</span>!
-            </span>
-            <span className="text-xs text-emerald-300 font-semibold flex-shrink-0 ml-2">Assistir →</span>
-          </Link>
-        ) : avisoLimite ? (
+        {jaTem && (
+          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2.5 mb-2">
+            <Link
+              to={`/dorama/${jaTem.slug}`}
+              className="flex items-center justify-between hover:opacity-80 transition"
+            >
+              <span className="text-xs text-emerald-200">
+                🎉 Já temos <span className="font-semibold">{jaTem.title}</span>!
+              </span>
+              <span className="text-xs text-emerald-300 font-semibold flex-shrink-0 ml-2">Assistir →</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => handlePedir(true)}
+              disabled={sending}
+              className="mt-1.5 text-[11px] text-slate-400 hover:text-slate-200 underline disabled:opacity-50"
+            >
+              Não é esse, pedir mesmo assim
+            </button>
+          </div>
+        )}
+
+        {avisoLimite ? (
           <p className="text-xs text-amber-300">{avisoLimite}</p>
         ) : (
           <div className="flex gap-2">
@@ -123,14 +142,17 @@ const PedirDoramaPopover = () => {
               type="text"
               autoFocus
               value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
+              onChange={(e) => {
+                setTitulo(e.target.value);
+                if (jaTem) setJaTem(null);
+              }}
               onKeyDown={(e) => e.key === 'Enter' && handlePedir()}
               placeholder="Nome do dorama"
               className="flex-1 rounded-lg bg-white/5 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-purple-500/60"
             />
             <Button
               type="button"
-              onClick={handlePedir}
+              onClick={() => handlePedir()}
               disabled={!titulo.trim() || sending}
               className="bg-purple-600 hover:bg-purple-700 px-3"
             >
