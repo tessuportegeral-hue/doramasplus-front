@@ -911,6 +911,38 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
+            {/* Vendas por canal — Bot (WhatsApp) x Site — perto do faturamento, de propósito */}
+            <div className="mt-3">
+              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                Vendas por canal (Bot x Site)
+                <InfoTooltip text='Mesmas vendas do faturamento acima, discriminadas por origem. "Bot" = fechou a compra na conversa com o bot de vendas do WhatsApp (pix_payments.source = whatsapp_sales_bot). "Site" = todo o resto — checkout direto no site, Stripe, PIX manual, ads, lembrete de renovação, Dora chat.' />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  {renderCard(
+                    "🤖 Bot (WhatsApp)",
+                    `${soldByChannel.bot.total}`,
+                    <Users className="w-5 h-5 text-emerald-300" />,
+                    `Mensal: ${soldByChannel.bot.mensal} • Trimestral: ${soldByChannel.bot.trimestral} • ${formatBRL(soldByChannel.bot.revenue_estimated)}`,
+                    "ok",
+                    "Vendas de assinatura fechadas na conversa com o bot de vendas do WhatsApp, no período selecionado."
+                  )}
+                </div>
+
+                <div>
+                  {renderCard(
+                    "🌐 Site",
+                    `${soldByChannel.site.total}`,
+                    <Users className="w-5 h-5 text-blue-300" />,
+                    `Mensal: ${soldByChannel.site.mensal} • Trimestral: ${soldByChannel.site.trimestral} • ${formatBRL(soldByChannel.site.revenue_estimated)}`,
+                    "default",
+                    "Todo o resto: checkout direto no site, Stripe, PIX manual do admin, ads, lembrete de renovação por WhatsApp/email, Dora chat."
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Linha 2 (MRR mensal/trimestral) */}
             <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-6">
@@ -1225,38 +1257,6 @@ export default function AdminAnalytics() {
                     `Preço: ${formatBRL(PRICE_QUARTERLY)}`,
                     "default",
                     "O mesmo de cima, mas só contando quem pagou o plano trimestral."
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Vendas por canal — Bot (WhatsApp) x Site */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
-                Vendas por canal (Bot x Site)
-                <InfoTooltip text='Mesmas vendas de cima, discriminadas por origem. "Bot" = fechou a compra na conversa com o bot de vendas do WhatsApp (pix_payments.source = whatsapp_sales_bot). "Site" = todo o resto — checkout direto no site, Stripe, PIX manual, ads, lembrete de renovação, Dora chat.' />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  {renderCard(
-                    "🤖 Bot (WhatsApp)",
-                    `${soldByChannel.bot.total}`,
-                    <Users className="w-5 h-5 text-emerald-300" />,
-                    `Mensal: ${soldByChannel.bot.mensal} • Trimestral: ${soldByChannel.bot.trimestral} • ${formatBRL(soldByChannel.bot.revenue_estimated)}`,
-                    "ok",
-                    "Vendas de assinatura fechadas na conversa com o bot de vendas do WhatsApp, no período selecionado."
-                  )}
-                </div>
-
-                <div>
-                  {renderCard(
-                    "🌐 Site",
-                    `${soldByChannel.site.total}`,
-                    <Users className="w-5 h-5 text-blue-300" />,
-                    `Mensal: ${soldByChannel.site.mensal} • Trimestral: ${soldByChannel.site.trimestral} • ${formatBRL(soldByChannel.site.revenue_estimated)}`,
-                    "default",
-                    "Todo o resto: checkout direto no site, Stripe, PIX manual do admin, ads, lembrete de renovação por WhatsApp/email, Dora chat."
                   )}
                 </div>
               </div>
