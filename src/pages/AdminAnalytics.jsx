@@ -160,6 +160,14 @@ export default function AdminAnalytics() {
     mrr_quarterly_estimated: 0,
   });
 
+  // ✅ 05/08: vendas discriminadas por canal (bot do WhatsApp x site) —
+  // antes tudo (infinitepay + asaas, direto ou via bot) caía junto em
+  // sold_monthly/sold_quarterly, sem dar pra saber quanto veio de cada canal.
+  const [soldByChannel, setSoldByChannel] = useState({
+    bot: { total: 0, mensal: 0, trimestral: 0, revenue_estimated: 0 },
+    site: { total: 0, mensal: 0, trimestral: 0, revenue_estimated: 0 },
+  });
+
   // "Assinantes fiéis" (estimativa) — sempre "agora", independe do filtro de período
   const [loyal, setLoyal] = useState({
     active_total: 0,
@@ -439,6 +447,21 @@ export default function AdminAnalytics() {
         avulso_total: safeNum(pix.avulso?.total),
         avulso_qtd_vendas: safeNum(pix.avulso?.qtd_vendas),
         avulso_qtd_pessoas: safeNum(pix.avulso?.qtd_pessoas),
+      });
+
+      setSoldByChannel({
+        bot: {
+          total: safeNum(pix.sold_by_channel?.bot?.total),
+          mensal: safeNum(pix.sold_by_channel?.bot?.mensal),
+          trimestral: safeNum(pix.sold_by_channel?.bot?.trimestral),
+          revenue_estimated: safeNum(pix.sold_by_channel?.bot?.revenue_estimated),
+        },
+        site: {
+          total: safeNum(pix.sold_by_channel?.site?.total),
+          mensal: safeNum(pix.sold_by_channel?.site?.mensal),
+          trimestral: safeNum(pix.sold_by_channel?.site?.trimestral),
+          revenue_estimated: safeNum(pix.sold_by_channel?.site?.revenue_estimated),
+        },
       });
 
       setRetD30({
@@ -1202,6 +1225,38 @@ export default function AdminAnalytics() {
                     `Preço: ${formatBRL(PRICE_QUARTERLY)}`,
                     "default",
                     "O mesmo de cima, mas só contando quem pagou o plano trimestral."
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Vendas por canal — Bot (WhatsApp) x Site */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                Vendas por canal (Bot x Site)
+                <InfoTooltip text='Mesmas vendas de cima, discriminadas por origem. "Bot" = fechou a compra na conversa com o bot de vendas do WhatsApp (pix_payments.source = whatsapp_sales_bot). "Site" = todo o resto — checkout direto no site, Stripe, PIX manual, ads, lembrete de renovação, Dora chat.' />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  {renderCard(
+                    "🤖 Bot (WhatsApp)",
+                    `${soldByChannel.bot.total}`,
+                    <Users className="w-5 h-5 text-emerald-300" />,
+                    `Mensal: ${soldByChannel.bot.mensal} • Trimestral: ${soldByChannel.bot.trimestral} • ${formatBRL(soldByChannel.bot.revenue_estimated)}`,
+                    "ok",
+                    "Vendas de assinatura fechadas na conversa com o bot de vendas do WhatsApp, no período selecionado."
+                  )}
+                </div>
+
+                <div>
+                  {renderCard(
+                    "🌐 Site",
+                    `${soldByChannel.site.total}`,
+                    <Users className="w-5 h-5 text-blue-300" />,
+                    `Mensal: ${soldByChannel.site.mensal} • Trimestral: ${soldByChannel.site.trimestral} • ${formatBRL(soldByChannel.site.revenue_estimated)}`,
+                    "default",
+                    "Todo o resto: checkout direto no site, Stripe, PIX manual do admin, ads, lembrete de renovação por WhatsApp/email, Dora chat."
                   )}
                 </div>
               </div>
