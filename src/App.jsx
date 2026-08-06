@@ -21,6 +21,7 @@ import InstallAppBanner from '@/components/InstallAppBanner';
 import PushPermissionPrompt from '@/components/PushPermissionPrompt';
 import DoramasChat from '@/components/DoramasChat';
 import UpdateEmailGate from '@/components/UpdateEmailGate';
+import SplashScreen from '@/components/SplashScreen';
 import { supabase } from '@/lib/supabaseClient';
 
 // ✅ (NOVO) Gate obrigatório do WhatsApp/phone
@@ -376,6 +377,8 @@ function App() {
 
   return (
     <>
+      <SplashScreen />
+
       <Helmet>
         <title>DoramaStream - Assista seus Dramas Asiáticos Favoritos</title>
 
