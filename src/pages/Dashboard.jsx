@@ -959,7 +959,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     isAndroidDevice
       ? {
           icon: Smartphone,
-          title: "📲 Baixe o app oficial",
+          title: "📲 Baixe o app oficial no Play Store",
           subtitle: "Mais rápido e direto na tela inicial, sem passar pelo navegador",
           gradient: "from-blue-600 via-indigo-600 to-purple-600",
           glow: "from-blue-600 via-indigo-500 to-purple-600",
