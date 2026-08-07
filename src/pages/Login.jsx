@@ -417,7 +417,7 @@ const Login = () => {
                 onClick={() => setLoginMode("code-request")}
                 className="block mt-4 text-sm text-purple-400 hover:underline text-center w-full"
               >
-                Esqueci minha senha / Entrar sem senha (código por email)
+                Entrar sem senha (código por email)
               </button>
 
               <p className="text-slate-400 text-sm mt-6 text-center">
