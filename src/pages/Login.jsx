@@ -29,12 +29,18 @@ const Login = () => {
   // dígitos por email, sem precisar de edge function nem lógica nova no
   // banco. Só funciona pra contas com email de verdade (WhatsApp vira um
   // email sintético @doramasplus.com que não recebe nada de verdade).
-  // "loginMode": 'password' | 'code-request' | 'code-verify'
+  // "loginMode": 'password' | 'code-request' | 'code-verify' | 'set-password'
   const [loginMode, setLoginMode] = useState("password");
   const [codeEmail, setCodeEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
+
+  // Passo 3 (opcional, após entrar por código): definir senha nova
+  const [newPasswordAfterCode, setNewPasswordAfterCode] = useState("");
+  const [confirmPasswordAfterCode, setConfirmPasswordAfterCode] = useState("");
+  const [showNewPasswordAfterCode, setShowNewPasswordAfterCode] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
 
   // Modal: conta ativa em outro device (ao tentar logar)
   const [showDeviceModal, setShowDeviceModal] = useState(false);
@@ -295,12 +301,53 @@ const Login = () => {
         return;
       }
 
-      navigate("/");
+      // ✅ 07/08 — em vez de já navegar, oferece definir uma senha nova
+      // (sem pedir a antiga — provar acesso ao email já é prova suficiente,
+      // mesma lógica de segurança que o link de recuperação usava antes).
+      setLoginMode("set-password");
     } catch (err) {
       console.error("Erro ao confirmar código:", err);
       toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
     } finally {
       setVerifyingCode(false);
+    }
+  };
+
+  // -------- Login sem senha: passo 3 (opcional), definir senha nova --------
+  const handleSetNewPassword = async (e) => {
+    e.preventDefault();
+
+    if (newPasswordAfterCode.length < 6) {
+      toast({ title: "Senha muito curta", description: "A nova senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
+      return;
+    }
+
+    if (newPasswordAfterCode !== confirmPasswordAfterCode) {
+      toast({ title: "Senhas diferentes", description: "A confirmação não confere com a nova senha.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSettingPassword(true);
+
+      const { error } = await supabase.auth.updateUser({ password: newPasswordAfterCode });
+
+      if (error) {
+        toast({
+          title: "Erro ao definir senha",
+          description: error.message || "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({ title: "Senha definida!", description: "Você já pode entrar com email/WhatsApp e senha também." });
+      navigate("/");
+    } catch (err) {
+      console.error("Erro ao definir senha:", err);
+      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -365,16 +412,12 @@ const Login = () => {
                 </Button>
               </form>
 
-              <Link to="/reset-password" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
-                Esqueci minha senha
-              </Link>
-
               <button
                 type="button"
                 onClick={() => setLoginMode("code-request")}
-                className="block mt-2 text-sm text-slate-400 hover:text-purple-400 hover:underline text-center w-full"
+                className="block mt-4 text-sm text-purple-400 hover:underline text-center w-full"
               >
-                Entrar sem senha (código por email)
+                Esqueci minha senha / Entrar sem senha (código por email)
               </button>
 
               <p className="text-slate-400 text-sm mt-6 text-center">
@@ -470,6 +513,66 @@ const Login = () => {
                 className="flex items-center justify-center gap-1 mt-2 text-sm text-slate-400 hover:text-purple-400 hover:underline mx-auto"
               >
                 <ArrowLeft className="w-4 h-4" /> Voltar pro login com senha
+              </button>
+            </>
+          )}
+
+          {loginMode === "set-password" && (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <KeyRound className="w-5 h-5 text-purple-400" />
+                <h1 className="text-2xl font-bold">Defina uma senha (opcional)</h1>
+              </div>
+              <p className="text-slate-300 text-sm mb-6">
+                Você já está logado. Se quiser, aproveita e define uma senha nova
+                pra próxima vez — sem precisar da antiga.
+              </p>
+
+              <form onSubmit={handleSetNewPassword} className="space-y-4">
+                <div>
+                  <label className="text-sm mb-1 block">Nova senha</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPasswordAfterCode ? "text" : "password"}
+                      placeholder="Pelo menos 6 caracteres"
+                      value={newPasswordAfterCode}
+                      onChange={(e) => setNewPasswordAfterCode(e.target.value)}
+                      autoComplete="new-password"
+                      className={inputBase + " pr-10"}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPasswordAfterCode((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 opacity-90 hover:opacity-100"
+                    >
+                      {showNewPasswordAfterCode ? <Eye className="w-5 h-5 text-slate-100" /> : <EyeOff className="w-5 h-5 text-slate-100" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm mb-1 block">Confirmar nova senha</label>
+                  <input
+                    type={showNewPasswordAfterCode ? "text" : "password"}
+                    placeholder="Repita a senha"
+                    value={confirmPasswordAfterCode}
+                    onChange={(e) => setConfirmPasswordAfterCode(e.target.value)}
+                    autoComplete="new-password"
+                    className={inputBase}
+                  />
+                </div>
+
+                <Button type="submit" className="w-full h-11 text-base" disabled={settingPassword}>
+                  {settingPassword ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : "Salvar senha e continuar"}
+                </Button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => navigate("/")}
+                className="block mt-4 text-sm text-slate-400 hover:text-purple-400 hover:underline text-center w-full"
+              >
+                Pular por agora
               </button>
             </>
           )}
