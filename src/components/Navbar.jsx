@@ -355,9 +355,28 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               whileHover={{ scale: 1.1, rotate: 360 }}
               transition={{ duration: 0.3 }}
             >
-              <img src="/logo-d-mark.png" alt="DoramasPlus" className="w-8 h-8 object-contain" />
+              {/* ✅ 07/08 — TESTE: pro tesagencia, inverte as cores — o "D"
+                  ganha o gradiente (via CSS mask, já que é um PNG) e o
+                  texto vira branco sólido */}
+              {showBottomNav ? (
+                <div
+                  className="w-8 h-8 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400"
+                  style={{
+                    WebkitMaskImage: 'url(/logo-d-mark.png)',
+                    WebkitMaskSize: 'contain',
+                    WebkitMaskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskImage: 'url(/logo-d-mark.png)',
+                    maskSize: 'contain',
+                    maskRepeat: 'no-repeat',
+                    maskPosition: 'center',
+                  }}
+                />
+              ) : (
+                <img src="/logo-d-mark.png" alt="DoramasPlus" className="w-8 h-8 object-contain" />
+              )}
             </motion.div>
-            <span className="text-xl font-bold text-gradient">DoramasPlus</span>
+            <span className={showBottomNav ? 'text-xl font-bold text-white' : 'text-xl font-bold text-gradient'}>DoramasPlus</span>
           </Link>
 
           {/* ✅ BUSCA no lugar certo (entre logo e categorias) */}
