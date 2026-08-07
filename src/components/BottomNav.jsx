@@ -35,7 +35,7 @@ export default function BottomNav() {
     // espaço de dentro dos 64px fixos e espreme/corta o ícone+texto.
     document.documentElement.style.setProperty(
       '--dp-bottom-nav-h',
-      visible ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : '0px'
+      visible ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px'
     );
     return () =>
       document.documentElement.style.setProperty('--dp-bottom-nav-h', '0px');
@@ -48,21 +48,21 @@ export default function BottomNav() {
       className="md:hidden fixed bottom-0 left-0 right-0 z-[9980] bg-slate-950/95 backdrop-blur-sm border-t border-slate-800"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className="h-16 flex items-stretch">
+      <div className="h-[52px] flex items-stretch">
         {TABS.map(({ to, label, Icon, match }) => {
           const active = match(location.pathname);
           return (
             <NavLink
               key={to}
               to={to}
-              className="flex-1 flex flex-col items-center justify-center gap-1"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5"
             >
               <Icon
-                className={`w-5 h-5 ${active ? 'text-purple-400' : 'text-slate-500'}`}
+                className={`w-[18px] h-[18px] ${active ? 'text-purple-400' : 'text-slate-500'}`}
                 strokeWidth={active ? 2.5 : 2}
               />
               <span
-                className={`text-[11px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
+                className={`text-[10px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
               >
                 {label}
               </span>
