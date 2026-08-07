@@ -5,7 +5,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Eye, EyeOff, MonitorSmartphone } from "lucide-react";
+import { Loader2, Eye, EyeOff, MonitorSmartphone, Mail, KeyRound, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 // ✅ 29/07 — aposentado (modelo "Netflix"): login livre em vários
@@ -23,6 +23,18 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ✅ 07/08 — login sem senha por código no email (pedido: "Dramio tem
+  // isso também"). Usa o OTP nativo do Supabase — manda um código de 6
+  // dígitos por email, sem precisar de edge function nem lógica nova no
+  // banco. Só funciona pra contas com email de verdade (WhatsApp vira um
+  // email sintético @doramasplus.com que não recebe nada de verdade).
+  // "loginMode": 'password' | 'code-request' | 'code-verify'
+  const [loginMode, setLoginMode] = useState("password");
+  const [codeEmail, setCodeEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
+  const [verifyingCode, setVerifyingCode] = useState(false);
 
   // Modal: conta ativa em outro device (ao tentar logar)
   const [showDeviceModal, setShowDeviceModal] = useState(false);
@@ -211,6 +223,87 @@ const Login = () => {
     }
   };
 
+  // -------- Login sem senha: passo 1, manda o código --------
+  const handleSendCode = async (e) => {
+    e.preventDefault();
+    const cleanEmail = codeEmail.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      toast({ title: "Email inválido", description: "Digite um email válido.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setSendingCode(true);
+
+      // shouldCreateUser:false — é login, não cadastro. Se o email não
+      // tiver conta, o Supabase não cria uma nova nem revela isso (evita
+      // vazar quais emails existem), então a mensagem de sucesso é sempre
+      // a mesma; se não tiver conta, o código simplesmente não chega.
+      const { error } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: { shouldCreateUser: false },
+      });
+
+      if (error) {
+        toast({
+          title: "Erro ao enviar código",
+          description: error.message || "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setLoginMode("code-verify");
+      toast({
+        title: "Código enviado!",
+        description: `Confira ${cleanEmail} (e o spam) e digite o código de 6 dígitos.`,
+      });
+    } catch (err) {
+      console.error("Erro ao enviar código:", err);
+      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  // -------- Login sem senha: passo 2, confirma o código --------
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    const cleanCode = otpCode.trim();
+
+    if (cleanCode.length < 6) {
+      toast({ title: "Código incompleto", description: "Digite os 6 dígitos do código.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      setVerifyingCode(true);
+
+      const { error } = await supabase.auth.verifyOtp({
+        email: codeEmail.trim().toLowerCase(),
+        token: cleanCode,
+        type: "email",
+      });
+
+      if (error) {
+        toast({
+          title: "Código incorreto ou expirado",
+          description: "Confira o código ou peça um novo.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      navigate("/");
+    } catch (err) {
+      console.error("Erro ao confirmar código:", err);
+      toast({ title: "Erro inesperado", description: "Tente novamente mais tarde.", variant: "destructive" });
+    } finally {
+      setVerifyingCode(false);
+    }
+  };
+
   const inputBase =
     "w-full h-12 text-base bg-slate-900 text-slate-50 placeholder:text-slate-400 border border-slate-600 rounded-md px-3 " +
     "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500";
@@ -223,61 +316,163 @@ const Login = () => {
 
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50 px-4">
         <div className="max-w-md w-full bg-slate-900/95 p-6 rounded-2xl border border-slate-800 shadow-lg">
-          <h1 className="text-3xl font-bold mb-1 text-purple-400">Bem-vindo</h1>
-          <p className="text-slate-300 text-sm mb-6">Entre na sua conta para continuar.</p>
+          {loginMode === "password" && (
+            <>
+              <h1 className="text-3xl font-bold mb-1 text-purple-400">Bem-vindo</h1>
+              <p className="text-slate-300 text-sm mb-6">Entre na sua conta para continuar.</p>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="text-sm mb-1 block">Email ou WhatsApp</label>
-              <input
-                type="text"
-                inputMode="text"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="Ex: 11999999999 ou email@..."
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className={inputBase}
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                WhatsApp: use com DDD (somente números). Email: digite normal com @.
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="text-sm mb-1 block">Email ou WhatsApp</label>
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Ex: 11999999999 ou email@..."
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    className={inputBase}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    WhatsApp: use com DDD (somente números). Email: digite normal com @.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm mb-1 block">Senha</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Digite sua senha"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={inputBase + " pr-10"}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 opacity-90 hover:opacity-100"
+                    >
+                      {showPassword ? <Eye className="w-5 h-5 text-slate-100" /> : <EyeOff className="w-5 h-5 text-slate-100" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+                  {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
+                </Button>
+              </form>
+
+              <Link to="/reset-password" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
+                Esqueci minha senha
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setLoginMode("code-request")}
+                className="block mt-2 text-sm text-slate-400 hover:text-purple-400 hover:underline text-center w-full"
+              >
+                Entrar sem senha (código por email)
+              </button>
+
+              <p className="text-slate-400 text-sm mt-6 text-center">
+                Não tem conta?{" "}
+                <Link to="/signup" className="text-purple-400 hover:underline">Criar conta</Link>
               </p>
-            </div>
+            </>
+          )}
 
-            <div>
-              <label className="text-sm mb-1 block">Senha</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Digite sua senha"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={inputBase + " pr-10"}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-90 hover:opacity-100"
-                >
-                  {showPassword ? <Eye className="w-5 h-5 text-slate-100" /> : <EyeOff className="w-5 h-5 text-slate-100" />}
-                </button>
+          {loginMode === "code-request" && (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <Mail className="w-5 h-5 text-purple-400" />
+                <h1 className="text-2xl font-bold">Entrar sem senha</h1>
               </div>
-            </div>
+              <p className="text-slate-300 text-sm mb-6">
+                Digite o email da sua conta. Mandamos um código de 6 dígitos pra você entrar na hora.
+              </p>
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Entrando...</> : "Entrar"}
-            </Button>
-          </form>
+              <form onSubmit={handleSendCode} className="space-y-4">
+                <div>
+                  <label className="text-sm mb-1 block">Email</label>
+                  <input
+                    type="email"
+                    placeholder="seuemail@exemplo.com"
+                    value={codeEmail}
+                    onChange={(e) => setCodeEmail(e.target.value)}
+                    autoComplete="email"
+                    className={inputBase}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Só funciona se sua conta tiver um email de verdade (não WhatsApp).
+                  </p>
+                </div>
 
-          <Link to="/reset-password" className="block mt-4 text-sm text-purple-400 hover:underline text-center">
-            Esqueci minha senha
-          </Link>
+                <Button type="submit" className="w-full h-11 text-base" disabled={sendingCode}>
+                  {sendingCode ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enviando...</> : "Enviar código"}
+                </Button>
+              </form>
 
-          <p className="text-slate-400 text-sm mt-6 text-center">
-            Não tem conta?{" "}
-            <Link to="/signup" className="text-purple-400 hover:underline">Criar conta</Link>
-          </p>
+              <button
+                type="button"
+                onClick={() => setLoginMode("password")}
+                className="flex items-center justify-center gap-1 mt-4 text-sm text-purple-400 hover:underline mx-auto"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar pro login com senha
+              </button>
+            </>
+          )}
+
+          {loginMode === "code-verify" && (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <KeyRound className="w-5 h-5 text-purple-400" />
+                <h1 className="text-2xl font-bold">Digite o código</h1>
+              </div>
+              <p className="text-slate-300 text-sm mb-6">
+                Enviamos um código de 6 dígitos pra <strong>{codeEmail.trim().toLowerCase()}</strong>.
+              </p>
+
+              <form onSubmit={handleVerifyCode} className="space-y-4">
+                <div>
+                  <label className="text-sm mb-1 block">Código</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className={inputBase + " text-center text-2xl tracking-[0.5em]"}
+                  />
+                </div>
+
+                <Button type="submit" className="w-full h-11 text-base" disabled={verifyingCode}>
+                  {verifyingCode ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Confirmando...</> : "Confirmar e entrar"}
+                </Button>
+              </form>
+
+              <button
+                type="button"
+                onClick={handleSendCode}
+                disabled={sendingCode}
+                className="block mt-4 text-sm text-purple-400 hover:underline text-center w-full disabled:opacity-60"
+              >
+                {sendingCode ? "Enviando novo código..." : "Não recebeu? Enviar novo código"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLoginMode("password")}
+                className="flex items-center justify-center gap-1 mt-2 text-sm text-slate-400 hover:text-purple-400 hover:underline mx-auto"
+              >
+                <ArrowLeft className="w-4 h-4" /> Voltar pro login com senha
+              </button>
+            </>
+          )}
         </div>
       </div>
 
