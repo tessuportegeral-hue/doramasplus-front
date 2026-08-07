@@ -30,12 +30,13 @@ export default function BottomNav() {
   // Publica a altura pra outros elementos fixos (Dora chat, InstallAppBanner)
   // não ficarem escondidos atrás da barra — mesmo padrão do InstallAppBanner.
   useEffect(() => {
-    // ✅ A altura publicada precisa somar a "área segura" embaixo (home
-    // indicator do iPhone) — se não, o padding-bottom do safe-area come
-    // espaço de dentro dos 64px fixos e espreme/corta o ícone+texto.
+    // ✅ 07/08: o padding extra pra "área segura" (home indicator) tava
+    // sobrando como uma faixa preta vazia embaixo dos ícones em telas sem
+    // esse recurso (achado pelo Leandro, print mostrando o espaço morto).
+    // Removido — barra fixa de 64px, sem padding a mais.
     document.documentElement.style.setProperty(
       '--dp-bottom-nav-h',
-      visible ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px'
+      visible ? '64px' : '0px'
     );
     return () =>
       document.documentElement.style.setProperty('--dp-bottom-nav-h', '0px');
@@ -44,32 +45,27 @@ export default function BottomNav() {
   if (!visible) return null;
 
   return (
-    <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[9980] bg-slate-950/95 backdrop-blur-sm border-t border-slate-800"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-    >
-      <div className="h-[52px] flex items-stretch">
-        {TABS.map(({ to, label, Icon, match }) => {
-          const active = match(location.pathname);
-          return (
-            <NavLink
-              key={to}
-              to={to}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5"
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[9980] h-16 bg-slate-950/95 backdrop-blur-sm border-t border-slate-800 flex items-stretch">
+      {TABS.map(({ to, label, Icon, match }) => {
+        const active = match(location.pathname);
+        return (
+          <NavLink
+            key={to}
+            to={to}
+            className="flex-1 flex flex-col items-center justify-center gap-1"
+          >
+            <Icon
+              className={`w-5 h-5 ${active ? 'text-purple-400' : 'text-slate-500'}`}
+              strokeWidth={active ? 2.5 : 2}
+            />
+            <span
+              className={`text-[11px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
             >
-              <Icon
-                className={`w-[18px] h-[18px] ${active ? 'text-purple-400' : 'text-slate-500'}`}
-                strokeWidth={active ? 2.5 : 2}
-              />
-              <span
-                className={`text-[10px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
-              >
-                {label}
-              </span>
-            </NavLink>
-          );
-        })}
-      </div>
+              {label}
+            </span>
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }
