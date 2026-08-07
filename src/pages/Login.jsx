@@ -257,7 +257,7 @@ const Login = () => {
       setLoginMode("code-verify");
       toast({
         title: "Código enviado!",
-        description: `Confira ${cleanEmail} (e o spam) e digite o código de 6 dígitos.`,
+        description: `Confira ${cleanEmail} (e o spam) e digite o código de 8 dígitos.`,
       });
     } catch (err) {
       console.error("Erro ao enviar código:", err);
@@ -272,8 +272,8 @@ const Login = () => {
     e.preventDefault();
     const cleanCode = otpCode.trim();
 
-    if (cleanCode.length < 6) {
-      toast({ title: "Código incompleto", description: "Digite os 6 dígitos do código.", variant: "destructive" });
+    if (cleanCode.length < 8) {
+      toast({ title: "Código incompleto", description: "Digite os 8 dígitos do código.", variant: "destructive" });
       return;
     }
 
@@ -391,7 +391,7 @@ const Login = () => {
                 <h1 className="text-2xl font-bold">Entrar sem senha</h1>
               </div>
               <p className="text-slate-300 text-sm mb-6">
-                Digite o email da sua conta. Mandamos um código de 6 dígitos pra você entrar na hora.
+                Digite o email da sua conta. Mandamos um código de 8 dígitos pra você entrar na hora.
               </p>
 
               <form onSubmit={handleSendCode} className="space-y-4">
@@ -432,7 +432,7 @@ const Login = () => {
                 <h1 className="text-2xl font-bold">Digite o código</h1>
               </div>
               <p className="text-slate-300 text-sm mb-6">
-                Enviamos um código de 6 dígitos pra <strong>{codeEmail.trim().toLowerCase()}</strong>.
+                Enviamos um código de 8 dígitos pra <strong>{codeEmail.trim().toLowerCase()}</strong>.
               </p>
 
               <form onSubmit={handleVerifyCode} className="space-y-4">
@@ -442,11 +442,11 @@ const Login = () => {
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    maxLength={6}
-                    placeholder="000000"
+                    maxLength={8}
+                    placeholder="00000000"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    className={inputBase + " text-center text-2xl tracking-[0.5em]"}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    className={inputBase + " text-center text-2xl tracking-[0.35em]"}
                   />
                 </div>
 
