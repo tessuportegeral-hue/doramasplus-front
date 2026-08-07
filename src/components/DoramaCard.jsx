@@ -97,14 +97,21 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       onClick={compact ? () => navigate(linkTarget) : undefined}
       role={compact ? 'link' : undefined}
       tabIndex={compact ? 0 : undefined}
-      className={`group relative bg-slate-900 rounded-[12px] overflow-hidden
-                 border border-slate-800
-                 shadow-lg shadow-black/30
-                 hover:border-purple-500/50
-                 hover:shadow-2xl hover:shadow-purple-500/20
-                 transition-all duration-250 ease-in-out
-                 hover:scale-[1.03]
-                 flex flex-col${compact ? ' cursor-pointer' : ''}`}
+      className={
+        compact
+          ? `group relative rounded-[12px] overflow-hidden
+             transition-all duration-250 ease-in-out
+             hover:scale-[1.03]
+             flex flex-col cursor-pointer`
+          : `group relative bg-slate-900 rounded-[12px] overflow-hidden
+             border border-slate-800
+             shadow-lg shadow-black/30
+             hover:border-purple-500/50
+             hover:shadow-2xl hover:shadow-purple-500/20
+             transition-all duration-250 ease-in-out
+             hover:scale-[1.03]
+             flex flex-col`
+      }
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-slate-950 rounded-t-[12px]">
         {coverUrl ? (
