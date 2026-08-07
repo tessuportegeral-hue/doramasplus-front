@@ -470,10 +470,16 @@ const slugifyQuery = (str) =>
   normalizeText(str).trim().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
 // ---------------- DASHBOARD PRINCIPAL ----------------
+// ✅ 07/08 — TESTE: pro tesagencia, "Continuar Assistindo" some daqui porque
+// virou a aba "Histórico" da barra inferior (BottomNav.jsx). Resto dos
+// usuários mantém a seção como sempre foi.
+const BOTTOM_NAV_TEST_EMAIL = "tesagencia@gmail.com";
+
 const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation(); // ✅ (ADICIONADO) para capturar ?src=
+  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
 
   // ✅ (ADICIONADO) Pixel ID e chave do "dedupe" de Purchase
   const META_PIXEL_ID = "1424314778637167";
@@ -1014,7 +1020,11 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
       <SelectedTesterModal />
 
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 pt-[100px] md:pt-[110px]">
+      <main
+        className={`container mx-auto px-4 sm:px-6 lg:px-8 pt-[100px] md:pt-[110px] ${
+          showBottomNav ? "pb-20" : ""
+        }`}
+      >
         {/* ✅ (NOVO) BOTÃO "ASSINE AGORA" — só pra logado que NUNCA foi assinante */}
         {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
           <div className="mb-4 md:mb-6">
@@ -1173,8 +1183,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           </section>
         )}
 
-        {/* CONTINUAR ASSISTINDO */}
-        {!normalizedQuery && (
+        {/* CONTINUAR ASSISTINDO — pro tesagencia isso virou a aba Histórico */}
+        {!normalizedQuery && !showBottomNav && (
           <section className="py-4 md:py-6 relative w-full">
             <div className="flex items-center gap-2 mb-3">
               <Play className="w-5 h-5 text-purple-400" />

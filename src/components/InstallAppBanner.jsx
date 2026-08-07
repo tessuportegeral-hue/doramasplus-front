@@ -152,7 +152,7 @@ export default function InstallAppBanner() {
       {/* Banner fixo no rodapé */}
       <div style={{
         position: "fixed",
-        bottom: 0,
+        bottom: "var(--dp-bottom-nav-h, 0px)",
         left: 0,
         right: 0,
         zIndex: 9990,

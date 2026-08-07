@@ -444,7 +444,8 @@ export default function DoramasChat() {
         onClick={() => setOpen((v) => !v)}
         style={{
           position: "fixed",
-          bottom: "calc(24px + var(--dp-install-banner-h, 0px))",
+          bottom:
+            "calc(24px + var(--dp-install-banner-h, 0px) + var(--dp-bottom-nav-h, 0px))",
           right: "24px",
           width: "56px",
           height: "56px",
@@ -496,8 +497,8 @@ export default function DoramasChat() {
           style={{
             position: "fixed",
             bottom: isMobile
-              ? "calc(80px + var(--dp-install-banner-h, 0px))"
-              : "calc(90px + var(--dp-install-banner-h, 0px))",
+              ? "calc(80px + var(--dp-install-banner-h, 0px) + var(--dp-bottom-nav-h, 0px))"
+              : "calc(90px + var(--dp-install-banner-h, 0px) + var(--dp-bottom-nav-h, 0px))",
             right: isMobile ? "12px" : "24px",
             width: "360px",
             maxWidth: isMobile ? "calc(100vw - 24px)" : "calc(100vw - 48px)",

@@ -9,9 +9,14 @@ import DoramaCard from '@/components/DoramaCard';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 
+// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx, só pra reservar espaço
+// embaixo pro tesagencia não ter a barra cobrindo a última fileira.
+const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
+
 export default function Favoritos() {
   const { user } = useAuth();
   const { favoriteIds, loading: favoritesLoading } = useFavorites();
+  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
 
   const [doramas, setDoramas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +62,11 @@ export default function Favoritos() {
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
         <Navbar />
 
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+        <div
+          className={`container mx-auto px-4 sm:px-6 lg:px-8 pt-24 ${
+            showBottomNav ? 'pb-28' : 'pb-12'
+          }`}
+        >
           <div className="mb-10">
             <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-3">
               <Heart className="w-8 h-8 text-red-500 fill-red-500" />

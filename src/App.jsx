@@ -21,6 +21,7 @@ import InstallAppBanner from '@/components/InstallAppBanner';
 import PushPermissionPrompt from '@/components/PushPermissionPrompt';
 import DoramasChat from '@/components/DoramasChat';
 import UpdateEmailGate from '@/components/UpdateEmailGate';
+import BottomNav from '@/components/BottomNav';
 import SplashScreen from '@/components/SplashScreen';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -70,6 +71,9 @@ const MinhaConta = lazy(() => import('@/pages/MinhaConta'));
 
 // ✅ Meus Favoritos
 const Favoritos = lazy(() => import('@/pages/Favoritos'));
+
+// ✅ (TESTE tesagencia) Meu Histórico
+const Historico = lazy(() => import('@/pages/Historico'));
 
 // Admin
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
@@ -396,6 +400,7 @@ function App() {
           <TrafficSourceTracker />
           <DoramasChat />
           <UpdateEmailGate />
+          <BottomNav />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
@@ -570,6 +575,16 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Favoritos />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* ✅ (TESTE tesagencia) Meu Histórico */}
+                <Route
+                  path="/historico"
+                  element={
+                    <ProtectedRoute>
+                      <Historico />
                     </ProtectedRoute>
                   }
                 />

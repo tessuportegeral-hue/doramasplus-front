@@ -1008,8 +1008,13 @@ function DispositivosCard() {
   );
 }
 
+// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx, só pra reservar espaço
+// embaixo pro tesagencia não ter a barra cobrindo o final da página.
+const BOTTOM_NAV_TEST_EMAIL = "tesagencia@gmail.com";
+
 const MinhaConta = () => {
   const { user } = useAuth();
+  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
 
   return (
     <>
@@ -1020,7 +1025,11 @@ const MinhaConta = () => {
       <div className="min-h-screen bg-slate-950 text-slate-50">
         <Navbar />
 
-        <main className="container mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16">
+        <main
+          className={`container mx-auto px-4 sm:px-6 lg:px-8 pt-24 ${
+            showBottomNav ? "pb-28" : "pb-16"
+          }`}
+        >
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
