@@ -361,15 +361,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
           </Link>
 
           {/* ✅ BUSCA no lugar certo (entre logo e categorias) */}
-          {/* ✅ 07/08 — TESTE: pro tesagencia, some no mobile (foi pra baixo
-              do banner principal no Dashboard.jsx); continua igual no desktop */}
-          <div
-            className={
-              showBottomNav
-                ? "flex-1 hidden md:flex justify-center px-4"
-                : "flex-1 flex justify-center px-4"
-            }
-          >
+          <div className="flex-1 flex justify-center px-4">
             {showSearch && (
               <div className="w-full max-w-sm">
                 <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
