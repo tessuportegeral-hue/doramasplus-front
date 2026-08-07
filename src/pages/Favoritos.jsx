@@ -79,12 +79,27 @@ export default function Favoritos() {
 
           {loading || favoritesLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-[2/3] rounded-[12px] bg-slate-900 border border-slate-800 animate-pulse"
-                />
-              ))}
+              {Array.from({ length: 10 }).map((_, i) =>
+                showBottomNav ? (
+                  // ✅ 07/08 — o DoramaCard vira compacto (sem borda, com
+                  // bloco de texto embaixo) pro tesagencia em qualquer
+                  // lugar que ele é usado, incluindo aqui — skeleton
+                  // precisa bater com essa forma, não com a antiga.
+                  <div key={i} className="rounded-[12px] overflow-hidden animate-pulse">
+                    <div className="aspect-[2/3] bg-slate-900" />
+                    <div className="p-2 space-y-1">
+                      <div className="h-[11px] w-1/3 bg-slate-800 rounded" />
+                      <div className="h-[2.4em] bg-slate-800 rounded" />
+                      <div className="h-3 w-1/2 bg-slate-800 rounded" />
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    key={i}
+                    className="aspect-[2/3] rounded-[12px] bg-slate-900 border border-slate-800 animate-pulse"
+                  />
+                )
+              )}
             </div>
           ) : error ? (
             <div className="text-center py-12 bg-slate-900/50 rounded-xl border border-slate-800 max-w-lg mx-auto">
