@@ -30,9 +30,12 @@ export default function BottomNav() {
   // Publica a altura pra outros elementos fixos (Dora chat, InstallAppBanner)
   // não ficarem escondidos atrás da barra — mesmo padrão do InstallAppBanner.
   useEffect(() => {
+    // ✅ A altura publicada precisa somar a "área segura" embaixo (home
+    // indicator do iPhone) — se não, o padding-bottom do safe-area come
+    // espaço de dentro dos 64px fixos e espreme/corta o ícone+texto.
     document.documentElement.style.setProperty(
       '--dp-bottom-nav-h',
-      visible ? '64px' : '0px'
+      visible ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : '0px'
     );
     return () =>
       document.documentElement.style.setProperty('--dp-bottom-nav-h', '0px');
@@ -42,29 +45,31 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[9980] h-16 bg-slate-950/95 backdrop-blur-sm border-t border-slate-800 flex items-stretch"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[9980] bg-slate-950/95 backdrop-blur-sm border-t border-slate-800"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {TABS.map(({ to, label, Icon, match }) => {
-        const active = match(location.pathname);
-        return (
-          <NavLink
-            key={to}
-            to={to}
-            className="flex-1 flex flex-col items-center justify-center gap-1"
-          >
-            <Icon
-              className={`w-5 h-5 ${active ? 'text-purple-400' : 'text-slate-500'}`}
-              strokeWidth={active ? 2.5 : 2}
-            />
-            <span
-              className={`text-[11px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
+      <div className="h-16 flex items-stretch">
+        {TABS.map(({ to, label, Icon, match }) => {
+          const active = match(location.pathname);
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className="flex-1 flex flex-col items-center justify-center gap-1"
             >
-              {label}
-            </span>
-          </NavLink>
-        );
-      })}
+              <Icon
+                className={`w-5 h-5 ${active ? 'text-purple-400' : 'text-slate-500'}`}
+                strokeWidth={active ? 2.5 : 2}
+              />
+              <span
+                className={`text-[11px] leading-none ${active ? 'text-purple-400 font-medium' : 'text-slate-500'}`}
+              >
+                {label}
+              </span>
+            </NavLink>
+          );
+        })}
+      </div>
     </nav>
   );
 }

@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/SupabaseAuthContext";
+
+// ✅ 07/08 — TESTE: pro tesagencia, o banner do rodapé some (pedido do
+// Leandro — vai virar um slide no carrossel do topo do Dashboard depois).
+// Mesmo gate do BottomNav.jsx.
+const BOTTOM_NAV_TEST_EMAIL = "tesagencia@gmail.com";
 
 function isIOS() {
   if (typeof navigator === "undefined") return false;
@@ -48,6 +54,8 @@ function isRealNativeApp() {
 }
 
 export default function InstallAppBanner() {
+  const { user } = useAuth();
+  const hideForBottomNavTest = user?.email === BOTTOM_NAV_TEST_EMAIL;
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showAndroid, setShowAndroid] = useState(false);
   const [showIOS, setShowIOS] = useState(false);
@@ -103,7 +111,7 @@ export default function InstallAppBanner() {
     };
   }, []);
 
-  const visible = showAndroid || showIOS;
+  const visible = (showAndroid || showIOS) && !hideForBottomNavTest;
 
   // ✅ 27/07: o botão flutuante da Dora (bottom:24px, zIndex:9999) ficava por
   // cima/colado nesse banner (bottom:0, ~64px de altura, zIndex:9990) — os

@@ -401,6 +401,7 @@ function App() {
           <DoramasChat />
           <UpdateEmailGate />
           <BottomNav />
+          <InstallAppBanner />
           <DeviceGuard>
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
@@ -689,7 +690,6 @@ function App() {
       </AuthProvider>
 
       <Toaster />
-      <InstallAppBanner />
       <PushPermissionPrompt />
     </>
   );
