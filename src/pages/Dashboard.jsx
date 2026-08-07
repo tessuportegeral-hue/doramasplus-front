@@ -357,6 +357,17 @@ const DoramaSection = ({
 }) => {
   const listRef = useRef(null);
 
+  // ✅ 07/08 — TESTE: cards mais compactos (referência: print do app
+  // "Dramio" mandado pelo Leandro) pra caber mais fileira por tela e ficar
+  // com a mesma "densidade" entre todas as categorias. Gateado pro
+  // tesagencia@gmail.com; resto dos usuários mantém o tamanho de sempre.
+  const { user } = useAuth();
+  const compact = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const cardWidthClass = compact
+    ? "min-w-[104px] sm:min-w-[130px] md:min-w-[150px]"
+    : "min-w-[150px] sm:min-w-[180px] md:min-w-[200px]";
+  const rowGapClass = compact ? "gap-2.5" : "gap-4";
+
   const handleScroll = (direction) => {
     const container = listRef.current;
     if (!container) return;
@@ -404,24 +415,21 @@ const DoramaSection = ({
         <div className="relative w-full">
           <div
             ref={listRef}
-            className="flex gap-4 overflow-x-auto pb-4 no-scrollbar"
+            className={`flex ${rowGapClass} overflow-x-auto pb-4 no-scrollbar`}
           >
             {doramas.map((d, index) => (
-              <div
-                key={d.id}
-                className="min-w-[150px] sm:min-w-[180px] md:min-w-[200px]"
-              >
+              <div key={d.id} className={cardWidthClass}>
                 <DoramaCard dorama={d} index={index} hideYear hideDubladoBadge={hideDubladoBadge} />
               </div>
             ))}
 
             {hasMore && (
-              <div className="min-w-[150px] sm:min-w-[180px] md:min-w-[200px]">
+              <div className={cardWidthClass}>
                 <button
                   type="button"
                   onClick={onLoadMore}
                   disabled={loadingMore}
-                  className="w-full h-full min-h-[220px] flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 hover:bg-slate-800/60 hover:border-slate-600 transition-colors text-slate-300 text-sm font-medium disabled:opacity-60"
+                  className={`w-full h-full ${compact ? "min-h-[160px]" : "min-h-[220px]"} flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 hover:bg-slate-800/60 hover:border-slate-600 transition-colors text-slate-300 text-sm font-medium disabled:opacity-60`}
                 >
                   {loadingMore ? (
                     <Loader2 className="w-6 h-6 animate-spin" />

@@ -1,11 +1,16 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Play, Calendar, Eye, ImageOff, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { toast } from '@/components/ui/use-toast';
+
+// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx/Dashboard.jsx — card
+// compacto (sem botão "Assistir Agora", cartão inteiro clicável) só pro
+// tesagencia@gmail.com, pra bater com o card mais estreito do Dashboard.
+const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
 
 // Views fictícios determinísticos a partir do id (djb2), entre 1300 e 3500
 const generateViews = (id) => {
@@ -22,10 +27,12 @@ const generateViews = (id) => {
 
 const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false }) => {
   const linkTarget = dorama.slug ? `/dorama/${dorama.slug}` : `/dorama/${dorama.id}`;
+  const navigate = useNavigate();
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
   const favorited = isFavorite(dorama.id);
+  const compact = user?.email === BOTTOM_NAV_TEST_EMAIL;
 
   const handleToggleFavorite = async (e) => {
     e.preventDefault();
@@ -87,14 +94,17 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
-      className="group relative bg-slate-900 rounded-[12px] overflow-hidden
+      onClick={compact ? () => navigate(linkTarget) : undefined}
+      role={compact ? 'link' : undefined}
+      tabIndex={compact ? 0 : undefined}
+      className={`group relative bg-slate-900 rounded-[12px] overflow-hidden
                  border border-slate-800
                  shadow-lg shadow-black/30
                  hover:border-purple-500/50
                  hover:shadow-2xl hover:shadow-purple-500/20
                  transition-all duration-250 ease-in-out
                  hover:scale-[1.03]
-                 flex flex-col"
+                 flex flex-col${compact ? ' cursor-pointer' : ''}`}
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-slate-950 rounded-t-[12px]">
         {coverUrl ? (
@@ -141,7 +151,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
         </div>
       </div>
 
-      <div className="p-2.5 flex flex-col">
+      <div className={compact ? 'p-2 flex flex-col' : 'p-2.5 flex flex-col'}>
         {!hideYear && (
           <div className="flex items-center gap-1 mb-1 text-[11px] text-slate-400">
             <Calendar className="w-3 h-3" />
@@ -149,26 +159,34 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
           </div>
         )}
 
-        <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight min-h-[2.5em] mb-1 group-hover:text-purple-400 transition-colors">
-          <Link to={linkTarget}>
+        {compact ? (
+          <h3 className="text-xs font-semibold text-white line-clamp-2 leading-tight min-h-[2.4em] mb-1 group-hover:text-purple-400 transition-colors">
             {dorama.title}
-          </Link>
-        </h3>
+          </h3>
+        ) : (
+          <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight min-h-[2.5em] mb-1 group-hover:text-purple-400 transition-colors">
+            <Link to={linkTarget}>
+              {dorama.title}
+            </Link>
+          </h3>
+        )}
 
-        <div className="flex items-center gap-1 mb-2 text-xs text-slate-400">
+        <div className={`flex items-center gap-1 text-xs text-slate-400 ${compact ? '' : 'mb-2'}`}>
           <Eye className="w-3 h-3" />
           <span>{formattedViews}</span>
         </div>
 
-        <Link to={linkTarget} className="w-full block">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 group-hover:border-purple-500/50 group-hover:text-purple-300"
-          >
-            Assistir Agora
-          </Button>
-        </Link>
+        {!compact && (
+          <Link to={linkTarget} className="w-full block">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 group-hover:border-purple-500/50 group-hover:text-purple-300"
+            >
+              Assistir Agora
+            </Button>
+          </Link>
+        )}
       </div>
     </motion.div>
   );
