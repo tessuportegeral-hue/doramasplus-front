@@ -394,8 +394,13 @@ const DoramaSection = ({
   if (!loading && !error && (!doramas || doramas.length === 0)) return null;
 
   return (
-    <section id={id} className="py-4 md:py-8 relative w-full">
-      <div className="flex items-center gap-3 mb-4">
+    <section
+      id={id}
+      className={
+        compact ? "py-1.5 relative w-full" : "py-4 md:py-8 relative w-full"
+      }
+    >
+      <div className={compact ? "flex items-center gap-2 mb-2" : "flex items-center gap-3 mb-4"}>
         {icon}
         <h2
           className={
