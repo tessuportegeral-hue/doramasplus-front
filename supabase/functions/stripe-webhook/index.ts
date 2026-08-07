@@ -460,44 +460,23 @@ serve(async (req) => {
       }
     }
 
+    // ✅ 06/08: cancelamento (subscription.deleted) NÃO deve cortar acesso
+    // na hora. IMPORTANTE: o gate de premium (SupabaseAuthContext.jsx,
+    // checkPremiumStatus) só libera acesso quando status ESTÁ em
+    // active/trialing/paid — ou seja, gravar status:"canceled" aqui corta o
+    // acesso na mesma hora mesmo sem tocar em end_at (achado 06/08 ao revisar
+    // esse fix: a primeira versão só tirou o end_at=now() mas manteve o
+    // status:"canceled", que sozinho já derruba o acesso pelo gate). Por
+    // isso NÃO tocamos em status nem em end_at/current_period_end aqui —
+    // a linha em subscriptions fica exatamente como o último
+    // customer.subscription.updated deixou (status ainda "active", end_at
+    // = data já paga), e o próprio gate corta o acesso sozinho quando
+    // end_at passar. Só registra o cancelamento pra debug via log.
     async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
-      try {
-        const stripeSub = sub;
-        console.log("handleSubscriptionDeleted:", stripeSub.id);
-
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({
-            status: "canceled",
-            end_at: new Date().toISOString(),
-            current_period_end: new Date().toISOString(),
-            last_renewed_at: new Date().toISOString(),
-          })
-          .eq(
-            "user_id",
-            await (async () => {
-              const customerId =
-                typeof stripeSub.customer === "string"
-                  ? stripeSub.customer
-                  : stripeSub.customer.id;
-
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("id")
-                .eq("stripe_customer_id", customerId)
-                .maybeSingle();
-
-              return profile?.id ?? null;
-            })()
-          )
-          .not("user_id", "is", null);
-
-        if (error) {
-          console.error("Erro ao marcar subscription como cancelada:", error);
-        }
-      } catch (e) {
-        console.error("Erro em subscription.deleted:", e);
-      }
+      console.log(
+        "handleSubscriptionDeleted (sem escrita no banco, de propósito — ver comentário acima):",
+        sub.id
+      );
     }
 
     // ------------- DISPATCH ----------------
