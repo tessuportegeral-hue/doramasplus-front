@@ -614,20 +614,6 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               </>
             )}
 
-            {showBottomNav && (
-              <button
-                className="relative text-purple-300 hover:text-white hover:bg-transparent border border-purple-500/70 hover:border-purple-400 rounded-full w-9 h-9 flex items-center justify-center transition flex-shrink-0"
-                aria-label="Pedir um dorama"
-                onClick={() => navigate('/minha-conta')}
-              >
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute -inset-0.5 rounded-full bg-purple-500 opacity-60 blur-md animate-pulse"
-                />
-                <Send className="w-4 h-4 relative" />
-              </button>
-            )}
-
             <button
               className="text-slate-300 hover:text-white"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

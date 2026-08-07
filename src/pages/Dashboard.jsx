@@ -34,6 +34,7 @@ import {
   Bot,
   Smartphone,
   Plus,
+  Send,
 } from "lucide-react";
 
 const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
@@ -983,6 +984,21 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   // ✅ 27/07: slide do app (Android) / Dora (iPhone) vem primeiro agora —
   // era o último, pedido pra dar mais destaque pro app.
   const homeBanners = [
+    // ✅ 07/08 — TESTE: pro tesagencia, slide "Pedir um dorama" vem primeiro
+    // de todos — mais visível que um ícone no topo, pra gente parar de
+    // levar pedido pelo WhatsApp.
+    ...(showBottomNav
+      ? [
+          {
+            icon: Send,
+            title: "🎬 Não achou seu dorama?",
+            subtitle: "Peça aqui na hora, sem precisar chamar no WhatsApp",
+            gradient: "from-purple-600 via-fuchsia-600 to-pink-600",
+            glow: "from-purple-600 via-fuchsia-500 to-pink-500",
+            onClick: () => navigate("/minha-conta"),
+          },
+        ]
+      : []),
     isAndroidDevice
       ? {
           icon: Smartphone,
