@@ -7,11 +7,6 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { toast } from '@/components/ui/use-toast';
 
-// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx/Dashboard.jsx — card
-// compacto (sem botão "Assistir Agora", cartão inteiro clicável) só pro
-// tesagencia@gmail.com, pra bater com o card mais estreito do Dashboard.
-const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
-
 // Views fictícios determinísticos a partir do id (djb2), entre 1300 e 3500
 const generateViews = (id) => {
   const s = String(id || '');
@@ -29,10 +24,13 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
   const linkTarget = dorama.slug ? `/dorama/${dorama.slug}` : `/dorama/${dorama.id}`;
   const navigate = useNavigate();
 
-  const { isAuthenticated, user } = useAuth();
+  // ✅ 07/08 — card compacto (sem botão "Assistir Agora", cartão inteiro
+  // clicável) pra quem está logado, pra bater com o card mais estreito do
+  // Dashboard. Testado com tesagencia antes; liberado geral em 07/08.
+  const { isAuthenticated } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
   const favorited = isFavorite(dorama.id);
-  const compact = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const compact = isAuthenticated;
 
   const handleToggleFavorite = async (e) => {
     e.preventDefault();

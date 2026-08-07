@@ -3,12 +3,9 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { Home, History, Heart, User } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 
-// ✅ 07/08 — TESTE: barra inferior mobile (Início/Histórico/Favoritos/Perfil)
-// pedida pelo Leandro (referência: print do app "Dramio"). Gateada só pro
-// tesagencia@gmail.com pra ele ver como fica antes de liberar geral. Quando
-// liberar, trocar BOTTOM_NAV_TEST_EMAIL por null (ou remover o gate).
-const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
-
+// ✅ 07/08 — barra inferior mobile (Início/Histórico/Favoritos/Perfil),
+// pedida pelo Leandro (referência: print do app "Dramio"). Testada com
+// tesagencia antes; liberada geral pra todo usuário logado em 07/08.
 const TABS = [
   { to: '/dashboard', label: 'Início', Icon: Home, match: (path) => path === '/' || path === '/dashboard' },
   { to: '/historico', label: 'Histórico', Icon: History, match: (path) => path.startsWith('/historico') },
@@ -17,11 +14,10 @@ const TABS = [
 ];
 
 export default function BottomNav() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
 
-  const enabled =
-    isAuthenticated && user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const enabled = isAuthenticated;
 
   // Esconde no player (não sobrepor os controles do vídeo)
   const isPlayerRoute = location.pathname.includes('/watch');

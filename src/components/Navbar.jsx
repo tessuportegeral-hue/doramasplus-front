@@ -47,11 +47,10 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
   const isAdmin = user?.email === ADMIN_EMAIL;
 
-  // ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx — pro tesagencia, o
-  // hamburguer mobile (☰) vira atalho pro "Pedir um dorama" (ícone
-  // aviãozinho), já que a barra inferior nova cobre a navegação principal.
-  const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
-  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  // ✅ 07/08 — logo com o "D" em gradiente/texto branco e menu hambúrguer
+  // mobile só com categorias (o resto já está na barra inferior/Perfil).
+  // Testado com tesagencia antes; liberado geral pra todo usuário logado.
+  const showBottomNav = isAuthenticated;
 
   // ✅ 07/08 — achado na varredura: a faixa vermelha de renovação (acima)
   // muda a altura real do nav fixo, e o "respiro" do topo do Dashboard

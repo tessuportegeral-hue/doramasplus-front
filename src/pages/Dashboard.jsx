@@ -358,12 +358,12 @@ const DoramaSection = ({
 }) => {
   const listRef = useRef(null);
 
-  // ✅ 07/08 — TESTE: cards mais compactos (referência: print do app
-  // "Dramio" mandado pelo Leandro) pra caber mais fileira por tela e ficar
-  // com a mesma "densidade" entre todas as categorias. Gateado pro
-  // tesagencia@gmail.com; resto dos usuários mantém o tamanho de sempre.
-  const { user } = useAuth();
-  const compact = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  // ✅ 07/08 — cards mais compactos (referência: print do app "Dramio"
+  // mandado pelo Leandro) pra caber mais fileira por tela e ficar com a
+  // mesma "densidade" entre todas as categorias. Testado com tesagencia
+  // antes; liberado geral pra todo usuário logado em 07/08.
+  const { isAuthenticated } = useAuth();
+  const compact = isAuthenticated;
   const cardWidthClass = compact
     ? "min-w-[104px] sm:min-w-[130px] md:min-w-[150px]"
     : "min-w-[150px] sm:min-w-[180px] md:min-w-[200px]";
@@ -512,16 +512,14 @@ const slugifyQuery = (str) =>
   normalizeText(str).trim().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 
 // ---------------- DASHBOARD PRINCIPAL ----------------
-// ✅ 07/08 — TESTE: pro tesagencia, "Continuar Assistindo" some daqui porque
-// virou a aba "Histórico" da barra inferior (BottomNav.jsx). Resto dos
-// usuários mantém a seção como sempre foi.
-const BOTTOM_NAV_TEST_EMAIL = "tesagencia@gmail.com";
-
+// ✅ 07/08 — "Continuar Assistindo" sai daqui pra quem está logado, porque
+// virou a aba "Histórico" da barra inferior (BottomNav.jsx). Testado com
+// tesagencia antes; liberado geral pra todo usuário logado em 07/08.
 const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation(); // ✅ (ADICIONADO) para capturar ?src=
-  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const showBottomNav = !!user;
 
   // ✅ (ADICIONADO) Pixel ID e chave do "dedupe" de Purchase
   const META_PIXEL_ID = "1424314778637167";

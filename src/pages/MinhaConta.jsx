@@ -1056,13 +1056,12 @@ function DispositivosCard() {
   );
 }
 
-// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx, só pra reservar espaço
-// embaixo pro tesagencia não ter a barra cobrindo o final da página.
-const BOTTOM_NAV_TEST_EMAIL = "tesagencia@gmail.com";
-
+// ✅ 07/08 — reserva espaço embaixo pra barra inferior não cobrir o final
+// da página, e reordena Indicação antes de Assinatura, e mostra "Sair da
+// Conta". Testado com tesagencia antes; liberado geral em 07/08.
 const MinhaConta = () => {
   const { user } = useAuth();
-  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const showBottomNav = !!user;
 
   return (
     <>

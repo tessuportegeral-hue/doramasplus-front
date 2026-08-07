@@ -9,14 +9,13 @@ import DoramaCard from '@/components/DoramaCard';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 
-// ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx, só pra reservar espaço
-// embaixo pro tesagencia não ter a barra cobrindo a última fileira.
-const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
-
+// ✅ 07/08 — reserva espaço embaixo pra barra inferior não cobrir a última
+// fileira, e o skeleton de carregamento bate com o card compacto. Testado
+// com tesagencia antes; liberado geral em 07/08.
 export default function Favoritos() {
   const { user } = useAuth();
   const { favoriteIds, loading: favoritesLoading } = useFavorites();
-  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const showBottomNav = !!user;
 
   const [doramas, setDoramas] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -7,11 +7,10 @@ import Navbar from '@/components/Navbar';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/supabaseClient';
 
-// ✅ 07/08 — TESTE: substitui "Continuar Assistindo" do Dashboard por uma
-// aba própria, gateada pro tesagencia@gmail.com (ver BottomNav.jsx). Mostra
-// os últimos 20 doramas distintos com progresso salvo.
+// ✅ 07/08 — substitui "Continuar Assistindo" do Dashboard por uma aba
+// própria (ver BottomNav.jsx). Mostra os últimos 20 doramas distintos com
+// progresso salvo. Testado com tesagencia antes; liberado geral em 07/08.
 const HISTORY_LIMIT = 20;
-const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
 
 export default function Historico() {
   const { user } = useAuth();
@@ -21,7 +20,7 @@ export default function Historico() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const showBottomPadding = user?.email === BOTTOM_NAV_TEST_EMAIL;
+  const showBottomPadding = !!user;
 
   useEffect(() => {
     if (!user) {
