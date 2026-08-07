@@ -47,9 +47,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
   const isAdmin = user?.email === ADMIN_EMAIL;
 
-  // ✅ 07/08 — logo com o "D" em gradiente/texto branco e menu hambúrguer
-  // mobile só com categorias (o resto já está na barra inferior/Perfil).
-  // Testado com tesagencia antes; liberado geral pra todo usuário logado.
+  // ✅ 07/08 — logo com o "D" em gradiente/texto branco: visual novo,
+  // universal (logado ou não — inclusive Landing/Google). Testado com
+  // tesagencia antes; liberado geral em 07/08.
+  const logoInverted = true;
+
+  // Menu hambúrguer mobile só com categorias (o resto já está na barra
+  // inferior/Perfil) — só faz sentido pra quem está logado, já que só
+  // logado tem barra inferior/Perfil pra ir.
   const showBottomNav = isAuthenticated;
 
   // ✅ 07/08 — achado na varredura: a faixa vermelha de renovação (acima)
@@ -374,10 +379,9 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               whileHover={{ scale: 1.1, rotate: 360 }}
               transition={{ duration: 0.3 }}
             >
-              {/* ✅ 07/08 — TESTE: pro tesagencia, inverte as cores — o "D"
-                  ganha o gradiente (via CSS mask, já que é um PNG) e o
-                  texto vira branco sólido */}
-              {showBottomNav ? (
+              {/* ✅ 07/08 — inverte as cores — o "D" ganha o gradiente (via
+                  CSS mask, já que é um PNG) e o texto vira branco sólido */}
+              {logoInverted ? (
                 <div
                   className="w-8 h-8 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400"
                   style={{
@@ -395,7 +399,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                 <img src="/logo-d-mark.png" alt="DoramasPlus" className="w-8 h-8 object-contain" />
               )}
             </motion.div>
-            <span className={showBottomNav ? 'text-xl font-bold text-white' : 'text-xl font-bold text-gradient'}>DoramasPlus</span>
+            <span className={logoInverted ? 'text-xl font-bold text-white' : 'text-xl font-bold text-gradient'}>DoramasPlus</span>
           </Link>
 
           {/* ✅ BUSCA no lugar certo (entre logo e categorias) */}
