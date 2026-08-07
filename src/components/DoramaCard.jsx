@@ -25,12 +25,14 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
   const navigate = useNavigate();
 
   // ✅ 07/08 — card compacto (sem botão "Assistir Agora", cartão inteiro
-  // clicável) pra quem está logado, pra bater com o card mais estreito do
-  // Dashboard. Testado com tesagencia antes; liberado geral em 07/08.
+  // clicável), pra bater com o card mais estreito do Dashboard. Testado
+  // com tesagencia antes; liberado geral (logado ou não) em 07/08 — o
+  // sitemap.xml já lista /privacidade direto, então tirar link redundante
+  // de rodapé não afeta indexação.
   const { isAuthenticated } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
   const favorited = isFavorite(dorama.id);
-  const compact = isAuthenticated;
+  const compact = true;
 
   const handleToggleFavorite = async (e) => {
     e.preventDefault();

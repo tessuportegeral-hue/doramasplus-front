@@ -361,9 +361,8 @@ const DoramaSection = ({
   // ✅ 07/08 — cards mais compactos (referência: print do app "Dramio"
   // mandado pelo Leandro) pra caber mais fileira por tela e ficar com a
   // mesma "densidade" entre todas as categorias. Testado com tesagencia
-  // antes; liberado geral pra todo usuário logado em 07/08.
-  const { isAuthenticated } = useAuth();
-  const compact = isAuthenticated;
+  // antes; liberado geral (logado ou não) em 07/08.
+  const compact = true;
   const cardWidthClass = compact
     ? "min-w-[104px] sm:min-w-[130px] md:min-w-[150px]"
     : "min-w-[150px] sm:min-w-[180px] md:min-w-[200px]";
