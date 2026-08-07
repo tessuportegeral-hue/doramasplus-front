@@ -992,7 +992,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           {
             icon: Send,
             title: "🎬 Não achou seu dorama?",
-            subtitle: "Peça aqui na hora, sem precisar chamar no WhatsApp",
+            subtitle: "Peça aqui agora",
             gradient: "from-purple-600 via-fuchsia-600 to-pink-600",
             glow: "from-purple-600 via-fuchsia-500 to-pink-500",
             onClick: () => navigate("/minha-conta"),
