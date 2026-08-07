@@ -95,6 +95,16 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
       onClick={compact ? () => navigate(linkTarget) : undefined}
+      onKeyDown={
+        compact
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                navigate(linkTarget);
+              }
+            }
+          : undefined
+      }
       role={compact ? 'link' : undefined}
       tabIndex={compact ? 0 : undefined}
       className={
@@ -168,7 +178,12 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
 
         {compact ? (
           <h3 className="text-xs font-semibold text-white line-clamp-2 leading-tight min-h-[2.4em] mb-1 group-hover:text-purple-400 transition-colors">
-            {dorama.title}
+            {/* ✅ 07/08 — link real (não só onClick no card inteiro) pro
+                Google continuar encontrando/indexando a página do dorama
+                com o título como texto âncora */}
+            <Link to={linkTarget} onClick={(e) => e.stopPropagation()}>
+              {dorama.title}
+            </Link>
           </h3>
         ) : (
           <h3 className="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-tight min-h-[2.5em] mb-1 group-hover:text-purple-400 transition-colors">

@@ -133,8 +133,8 @@ export default function Historico() {
                   className="rounded-lg bg-slate-900 border border-slate-800 overflow-hidden animate-pulse"
                 >
                   <div className="aspect-[2/3] bg-slate-800" />
-                  <div className="p-3 space-y-2">
-                    <div className="h-3 bg-slate-800 rounded w-4/5" />
+                  <div className="p-3 space-y-1">
+                    <div className="h-[2.5em] bg-slate-800 rounded w-4/5" />
                     <div className="h-2 bg-slate-800 rounded w-2/5" />
                     <div className="h-1.5 bg-slate-800 rounded-full w-full mt-2" />
                   </div>
@@ -177,7 +177,7 @@ export default function Historico() {
                     )}
 
                     <div className="p-3 space-y-1">
-                      <p className="text-sm font-medium line-clamp-2">
+                      <p className="text-sm font-medium line-clamp-2 min-h-[2.5em]">
                         {item.title}
                       </p>
                       <p className="text-xs text-slate-400">

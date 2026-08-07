@@ -415,11 +415,31 @@ const DoramaSection = ({
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-pulse">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="aspect-[2/3] bg-slate-800 rounded-lg" />
-          ))}
-        </div>
+        compact ? (
+          // ✅ 07/08 — skeleton bate com o card compacto de verdade (fileira
+          // horizontal, mesma largura/gap, com o bloco de texto reservado)
+          // em vez do grid antigo só com o pôster — evita CLS na troca
+          // loading → conteúdo real.
+          <div className={`flex ${rowGapClass} overflow-x-auto pb-4 no-scrollbar animate-pulse`}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className={cardWidthClass}>
+                <div className="rounded-[12px] overflow-hidden">
+                  <div className="aspect-[2/3] bg-slate-800" />
+                  <div className="p-2 space-y-1">
+                    <div className="h-[2.4em] bg-slate-800 rounded" />
+                    <div className="h-3 w-1/2 bg-slate-800 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-pulse">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="aspect-[2/3] bg-slate-800 rounded-lg" />
+            ))}
+          </div>
+        )
       ) : error ? (
         <div className="bg-slate-900 border border-red-500/30 text-red-400 p-6 rounded-lg text-center">
           <ServerCrash className="w-8 h-8 mx-auto mb-3" />
