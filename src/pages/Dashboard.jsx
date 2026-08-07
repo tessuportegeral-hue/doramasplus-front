@@ -1042,8 +1042,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       <SelectedTesterModal />
 
       <main
-        className={`container mx-auto px-4 sm:px-6 lg:px-8 pt-[100px] md:pt-[110px] ${
-          showBottomNav ? "pb-20" : ""
+        className={`container mx-auto px-4 sm:px-6 lg:px-8 ${
+          showBottomNav ? "pt-[76px] md:pt-[84px] pb-20" : "pt-[100px] md:pt-[110px]"
         }`}
       >
         {/* ✅ (NOVO) BOTÃO "ASSINE AGORA" — só pra logado que NUNCA foi assinante */}
@@ -1109,7 +1109,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
         {/* ✅ Carrossel de banners — logo abaixo da busca, acima do banner principal */}
         {!normalizedQuery && (
-          <div className="mb-4 md:mb-6">
+          <div className={showBottomNav ? "mb-2 md:mb-3" : "mb-4 md:mb-6"}>
             <div className="group relative w-full rounded-xl">
               {/* brilho pulsante atrás do banner — muda de cor com o slide atual */}
               <span
