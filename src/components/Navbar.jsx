@@ -47,6 +47,12 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const ADMIN_EMAIL = 'tessuportegeral@gmail.com';
   const isAdmin = user?.email === ADMIN_EMAIL;
 
+  // ✅ 07/08 — TESTE: mesmo gate do BottomNav.jsx — pro tesagencia, o
+  // hamburguer mobile (☰) vira atalho pro "Pedir um dorama" (ícone
+  // aviãozinho), já que a barra inferior nova cobre a navegação principal.
+  const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
+  const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+
   // ✅ META PIXEL ID (CORRIGIDO)
   const META_PIXEL_ID = '1424314778637167';
 
@@ -610,9 +616,20 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
 
             <button
               className="text-slate-300 hover:text-white"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={showBottomNav ? 'Pedir um dorama' : undefined}
+              onClick={
+                showBottomNav
+                  ? () => navigate('/minha-conta')
+                  : () => setMobileMenuOpen(!mobileMenuOpen)
+              }
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {showBottomNav ? (
+                <Send className="w-6 h-6" />
+              ) : mobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
             </button>
           </div>
         </div>

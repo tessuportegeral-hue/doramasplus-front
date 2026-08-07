@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   CreditCard,
@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Clapperboard,
   Send,
+  LogOut,
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import DeleteAccountModal from '@/components/DeleteAccountModal';
@@ -534,6 +535,53 @@ function PedirDoramaCard({ user }) {
   );
 }
 
+// ✅ 07/08 — TESTE: pro tesagencia, opção de deslogar perto de excluir
+// conta (na aba Perfil da barra inferior o menu hamburguer/dropdown com
+// "Sair" não é mais o caminho principal). Mesmo padrão do handleLogout
+// do Navbar.jsx.
+function SairContaCard() {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({
+        title: 'Desconectado com sucesso',
+        description: 'Até logo!',
+      });
+      navigate('/');
+      setTimeout(() => window.location.reload(), 150);
+    } catch (err) {
+      toast({
+        title: 'Erro ao desconectar',
+        description: err.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Sair da Conta</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Encerra sua sessão neste aparelho.
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={handleLogout}
+          variant="ghost"
+          className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 rounded-full px-4 flex items-center gap-2 flex-shrink-0"
+        >
+          <LogOut className="w-4 h-4" /> Sair da conta
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ExcluirContaCard() {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -1042,8 +1090,17 @@ const MinhaConta = () => {
             </div>
 
             <PedirDoramaCard user={user} />
-            <PlanoCard user={user} />
-            <IndicacaoCard user={user} />
+            {showBottomNav ? (
+              <>
+                <IndicacaoCard user={user} />
+                <PlanoCard user={user} />
+              </>
+            ) : (
+              <>
+                <PlanoCard user={user} />
+                <IndicacaoCard user={user} />
+              </>
+            )}
             <ContaCard user={user} />
             <SenhaCard />
             <DispositivosCard />
@@ -1059,6 +1116,7 @@ const MinhaConta = () => {
               <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
             </Link>
 
+            {showBottomNav && <SairContaCard />}
             <ExcluirContaCard />
           </motion.div>
         </main>
