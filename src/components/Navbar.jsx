@@ -361,7 +361,15 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
           </Link>
 
           {/* ✅ BUSCA no lugar certo (entre logo e categorias) */}
-          <div className="flex-1 flex justify-center px-4">
+          {/* ✅ 07/08 — TESTE: pro tesagencia, some no mobile (foi pra baixo
+              do banner principal no Dashboard.jsx); continua igual no desktop */}
+          <div
+            className={
+              showBottomNav
+                ? "flex-1 hidden md:flex justify-center px-4"
+                : "flex-1 flex justify-center px-4"
+            }
+          >
             {showSearch && (
               <div className="w-full max-w-sm">
                 <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
@@ -614,22 +622,25 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               </>
             )}
 
+            {showBottomNav && (
+              <button
+                className="relative text-purple-300 hover:text-white hover:bg-transparent border border-purple-500/70 hover:border-purple-400 rounded-full w-9 h-9 flex items-center justify-center transition flex-shrink-0"
+                aria-label="Pedir um dorama"
+                onClick={() => navigate('/minha-conta')}
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -inset-0.5 rounded-full bg-purple-500 opacity-60 blur-md animate-pulse"
+                />
+                <Send className="w-4 h-4 relative" />
+              </button>
+            )}
+
             <button
               className="text-slate-300 hover:text-white"
-              aria-label={showBottomNav ? 'Pedir um dorama' : undefined}
-              onClick={
-                showBottomNav
-                  ? () => navigate('/minha-conta')
-                  : () => setMobileMenuOpen(!mobileMenuOpen)
-              }
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
-              {showBottomNav ? (
-                <Send className="w-6 h-6" />
-              ) : mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>

@@ -34,6 +34,7 @@ import {
   Bot,
   Smartphone,
   Plus,
+  Search,
 } from "lucide-react";
 
 const LIST_LIMIT = 60; // 11 categorias × ~60 = ~660 cards potenciais (antes: 250 = ~2750)
@@ -1164,6 +1165,24 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             featuredDoramas={doramas.featured}
             loading={loading.featured}
           />
+        )}
+
+        {/* ✅ 07/08 — TESTE: pro tesagencia, busca sai do topo e vem pra cá,
+            logo abaixo do banner principal (só mobile — desktop mantém a
+            busca no Navbar) */}
+        {showBottomNav && (
+          <div className="md:hidden mb-4">
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2.5">
+              <Search className="w-4 h-4 text-white/50 flex-shrink-0" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar..."
+                className="bg-transparent border-none outline-none text-sm text-white/90 w-full placeholder:text-white/50"
+              />
+            </div>
+          </div>
         )}
 
         {/* ✅ BUSCA (agora é do BANCO, não das categorias) */}
