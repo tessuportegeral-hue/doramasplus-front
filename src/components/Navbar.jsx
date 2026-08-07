@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import PedirDoramaPopover from '@/components/PedirDoramaPopover';
@@ -52,6 +52,26 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   // aviãozinho), já que a barra inferior nova cobre a navegação principal.
   const BOTTOM_NAV_TEST_EMAIL = 'tesagencia@gmail.com';
   const showBottomNav = user?.email === BOTTOM_NAV_TEST_EMAIL;
+
+  // ✅ 07/08 — achado na varredura: a faixa vermelha de renovação (acima)
+  // muda a altura real do nav fixo, e o "respiro" do topo do Dashboard
+  // (compacto) tinha um valor fixo que não cobria esse caso — conteúdo
+  // podia renderizar embaixo do nav quando a faixa aparecesse. Em vez de
+  // chutar um número fixo grande o suficiente, o nav mede a própria altura
+  // de verdade (ResizeObserver) e publica numa CSS var, mesmo padrão já
+  // usado pro InstallAppBanner/BottomNav.
+  const navRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const publish = () => {
+      document.documentElement.style.setProperty('--dp-navbar-h', `${el.offsetHeight}px`);
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ✅ META PIXEL ID (CORRIGIDO)
   const META_PIXEL_ID = '1424314778637167';
@@ -309,7 +329,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
 
   return (
     <>
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
+    <nav ref={navRef} className="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
       {/* ✅ aviso topo */}
       {showRenewWarning && (
         <div className="bg-red-600/95 border-b border-red-400/30">

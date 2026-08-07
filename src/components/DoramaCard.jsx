@@ -89,24 +89,17 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
   const views = useMemo(() => generateViews(dorama.id), [dorama.id]);
   const formattedViews = useMemo(() => views.toLocaleString('pt-BR'), [views]);
 
+  // ✅ 07/08 — só onClick (sem role/tabIndex/onKeyDown): agora que o título
+  // tem um <Link> de verdade dentro, ele já cobre teclado nativamente.
+  // Duplicar role="link"+tabIndex no card inteiro criava duas "paradas" de
+  // Tab pro mesmo destino — clique no resto do card continua funcionando
+  // por mouse/toque via este onClick.
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
       onClick={compact ? () => navigate(linkTarget) : undefined}
-      onKeyDown={
-        compact
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                navigate(linkTarget);
-              }
-            }
-          : undefined
-      }
-      role={compact ? 'link' : undefined}
-      tabIndex={compact ? 0 : undefined}
       className={
         compact
           ? `group relative rounded-[12px] overflow-hidden

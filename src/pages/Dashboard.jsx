@@ -1079,8 +1079,16 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
       <main
         className={`container mx-auto px-4 sm:px-6 lg:px-8 ${
-          showBottomNav ? "pt-[76px] md:pt-[84px] pb-20" : "pt-[100px] md:pt-[110px]"
+          showBottomNav ? "pb-20" : "pt-[100px] md:pt-[110px]"
         }`}
+        style={
+          // ✅ 07/08 — usa a altura real do nav (mede via ResizeObserver em
+          // Navbar.jsx) em vez de um px fixo chutado, que não cobria o caso
+          // da faixa vermelha de renovação empurrando o nav pra baixo.
+          showBottomNav
+            ? { paddingTop: "calc(var(--dp-navbar-h, 64px) + 12px)" }
+            : undefined
+        }
       >
         {/* ✅ (NOVO) BOTÃO "ASSINE AGORA" — só pra logado que NUNCA foi assinante */}
         {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
