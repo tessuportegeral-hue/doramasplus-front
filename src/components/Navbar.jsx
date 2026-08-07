@@ -652,21 +652,28 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
             {isAuthenticated ? (
               <>
                 <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => { setMobileMenuOpen(false); navigate('/favoritos'); }}
-                    className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
-                  >
-                    <Heart className="w-4 h-4 text-red-400" /> Favoritos
-                  </button>
-                  <button
-                    onClick={() => { setMobileMenuOpen(false); navigate('/minha-conta'); }}
-                    className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
-                  >
-                    <Send className="w-4 h-4 text-purple-300" /> Pedir um dorama
-                  </button>
-                  <button onClick={() => scrollToSection('top')} className="flex items-center gap-2 text-slate-200 text-sm">
-                    <Sparkles className="w-4 h-4 text-purple-300" /> Início
-                  </button>
+                  {/* ✅ 07/08 — TESTE: pro tesagencia, esses 3 já estão na
+                      barra inferior/Perfil, então somem daqui — hambúrguer
+                      fica só com categorias */}
+                  {!showBottomNav && (
+                    <>
+                      <button
+                        onClick={() => { setMobileMenuOpen(false); navigate('/favoritos'); }}
+                        className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
+                      >
+                        <Heart className="w-4 h-4 text-red-400" /> Favoritos
+                      </button>
+                      <button
+                        onClick={() => { setMobileMenuOpen(false); navigate('/minha-conta'); }}
+                        className="flex items-center gap-2 text-slate-200 text-sm font-semibold"
+                      >
+                        <Send className="w-4 h-4 text-purple-300" /> Pedir um dorama
+                      </button>
+                      <button onClick={() => scrollToSection('top')} className="flex items-center gap-2 text-slate-200 text-sm">
+                        <Sparkles className="w-4 h-4 text-purple-300" /> Início
+                      </button>
+                    </>
+                  )}
                   <button onClick={() => { setMobileMenuOpen(false); navigate('/novos'); }} className="flex items-center gap-2 text-slate-200 text-sm">
                     <Sparkles className="w-4 h-4 text-purple-400" /> Novos Lançamentos
                   </button>
@@ -727,6 +734,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                   </div>
                 )}
 
+                {!showBottomNav && (
                 <div className="pt-3 border-t border-slate-800 mt-2">
                   <div className="flex items-center gap-2 mb-1">
                     <User className="w-5 h-5 text-purple-400" />
@@ -754,7 +762,9 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     </button>
                   </div>
                 </div>
+                )}
 
+                {!showBottomNav && (
                 <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-200 flex gap-3">
                   <div className="mt-1">
                     <CreditCard className="w-5 h-5 text-purple-400" />
@@ -811,6 +821,7 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
                     )}
                   </div>
                 </div>
+                )}
 
               </>
             ) : (
