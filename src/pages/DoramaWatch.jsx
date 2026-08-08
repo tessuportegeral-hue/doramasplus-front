@@ -68,6 +68,7 @@ export default function DoramaWatch() {
   const lastSavedRef = useRef(0);
   const latestTimeRef = useRef(0);
   const latestDurationRef = useRef(0);
+  const wasPlayingBeforeHideRef = useRef(false);
 
   // ✅ IFRAME: contador local + tempo pra retomar (?t=) — fixado uma vez por dorama
   const iframeLocalCounterRef = useRef(0);
@@ -748,7 +749,19 @@ export default function DoramaWatch() {
         if (playerFixOn) {
           try {
             const inPip = typeof document !== "undefined" && document.pictureInPictureElement;
-            if (!inPip && el && typeof el.pause === "function") el.pause();
+            if (!inPip && el && typeof el.pause === "function") {
+              wasPlayingBeforeHideRef.current = !el.paused;
+              el.pause();
+            }
+          } catch {}
+        }
+      } else if (document.visibilityState === "visible") {
+        // Retoma sozinho só se fomos nós que pausamos ao esconder a aba
+        // (não mexe se a pessoa pausou por conta própria antes de trocar de aba).
+        if (playerFixOn && wasPlayingBeforeHideRef.current) {
+          wasPlayingBeforeHideRef.current = false;
+          try {
+            if (el && typeof el.play === "function") el.play().catch(() => {});
           } catch {}
         }
       }
