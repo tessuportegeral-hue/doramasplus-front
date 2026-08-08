@@ -69,6 +69,7 @@ export default function DoramaWatch() {
   const latestTimeRef = useRef(0);
   const latestDurationRef = useRef(0);
   const wasPlayingBeforeHideRef = useRef(false);
+  const hasAutoPlayedRef = useRef(false);
 
   // ✅ IFRAME: contador local + tempo pra retomar (?t=) — fixado uma vez por dorama
   const iframeLocalCounterRef = useRef(0);
@@ -596,6 +597,7 @@ export default function DoramaWatch() {
       setLiveSeconds(0);
       lastSavedRef.current = 0;
       hasAppliedResumeRef.current = false;
+      hasAutoPlayedRef.current = false;
       iframeLocalCounterRef.current = 0;
       setIframeResumeT(0);
       return;
@@ -624,6 +626,7 @@ export default function DoramaWatch() {
 
         lastSavedRef.current = saved;
         hasAppliedResumeRef.current = false;
+        hasAutoPlayedRef.current = false;
         iframeLocalCounterRef.current = saved;
         setIframeResumeT(saved);
       } catch (err) {
@@ -632,6 +635,7 @@ export default function DoramaWatch() {
         setLiveSeconds(0);
         lastSavedRef.current = 0;
         hasAppliedResumeRef.current = false;
+        hasAutoPlayedRef.current = false;
         iframeLocalCounterRef.current = 0;
         setIframeResumeT(0);
       }
@@ -779,6 +783,12 @@ export default function DoramaWatch() {
     setTimeout(() => applyResume(), 150);
 
     setTimeout(async () => {
+      // PLAYER FIX: sem essa trava, esse play() disparava de novo toda vez
+      // que o efeito re-rodava (savedSeconds muda a cada progresso salvo,
+      // ~5 em 5s) — e como não tinha guarda nenhuma, brigava com o pause
+      // manual da pessoa (tinha que clicar várias vezes pra pausar de vez).
+      if (hasAutoPlayedRef.current) return;
+      hasAutoPlayedRef.current = true;
       try {
         await el.play();
       } catch {}
