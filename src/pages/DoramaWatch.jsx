@@ -1101,7 +1101,6 @@ export default function DoramaWatch() {
                   ref={videoRef}
                   controls
                   controlsList="nodownload"
-                  disablePictureInPicture
                   onContextMenu={(e) => e.preventDefault()}
                   playsInline
                   autoPlay
