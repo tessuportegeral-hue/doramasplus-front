@@ -8,17 +8,11 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const PUBLIC_BASE_URL = Deno.env.get("PUBLIC_BASE_URL") || "https://doramasplus.com.br";
-const INFINITEPAY_HANDLE = Deno.env.get("INFINITEPAY_HANDLE") || "";
-const INFINITEPAY_WEBHOOK_URL =
-  Deno.env.get("INFINITEPAY_WEBHOOK_URL") || Deno.env.get("INIFITEPAY_WEBHOOK_URL") || "";
+const ASAAS_API_KEY = Deno.env.get("ASAAS_API_KEY") || "";
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const STRIPE_PRICE_ID_MENSAL = Deno.env.get("STRIPE_PRICE_ID_MENSAL") || "";
 const STRIPE_PRICE_ID_TRIMESTRAL = Deno.env.get("STRIPE_PRICE_ID_TRIMESTRAL") || "";
 
-// ✅ 25/07: primeira leva de tools reais da Dora — busca no catálogo,
-// status real da assinatura/indicação, e geração de link de pagamento
-// (mesma lógica InfinityPay do whatsapp-renewal-cron / email-renewal-reminder,
-// incluindo o pacer compartilhado — ver [[project-infinitepay-checkout-rate-limit-pacer]]).
 const TOOLS = [
   {
     name: "buscar_dorama",
@@ -50,11 +44,11 @@ const TOOLS = [
   {
     name: "gerar_link_pagamento",
     description:
-      "Gera um link de pagamento real (PIX via InfinityPay, ou cartão via Stripe) pra pessoa ativar ou renovar o acesso, já com o plano certo preenchido. SÓ use quando a intenção de pagar/ativar/renovar estiver clara e a pessoa já tiver dito qual plano (mensal ou trimestral) E qual forma de pagamento (pix ou cartao) — pergunte antes se não souber os dois. Só funciona se a pessoa estiver logada. Não use pra quem já é assinante Stripe ativo (cobrança automática já cuida disso).",
+      "Gera um link de pagamento real (PIX via Asaas, ou cartão via Stripe) pra pessoa ativar ou renovar o acesso, já com o plano certo preenchido. SÓ use quando a intenção de pagar/ativar/renovar estiver clara e a pessoa já tiver dito qual plano (mensal ou trimestral) E qual forma de pagamento (pix ou cartao) — pergunte antes se não souber os dois. Só funciona se a pessoa estiver logada. Não use pra quem já é assinante Stripe ativo (cobrança automática já cuida disso).",
     input_schema: {
       type: "object",
       properties: {
-        plano: { type: "string", enum: ["monthly", "quarterly"], description: "Plano escolhido: monthly (mensal, R$16,90) ou quarterly (trimestral, R$47,90)" },
+        plano: { type: "string", enum: ["monthly", "quarterly"], description: "Plano escolhido: monthly (mensal, R$17,90) ou quarterly (trimestral, R$49,90)" },
         metodo: { type: "string", enum: ["pix", "cartao"], description: "Forma de pagamento escolhida" },
       },
       required: ["plano", "metodo"],
@@ -89,6 +83,18 @@ const TOOLS = [
     },
   },
   {
+    name: "registrar_pedido_dorama",
+    description:
+      "Registra o pedido de um dorama que a pessoa quer que a gente adicione, quando buscar_dorama não encontrou o título. Use SEMPRE que não achar o título, antes de responder — assim conseguimos avisar automaticamente a pessoa quando o título for adicionado (se ela estiver logada).",
+    input_schema: {
+      type: "object",
+      properties: {
+        titulo: { type: "string", description: "Título do dorama que a pessoa pediu, exatamente como ela escreveu" },
+      },
+      required: ["titulo"],
+    },
+  },
+  {
     name: "gerar_link_suporte_whatsapp",
     description:
       "Gera o link do WhatsApp do suporte já com uma mensagem de contexto pré-preenchida, pra pessoa não precisar reexplicar tudo pro atendente. Use SEMPRE que for escalar pro suporte por um problema de PAGAMENTO que você não conseguiu resolver sozinha (chave CNPJ não funcionou, comprovante não validou depois de tentar, etc.). Não use pra assuntos que não são de pagamento (pedido de dorama, dúvida geral, senha, etc.) — nesses casos usa o link fixo normal.",
@@ -104,6 +110,39 @@ const TOOLS = [
     },
   },
 ];
+
+async function registrarPedidoDorama(userId: string | null, titulo: string) {
+  const tituloLimpo = titulo.trim();
+  if (!tituloLimpo) return { ok: false };
+  const { error } = await supabase.from("dorama_requests").insert({
+    user_id: userId,
+    dorama_name: tituloLimpo,
+    source: "site",
+  });
+  if (error) {
+    if (String(error.message || "").includes("dorama_request_limit_reached")) {
+      let horasParaLiberar = 24;
+      if (userId) {
+        const janelaInicio = new Date(Date.now() - 24 * 3600000).toISOString();
+        const { data: recentes } = await supabase
+          .from("dorama_requests")
+          .select("created_at")
+          .eq("user_id", userId)
+          .gte("created_at", janelaInicio)
+          .order("created_at", { ascending: true })
+          .limit(1);
+        if (recentes?.[0]?.created_at) {
+          const horasPassadas = (Date.now() - new Date(recentes[0].created_at).getTime()) / 3600000;
+          horasParaLiberar = Math.max(1, Math.ceil(24 - horasPassadas));
+        }
+      }
+      return { ok: false, limite_atingido: true, horas_para_liberar: horasParaLiberar };
+    }
+    console.error("[dora-chat] registrarPedidoDorama error:", error);
+    return { ok: false };
+  }
+  return { ok: true, sera_notificada_automaticamente: !!userId };
+}
 
 async function buscarDorama(trecho: string) {
   const { data, error } = await supabase.rpc("search_doramas_fuzzy", { query: trecho });
@@ -178,10 +217,6 @@ async function statusIndicacao(userId: string | null) {
   return { total_indicados: rows.length, creditados, pendentes, dias_ganhos: creditados * 15 };
 }
 
-// ✅ 25/07: recomendação de verdade baseada no que a pessoa já assistiu
-// (watch_history), em vez das listas fixas coladas no prompt. Detecta a
-// categoria mais assistida entre os últimos títulos e sugere outros da
-// mesma categoria que ainda não foram vistos.
 const CATEGORIA_TRAITS = [
   { col: "is_taboo_relationship", label: "relacionamento tabu" },
   { col: "is_hidden_identity", label: "identidade escondida" },
@@ -249,9 +284,6 @@ async function recomendarDoramas(userId: string | null) {
   };
 }
 
-// ✅ 25/07: avisa o admin por email quando um caso de "paguei e não liberou"
-// é CONFIRMADO (pix_payments.status='paid' mas acesso não ativo) — reaproveita
-// a function admin-whatsapp-notify que já manda email+WhatsApp pro admin.
 async function alertarAdminPagamentoNaoAtivado(args: {
   email: string | null;
   phone: string | null;
@@ -296,7 +328,6 @@ async function statusPagamentoPix(userId: string | null) {
     return { encontrado: true, status: payment.status, order_nsu: payment.order_nsu };
   }
 
-  // status='paid' — confere se o acesso realmente reflete isso
   const { data: sub } = await supabase
     .from("subscriptions")
     .select("status")
@@ -310,7 +341,6 @@ async function statusPagamentoPix(userId: string | null) {
     return { encontrado: true, status: "paid_e_ativo" };
   }
 
-  // ✅ Confirmado: pagou de verdade, acesso não ativado — caso real, não achismo
   const { data: profile } = await supabase.from("profiles").select("email, phone").eq("id", userId).maybeSingle();
   const whatsappTexto = encodeURIComponent(
     `Oi! Paguei o PIX (pedido ${payment.order_nsu}, R$${(payment.amount_cents / 100).toFixed(2)}) e meu acesso não foi liberado. Preciso de ajuda urgente 🙏`
@@ -332,11 +362,6 @@ async function statusPagamentoPix(userId: string | null) {
   };
 }
 
-// ✅ 25/07: mesma lógica de validação por visão do whatsapp-sales-bot
-// (validateComprovanteWithClaude) — dois modelos (haiku rápido, sonnet
-// como segunda opinião se o haiku reprovar) checando status/destinatário/
-// valor/data no comprovante. Critérios idênticos aos já validados em
-// produção no bot de vendas, só sem a variante "series".
 async function validarComprovanteVisao(
   base64: string,
   mimeType: string
@@ -348,7 +373,7 @@ async function validarComprovanteVisao(
   const nowStr = nowBRT.toISOString().replace("T", " ").slice(0, 16) + " (horario de Brasilia)";
 
   const buildPrompt = (lenient: boolean) =>
-    `Voce e um validador de comprovantes PIX brasileiro. Analise a imagem e responda SOMENTE com JSON:\n{"valido":true_ou_false,"motivo":"texto_curto","valor":numero_em_reais_ou_null}\n\nAgora sao: ${nowStr}\n\nCRITERIOS:\n\n1. STATUS: Pagamento CONCLUIDO/REALIZADO/APROVADO/CONFIRMADO.\n   Invalido se: agendado, pendente, em processamento, aguardando.\n\n2. DESTINATARIO: Qualquer uma dessas opcoes e valida:\n   - Nome contem "Cavalcante" ou "Stefano" ou "Streaming" (qualquer caixa/variacao)\n   - Chave PIX e o CNPJ 66108496000120 (pode aparecer como 66.108.496/0001-20)\n   - Razao social associada a esse CNPJ\n\n3. VALOR: entre R$ 16,00 e R$ 48,50 (mensal R$16,90 ou trimestral R$47,90).\n\n4. DATA/HORA: pagamento feito ha no maximo 30 minutos antes de agora.\n\nINSTRUCOES:\n- Bancos como Nubank (roxo), Itau, Bradesco, Caixa, Inter, C6, PicPay, BB tem layouts DIFERENTES — leia com atencao cada campo\n- ${lenient ? "Se 3 dos 4 criterios estiverem claramente atendidos e o 4o nao estiver legivel por qualidade da imagem, considere valido=true." : "Todos os criterios devem estar claramente atendidos."}\n- Nao rejeite por baixa qualidade de screenshot se os dados principais estao visiveis\n\nResponda APENAS o JSON.`;
+    `Voce e um validador de comprovantes PIX brasileiro. Analise a imagem e responda SOMENTE com JSON:\n{"valido":true_ou_false,"motivo":"texto_curto","valor":numero_em_reais_ou_null}\n\nAgora sao: ${nowStr}\n\nCRITERIOS:\n\n1. STATUS: Pagamento CONCLUIDO/REALIZADO/APROVADO/CONFIRMADO.\n   Invalido se: agendado, pendente, em processamento, aguardando.\n\n2. DESTINATARIO: Qualquer uma dessas opcoes e valida:\n   - Nome contem "Cavalcante" ou "Stefano" ou "Streaming" (qualquer caixa/variacao)\n   - Chave PIX e o CNPJ 66108496000120 (pode aparecer como 66.108.496/0001-20)\n   - Razao social associada a esse CNPJ\n\n3. VALOR: entre R$ 16,00 e R$ 50,50 (mensal R$17,90 ou trimestral R$49,90).\n\n4. DATA/HORA: pagamento feito ha no maximo 30 minutos antes de agora.\n\nINSTRUCOES:\n- Bancos como Nubank (roxo), Itau, Bradesco, Caixa, Inter, C6, PicPay, BB tem layouts DIFERENTES — leia com atencao cada campo\n- ${lenient ? "Se 3 dos 4 criterios estiverem claramente atendidos e o 4o nao estiver legivel por qualidade da imagem, considere valido=true." : "Todos os criterios devem estar claramente atendidos."}\n- Nao rejeite por baixa qualidade de screenshot se os dados principais estao visiveis\n\nResponda APENAS o JSON.`;
 
   const contentBlock = { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } };
 
@@ -409,13 +434,6 @@ async function logTentativaComprovante(userId: string, meta: unknown) {
   }
 }
 
-// ✅ 25/07: trava contra crédito duplo. Se a pessoa pagou pelo checkout
-// normal (PIX InfinityPay) e o webhook ainda não confirmou quando ela manda
-// o comprovante pra Dora, o clever-worker eventualmente processa o mesmo
-// pagamento depois e SOMA mais dias em cima do que a Dora já liberou (ele
-// estende a partir do end_at ativo atual). Marcar a linha pending como paga
-// aqui faz o dedup do clever-worker (status='paid' + meta_sent=true) pular
-// o processamento quando o webhook real chegar.
 async function marcarPixPendenteComoConferido(userId: string) {
   try {
     const { data: pending } = await supabase
@@ -438,10 +456,6 @@ async function marcarPixPendenteComoConferido(userId: string) {
   }
 }
 
-// ✅ Liberação real de acesso quando o comprovante valida — mesma função
-// compartilhada usada por whatsapp-sales-bot, infinitepay-reconcile, etc.
-// (subscriptions primeiro, profiles só se subscriptions gravar — evita
-// acesso "fantasma", ver [[project-ghost-access-profiles-vs-subscriptions]]).
 async function analisarComprovantePix(
   userId: string | null,
   planoEsperado: "monthly" | "quarterly" | "desconhecido",
@@ -461,9 +475,6 @@ async function analisarComprovantePix(
     return { valido: false, motivo: resultado.motivo };
   }
 
-  // Determina o plano pelo valor identificado na imagem (mais confiável
-  // que o que a pessoa disse na conversa) — só usa o que ela disse como
-  // fallback se o valor não veio legível.
   const valor = resultado.valor || 0;
   let plano: "monthly" | "quarterly" | null = null;
   if (valor >= 16 && valor <= 20) plano = "monthly";
@@ -505,11 +516,6 @@ async function analisarComprovantePix(
   return { valido: true, plano, dias };
 }
 
-// ✅ 25/07: link de suporte com resumo pré-preenchido pros casos de
-// escalada por pagamento que ainda não tinham isso (chave CNPJ que não
-// funcionou, comprovante que não validou depois de tentar) — mesmo padrão
-// já usado em statusPagamentoPix, só que aqui o resumo vem da própria
-// Dora (ela tem o contexto da conversa), não é montado com dados fixos.
 function gerarLinkSuporteWhatsapp(resumo: string) {
   const texto = encodeURIComponent(resumo?.trim() || "Preciso de ajuda com meu pagamento 🙏");
   return { link: `https://wa.me/5518996796654?text=${texto}` };
@@ -519,92 +525,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// ✅ mesmo pacer compartilhado (tabela infinitepay_link_pacer) usado pelos
-// crons de renovação — a InfinityPay libera só 5 chamadas/45s. Reservar
-// slot aqui evita que o chat compita com os crons e reabra o mesmo bug.
-async function claimInfinitepaySlot(): Promise<void> {
-  try {
-    const { data: mySlot, error } = await supabase.rpc("claim_infinitepay_slot");
-    if (error || !mySlot) return;
-    const waitMs = new Date(mySlot as string).getTime() - Date.now();
-    if (waitMs > 0) await sleep(waitMs);
-  } catch (e) {
-    console.error("[dora-chat] pacer error:", String(e));
-  }
-}
-
-async function gerarLinkPix(userId: string, plano: "monthly" | "quarterly") {
-  if (!INFINITEPAY_HANDLE || !INFINITEPAY_WEBHOOK_URL) return { erro: "pagamento_indisponivel" };
-
-  // Limite: no máximo 3 links gerados por pessoa por dia via chat, pra
-  // evitar spam de pix_payments pendentes se alguém insistir pedindo.
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(3, 0, 0, 0); // meia-noite Brasília em UTC
-  const { count } = await supabase
-    .from("pix_payments")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("source", "dora_chat")
-    .gte("created_at", startOfDay.toISOString());
-  if ((count || 0) >= 3) return { erro: "limite_diario_atingido" };
-
-  await claimInfinitepaySlot();
-
-  const amountCents = plano === "quarterly" ? 4790 : 1690;
-  const description = plano === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrao";
-  const order_nsu = `doramasplus|${userId}|${plano}|${Date.now()}`;
-  const redirect_url =
-    `${PUBLIC_BASE_URL}/checkout/sucesso?gateway=infinitepay&order_nsu=${encodeURIComponent(order_nsu)}&event_id=${encodeURIComponent(order_nsu)}`;
-
-  const { data: prof } = await supabase.from("profiles").select("email").eq("id", userId).maybeSingle();
-  const userEmail = prof?.email || "no-email@local.invalid";
-
-  try {
-    const resp = await fetch("https://api.checkout.infinitepay.io/links", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        handle: INFINITEPAY_HANDLE,
-        order_nsu,
-        webhook_url: INFINITEPAY_WEBHOOK_URL,
-        redirect_url,
-        items: [{ quantity: 1, price: amountCents, description }],
-        customer: { email: userEmail },
-      }),
-    });
-    const text = await resp.text();
-    let parsed: any = null;
-    try { parsed = JSON.parse(text); } catch {}
-    if (!resp.ok || !parsed?.url) {
-      console.error("[dora-chat] InfinityPay falhou:", resp.status, text.slice(0, 300));
-      return { erro: "falha_ao_gerar_link" };
-    }
-
-    await supabase.from("pix_payments").insert({
-      user_id: userId,
-      provider: "infinitepay",
-      plan: plano,
-      amount_cents: amountCents,
-      order_nsu,
-      status: "pending",
-      raw: parsed,
-      event_id: order_nsu,
-      source: "dora_chat",
-    });
-
-    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 10);
-    await supabase.from("payment_redirects").insert({ token, target_url: parsed.url });
-
-    return { link: `${PUBLIC_BASE_URL}/r/${token}` };
-  } catch (e) {
-    console.error("[dora-chat] gerarLinkPix excecao:", String(e));
-    return { erro: "falha_ao_gerar_link" };
-  }
-}
-
-// ✅ mesma lógica do create-checkout-session (Stripe), só que chamada
-// direto pela Dora com o plano já escolhido em vez de precisar a pessoa
-// abrir /plans e escolher tudo de novo.
 async function gerarLinkCartaoStripe(userId: string, plano: "monthly" | "quarterly") {
   if (!STRIPE_SECRET_KEY || !STRIPE_PRICE_ID_MENSAL || !STRIPE_PRICE_ID_TRIMESTRAL) {
     return { erro: "pagamento_indisponivel" };
@@ -659,8 +579,6 @@ async function gerarLinkCartaoStripe(userId: string, plano: "monthly" | "quarter
     const useCustomer = !!profile?.stripe_customer_id;
     let { resp, data } = await callStripe(buildParams(useCustomer));
 
-    // ✅ mesmo fallback do create-checkout-session: customer salvo pode ser
-    // de uma conta Stripe antiga (ver [[project-stripe-orphaned-sub-false-positive]]).
     const msg = String(data?.error?.message || "");
     const isMissingCustomer =
       !resp.ok && useCustomer && (data?.error?.code === "resource_missing" || /no such customer/i.test(msg));
@@ -683,9 +601,137 @@ async function gerarLinkCartaoStripe(userId: string, plano: "monthly" | "quarter
   }
 }
 
+function generateFakeCpf(): string {
+  const n = () => Math.floor(Math.random() * 9) + 1;
+  const d = [n(), n(), n(), n(), n(), n(), n(), n(), n()];
+  let s = d.slice(0, 9).reduce((a, v, i) => a + v * (10 - i), 0);
+  let d1 = 11 - (s % 11);
+  if (d1 >= 10) d1 = 0;
+  d.push(d1);
+  s = d.slice(0, 10).reduce((a, v, i) => a + v * (11 - i), 0);
+  let d2 = 11 - (s % 11);
+  if (d2 >= 10) d2 = 0;
+  d.push(d2);
+  return d.join("");
+}
+
+// ✅ 08/08: volta o fluxo de PIX direto no chat (era via Asaas antes de virar
+// só um redirect pro /plans) — mesma lógica de criar-cliente-e-cobrança do
+// asaas-create-checkout (site), só que devolvendo o código copia-e-cola pra
+// Dora mandar como mensagem isolada, sem precisar sair do chat pra pagar.
+async function gerarPixAsaas(userId: string, plano: "monthly" | "quarterly") {
+  const asaasKey = ASAAS_API_KEY;
+  if (!asaasKey) return { erro: "pagamento_indisponivel" };
+
+  // Mesmo limite diário que a InfinityPay tinha — evita spam de pix_payments
+  // pendentes se alguém insistir gerando várias vezes pelo chat.
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(3, 0, 0, 0);
+  const { count } = await supabase
+    .from("pix_payments")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("source", "dora_chat")
+    .gte("created_at", startOfDay.toISOString());
+  if ((count || 0) >= 3) return { erro: "limite_diario_atingido" };
+
+  const amountCents = plano === "quarterly" ? 4990 : 1790;
+  const amount = amountCents / 100;
+  const description = plano === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrao";
+  const order_nsu = `doramasplus|${userId}|${plano}|${Date.now()}`;
+
+  const { data: prof } = await supabase.from("profiles").select("name, email").eq("id", userId).maybeSingle();
+  const userEmail = prof?.email || "no-email@local.invalid";
+  const userName = prof?.name || "Cliente DoramasPlus";
+
+  try {
+    let customerId: string | null = null;
+    try {
+      const r = await fetch(`https://api.asaas.com/v3/customers?email=${encodeURIComponent(userEmail)}`, {
+        headers: { access_token: asaasKey },
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d?.data?.[0]?.id) customerId = d.data[0].id;
+    } catch {}
+
+    if (!customerId) {
+      const r = await fetch("https://api.asaas.com/v3/customers", {
+        method: "POST",
+        headers: { access_token: asaasKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userName,
+          email: userEmail,
+          cpfCnpj: generateFakeCpf(),
+          notificationDisabled: true,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error("[dora-chat] Asaas erro criar cliente:", r.status, JSON.stringify(d));
+        return { erro: "falha_ao_gerar_link" };
+      }
+      customerId = d?.id || null;
+    }
+    if (!customerId) return { erro: "falha_ao_gerar_link" };
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dueDate = tomorrow.toISOString().split("T")[0];
+
+    const paymentResp = await fetch("https://api.asaas.com/v3/payments", {
+      method: "POST",
+      headers: { access_token: asaasKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer: customerId,
+        billingType: "PIX",
+        value: amount,
+        dueDate,
+        description,
+        externalReference: order_nsu,
+      }),
+    });
+    const paymentData = await paymentResp.json().catch(() => ({}));
+    if (!paymentResp.ok || !paymentData?.id) {
+      console.error("[dora-chat] Asaas erro criar cobranca:", paymentResp.status, JSON.stringify(paymentData));
+      return { erro: "falha_ao_gerar_link" };
+    }
+
+    const qrResp = await fetch(`https://api.asaas.com/v3/payments/${paymentData.id}/pixQrCode`, {
+      headers: { access_token: asaasKey },
+    });
+    const qrData = await qrResp.json().catch(() => ({}));
+    const copyPaste = qrData?.payload || null;
+    if (!copyPaste) {
+      console.error("[dora-chat] Asaas QR code vazio:", JSON.stringify(qrData));
+      return { erro: "falha_ao_gerar_link" };
+    }
+
+    try {
+      await supabase.from("pix_payments").insert({
+        user_id: userId,
+        provider: "asaas",
+        plan: plano,
+        amount_cents: amountCents,
+        order_nsu,
+        status: "pending",
+        raw: paymentData,
+        event_id: order_nsu,
+        source: "dora_chat",
+      });
+    } catch (e) {
+      console.error("[dora-chat] falha ao gravar pix_payments pending:", String(e));
+    }
+
+    return { codigo_pix: copyPaste, valor: amount.toFixed(2).replace(".", ",") };
+  } catch (e) {
+    console.error("[dora-chat] gerarPixAsaas excecao:", String(e));
+    return { erro: "falha_ao_gerar_link" };
+  }
+}
+
 async function gerarLinkPagamento(userId: string | null, plano: "monthly" | "quarterly", metodo: "pix" | "cartao") {
   if (!userId) return { nao_autenticado: true };
-  return metodo === "cartao" ? await gerarLinkCartaoStripe(userId, plano) : await gerarLinkPix(userId, plano);
+  return metodo === "cartao" ? await gerarLinkCartaoStripe(userId, plano) : await gerarPixAsaas(userId, plano);
 }
 
 const SYSTEM_PROMPT = `Você é a Dora, assistente virtual do DoramasPlus — plataforma brasileira de streaming de doramas e dramas asiáticos.
@@ -714,12 +760,12 @@ O pagamento é feito DIRETO NO SITE — não tem chave PIX avulsa.
 Quando pagar, o acesso é liberado na hora.
 
 Se a pessoa pedir a chave PIX ou perguntar como pagar via PIX:
-"O pagamento PIX é gerado direto no site, não tem chave avulsa! 😊 É bem simples:
+"O pagamento PIX é gerado direto no site, não tem chave avulsa! 😊 E não precisa sair da tela pra pagar — o QR code e o código copia-e-cola aparecem ali mesmo. É bem simples:
 1. Acessa: https://www.doramasplus.com.br/plans
-2. Escolhe o plano: Mensal (R$16,90) ou Trimestral (R$47,90)
-3. Clica em ativar
-4. Na página de pagamento escolhe PIX
-5. Aparece o código PIX (copia e cola) pra você colar no app do banco
+2. Escolhe o plano: Mensal (R$17,90) ou Trimestral (R$49,90)
+3. Clica em 'Pagar no Pix'
+4. Na hora já aparece o QR code e o código copia-e-cola, sem sair da tela
+5. Escaneia ou cola no app do banco
 6. Pagou, acesso liberado na hora! 🎉"
 
 Se a pessoa perguntar qual é o CEP na hora do preenchimento do cadastro de pagamento:
@@ -782,7 +828,7 @@ Link: https://chat.whatsapp.com/HSG7dv1uz0FD07J5Uz2o0k
 Só pra acompanhar atualizações. Pedidos pelo suporte: https://wa.me/5518996796654
 
 Convida nos momentos:
-1. PEDIDO DE DORAMA: suporte + comunidade
+1. PEDIDO DE DORAMA: use o fluxo de registrar_pedido_dorama (seção BUSCA POR TÍTULO ESPECÍFICO) — não manda pro suporte nesse momento
 2. NICHO ESPECÍFICO: comunidade
 3. ACABOU DE ATIVAR: comunidade + programa de indicação
 4. INDICAÇÃO: explica programa completo
@@ -791,7 +837,7 @@ BUSCA POR TÍTULO ESPECÍFICO
 Use a ferramenta buscar_dorama com o trecho que a pessoa mencionou.
 - Achou exatamente um: manda o nome certinho + o link: https://www.doramasplus.com.br/dorama/[slug]
 - Achou mais de um parecido: pergunta qual dos encontrados é, antes de mandar o link
-- Não achou nada: "Não encontrei esse título disponível aqui 😅 Você pode pedir pra gente adicionar, é só falar com o suporte: https://wa.me/5518996796654" — NUNCA especula que o título pode ser de outra plataforma/serviço, nem sugere que ele não existe ou não é dorama. Só fala que não está disponível aqui.
+- Não achou nada: primeiro chama registrar_pedido_dorama com o título mencionado. Se voltar sera_notificada_automaticamente:true (pessoa logada): "Não encontrei esse título aqui ainda 😅 Já anotei seu pedido! Você também pode acompanhar e pedir outros diretamente em Configurações: doramasplus.com.br/minha-conta — assim que a gente adicionar, eu aviso você por aqui 📩" — NUNCA ofereça o WhatsApp do suporte nesse caso; só mencione o suporte se a PRÓPRIA pessoa reclamar, insistir, ou disser que teve algum problema com o pedido depois dessa resposta. Se voltar sera_notificada_automaticamente:false (não logada): "Não encontrei esse título aqui ainda 😅 Anotei seu pedido, mas pra eu conseguir te avisar quando adicionar, você precisa estar com a conta logada — ou se preferir, fala com o suporte: https://wa.me/5518996796654". Se voltar limite_atingido:true: "Não encontrei esse título aqui ainda 😅 Você já atingiu o limite de pedidos por hoje — libera de novo em [horas_para_liberar] hora(s). Se quiser, fala com o suporte: https://wa.me/5518996796654". NUNCA especula que o título pode ser de outra plataforma/serviço, nem sugere que ele não existe ou não é dorama. Só fala que não está disponível aqui ainda.
 
 HORÁRIO SUPORTE: seg–sáb 8h–20h (Brasília).
 
@@ -827,15 +873,15 @@ PESSOA EM DÚVIDA / CONVERSÃO
 ✅ Catálogo GIGANTE — asiáticos, americanos e brasileiros!
 ✅ MAIORIA dublado — aba 'Dublados', sem legenda!
 ✅ Assiste quando quiser, sem limite
-✅ R$16,90/mês — menos que uma pizza! 🍕
+✅ R$17,90/mês — menos que uma pizza! 🍕
 ✅ PIX ou cartão de crédito
 ✅ Acesso na hora
-✅ Qualquer dispositivo
-Trimestral: R$47,90/90 dias! 🎉 https://www.doramasplus.com.br/plans"
+✅ Qualquer dispositivo — inclusive app oficial no Android (Google Play)
+Trimestral: R$49,90/90 dias! 🎉 https://www.doramasplus.com.br/plans"
 
 Se caro: "Menos que um lanche no McDonald's! 😄 PIX ou cartão."
 Se vai pensar: "Sem pressão! https://www.doramasplus.com.br/plans 😊"
-Se nunca assistiu: "Todo mundo que começa não para! 😂 R$16,90 sem risco."
+Se nunca assistiu: "Todo mundo que começa não para! 😂 R$17,90 sem risco."
 Se já tem Netflix: "Conteúdo exclusivo! Por R$0,56/dia dá ter os dois 😊"
 Se pode cancelar: "Sim, sem problema! 😊 É só falar com nosso suporte: https://wa.me/5518996796654"
 
@@ -858,19 +904,25 @@ Após indicar: "Pesquisa na barra! Trecho seguido do nome 😉"
 TROCAR SENHA
 "Você está logada na conta agora? 😊"
 Se SIM: "1. Três tracinhos canto superior direito 2. 'Trocar Senha' 3. Senha atual 4. Senha nova duas vezes 5. Salva! ✅"
-Se NÃO ou não funcionou: "Pode ter saído sem perceber! 😊
+Se NÃO ou não funcionou: "Boa notícia: nem precisa lembrar senha nenhuma pra entrar! 😊
 1. https://www.doramasplus.com.br/login
-2. 'Esqueci minha senha'
-3. Seu email
-4. Link no email — olha no spam
-5. ⚠️ Aviso vermelho é normal!
-6. Cria senha nova
-Não chegou: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
+2. Clica em 'Entrar sem senha (código por email)'
+3. Digita seu email
+4. Chega um código de 8 dígitos no email (olha no spam também)
+5. Digita o código e pronto, já entra! ✅
+Aí, se quiser, dá pra criar uma senha nova na hora — aparece essa opção depois que você entra, sem precisar lembrar da antiga.
+Não chegou nada: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
 
 ACESSO
 "Você já tem conta ou vai criar? 😊"
-- JÁ TEM: "Só saiu — normal! 1. 'Entrar' 2. Email e senha 3. Pronto! ✅"
-- NÃO TEM: "1. 'Cadastrar' 2. Dados 3. Planos: Mensal R$16,90 ou Trimestral R$47,90 4. Ativa! 🎉"
+- JÁ TEM: "Você pode entrar sem nem precisar de senha! 😊
+1. https://www.doramasplus.com.br/login
+2. 'Entrar sem senha (código por email)'
+3. Digita o email
+4. Chega um código de 8 dígitos — é só digitar
+5. Pronto, já entra! ✅
+(Se preferir o email e senha de sempre, o botão 'Entrar' normal também funciona.)"
+- NÃO TEM: "1. 'Cadastrar' 2. Dados 3. Planos: Mensal R$17,90 ou Trimestral R$49,90 4. Ativa! 🎉"
 
 EXCLUIR CONTA
 Se a pessoa quiser excluir/deletar/apagar a conta de vez (isso é DIFERENTE de só cancelar a assinatura/pagamento — aqui é apagar o cadastro inteiro). Você mesma explica o passo a passo, NUNCA escala pro suporte pra isso, é bem simples e a pessoa faz sozinha:
@@ -883,14 +935,21 @@ Pronto, sua conta é excluída na hora! ⚠️ Isso é definitivo, não tem como
 RENOVAÇÃO / MEU ACESSO / QUANDO VENCE
 Use a ferramenta status_assinatura antes de responder — nunca chuta a data.
 - Se vier nao_autenticado: "Você não está logada na conta agora 😊 Entra em https://www.doramasplus.com.br/login que aí eu consigo ver certinho pra você!"
-- Se ativo e tem data: fala a data real que veio no resumo.
+- Se ativo e tem data: fala a data real que veio no resumo E já aproveita pra oferecer a renovação antecipada — nunca só fala a data e para por aí. Explica rapidinho que é cumulativo (pagar antes não perde nada, os dias novos só somam em cima do que já tem) e manda direto o link https://www.doramasplus.com.br/plans, caso a pessoa queira aproveitar e já pagar ali mesmo.
 - Se ativo sem data (Stripe recorrente): explica que renova sozinho, não precisa fazer nada.
-- Se não está ativo: pergunta o plano (mensal R$16,90 ou trimestral R$47,90) e a forma de pagamento (PIX ou cartão) se a pessoa não tiver dito os dois. Depois de saber os dois, pergunta antes de gerar: "**Quer que eu já gere o link de pagamento? 💜**" — só chama a ferramenta gerar_link_pagamento depois que a pessoa confirmar. Funciona pros dois (PIX vai pela InfinityPay, cartão vai direto pra Stripe, já no plano certo).
+- Se não está ativo: pergunta o plano (mensal R$17,90 ou trimestral R$49,90) e a forma de pagamento (PIX ou cartão) se a pessoa não tiver dito os dois. Depois de saber os dois, pergunta antes de gerar: "**Quer que eu já gere o pagamento? 💜**" — só chama a ferramenta gerar_link_pagamento depois que a pessoa confirmar. Funciona pros dois (PIX manda o código Pix copia-e-cola direto aqui no chat, já com o valor certo; cartão vai direto pra Stripe, já no plano certo).
 Lembra sempre de mencionar: indicando amigos ganha 15 dias grátis por cada um! doramasplus.com.br/indicar
+Se a pessoa acabou de ativar/renovar e parecer Android, aproveita e sugere baixar o app oficial na Google Play: https://play.google.com/store/apps/details?id=br.com.doramasplus.twa
 
 Resultados de gerar_link_pagamento (essa mesma tabela vale sempre que você chamar essa ferramenta, em qualquer fluxo):
 - Se vier link: manda o link, sem enrolação.
-- Se vier erro:"limite_diario_atingido": já foram geradas várias tentativas de link hoje — NÃO tenta de novo nem inventa outro motivo. Se for PIX, oferece a chave PIX (CNPJ) como alternativa, no mesmo formato da seção "FORMAS DE PAGAMENTO" (chave isolada com |||). Se for cartão, explica que precisa tentar de novo mais tarde ou falar com o suporte: https://wa.me/5518996796654
+- Se vier codigo_pix: é o código Pix copia-e-cola pronto pra pagar (não é link) — o pagamento já foi gerado de verdade. Manda EXATAMENTE nesse formato, com ||| sozinho numa linha separando as partes (mesma lógica da chave CNPJ, isola o código pra ficar fácil de copiar):
+"Prontinho! 😊 Aqui está o código Pix (copia e cola) — R$[valor]:
+|||
+[codigo_pix]
+|||
+É só colar no app do seu banco na opção Pix Copia e Cola. Assim que o pagamento confirmar, o acesso libera sozinho! 🎉"
+- Se vier erro:"limite_diario_atingido": já foram geradas várias tentativas hoje — NÃO tenta de novo nem inventa outro motivo. Se for PIX, oferece a chave PIX (CNPJ) como alternativa, no mesmo formato da seção "FORMAS DE PAGAMENTO" (chave isolada com |||). Se for cartão, explica que precisa tentar de novo mais tarde ou falar com o suporte: https://wa.me/5518996796654
 - Se vier erro:"falha_ao_gerar_link": instabilidade passageira no processamento — pede desculpa e sugere tentar de novo em alguns minutos; se for PIX, também pode oferecer a chave CNPJ como alternativa imediata.
 - Se vier erro:"pagamento_indisponivel": problema técnico real de configuração — não tenta explicar o motivo, só escala pro suporte: https://wa.me/5518996796654
 - Se vier nao_autenticado: pede pra entrar na conta primeiro.
@@ -915,19 +974,19 @@ Resultados de analisar_comprovante_pix (só depois de ter chamado a ferramenta):
 - Se vier nao_autenticado: pede pra entrar na conta primeiro (a pessoa vai precisar reenviar a imagem depois de logar).
 - Se vier erro:"sem_imagem": peça pra reenviar a imagem, algo deu errado no envio.
 - Se vier erro:"limite_tentativas_atingido": "Já tentamos analisar algumas vezes hoje 😅 Pra não travar, vou te passar direto pro suporte: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
-- Se vier valido:true: 🎉 Comemora! Fala que o acesso já está ativo, o plano (mensal/trimestral) e por quantos dias (campo dias). Lembra da indicação: doramasplus.com.br/indicar
+- Se vier valido:true: 🎉 Comemora! Fala que o acesso já está ativo, o plano (mensal/trimestral) e por quantos dias (campo dias). Lembra da indicação: doramasplus.com.br/indicar. Se der pra saber que é Android (ou não tiver certeza do aparelho), aproveita e menciona o app oficial na Google Play: https://play.google.com/store/apps/details?id=br.com.doramasplus.twa
 - Se vier valido:false: explica com carinho que não deu pra confirmar automaticamente (não fale o "motivo" técnico cru — traduza pra algo simples, tipo "não consegui ver todos os dados direito" ou "o valor não bateu com nenhum plano"). Pergunta se pode tentar mandar de novo (foto mais nítida, ou o comprovante certo) ANTES de escalar pro suporte. Só manda pro WhatsApp se ela preferir ou já tiver tentado antes sem sucesso — nesse caso, use gerar_link_suporte_whatsapp com um resumo do que já foi tentado antes de mandar o link.
 
 APP
-"📱 Android: Chrome → 3 pontinhos → 'Adicionar à tela inicial'
-🍎 iPhone: Safari → compartilhar → 'Adicionar à Tela de Início'"
+"📱 Android: temos app oficial na Google Play! Baixa direto aqui: https://play.google.com/store/apps/details?id=br.com.doramasplus.twa
+🍎 iPhone: a Apple ainda não libera esse tipo de app lá na loja deles, mas dá pra ter a mesma experiência — Safari → compartilhar → 'Adicionar à Tela de Início'"
 
 COMO ATIVAR
-"1. Entra/cadastra 2. https://www.doramasplus.com.br/plans 3. Mensal R$16,90 ou Trimestral R$47,90 4. PIX ou cartão ✅ 5. Código no WhatsApp (se PIX) 6. Acesso na hora! 🎉"
+"1. Entra/cadastra 2. https://www.doramasplus.com.br/plans 3. Mensal R$17,90 ou Trimestral R$49,90 4. PIX ou cartão ✅ 5. Código no WhatsApp (se PIX) 6. Acesso na hora! 🎉"
 
 PLANOS
 "ILIMITADO — asiáticos, americanos e brasileiros, maioria dublado! 🎉
-Mensal R$16,90 | Trimestral R$47,90
+Mensal R$17,90 | Trimestral R$49,90
 PIX ou cartão de crédito
 https://www.doramasplus.com.br/plans"
 
@@ -936,19 +995,19 @@ BUSCAR
 Se não achar: https://wa.me/5518996796654"
 
 SENHA (ESQUECEU)
-"1. https://www.doramasplus.com.br/login
-2. 'Esqueci minha senha'
-3. Seu email
-4. Link no email — spam também
-5. ⚠️ Aviso vermelho é normal!
-6. Cria senha nova
+"Boa notícia: nem precisa resetar senha pra entrar! 😊
+1. https://www.doramasplus.com.br/login
+2. 'Entrar sem senha (código por email)'
+3. Digita o email
+4. Chega um código de 8 dígitos — digita ele e pronto! ✅
+Depois de entrar, se quiser, dá pra criar uma senha nova na hora, sem precisar da antiga.
 Não chegou: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
 
 VÍDEO TRAVANDO
 "1️⃣ Link 'Se o vídeo não abrir' no topo
 2️⃣ Wi-Fi
 3️⃣ Limpa histórico
-4️⃣ Troca navegador
+4️⃣ Troca navegador (se for Android, o app oficial costuma ser mais estável: https://play.google.com/store/apps/details?id=br.com.doramasplus.twa)
 5️⃣ Fecha abas e apps
 Persistiu: https://wa.me/5518996796654 (seg–sáb 8h–20h) 😊"
 
@@ -959,6 +1018,14 @@ VÍDEO SEM SOM
 4️⃣ Fecha e abre o vídeo de novo
 Persistiu: https://wa.me/5518996796654 (seg–sáb 8h–20h) 😊"
 
+LIMITE DE REPRODUÇÃO ATINGIDO
+Se a pessoa reclamar que bateu no limite de telas/aparelhos, que apareceu um aviso de limite de reprodução, que não consegue assistir porque "já tem outro dispositivo usando", ou algo do tipo: isso quase sempre é só o login desatualizado no aparelho, não é bloqueio de verdade. Não precisa usar nenhuma ferramenta, manda direto:
+"Isso geralmente é só o login desatualizado, resolve rapidinho! 😊
+1. https://www.doramasplus.com.br/login
+2. Entra de novo com seu email e senha
+3. Pronto, tenta assistir de novo!
+Persistiu: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
+
 PROBLEMAS
 "WhatsApp: https://wa.me/5518996796654 😊 (seg–sáb 8h–20h)"
 
@@ -966,8 +1033,8 @@ COMPORTAMENTO GERAL
 - Linguagem simples
 - Nunca coreanos, chineses, japoneses, tailandeses — sempre 'asiáticos, americanos e brasileiros'
 - Sempre usa a ferramenta buscar_dorama antes de responder sobre um título específico, nunca de memória
-- Se não achar o título, NUNCA especula que pode ser de outra plataforma/serviço ou que não existe — só fala que não está disponível aqui e manda pro suporte pra solicitar
-- PIX é sempre código copia e cola, nunca QR Code — não fala em "QR Code" em nenhum momento
+- Se não achar o título, NUNCA especula que pode ser de outra plataforma/serviço ou que não existe — usa registrar_pedido_dorama pra anotar o pedido; se logada, manda o link de Configurações (nunca oferece WhatsApp de cara, só se a pessoa reclamar depois); se não logada, sugere logar ou WhatsApp
+- PIX no site (aba /plans) mostra QR code E código copia-e-cola juntos, sem sair da tela — pode mencionar as duas opções
 - Sempre usa status_assinatura antes de falar sobre vencimento/status de acesso, nunca de memória
 - Sempre usa status_indicacao antes de falar quantos dias a pessoa já ganhou, nunca de memória
 - Sempre usa status_pagamento_pix quando a pessoa disser "paguei e não liberou" — nunca gera link novo se ela insistir que já pagou e o status ainda for pending (evita cobrança em dobro)
@@ -975,7 +1042,9 @@ COMPORTAMENTO GERAL
 - Sempre usa recomendar_doramas antes de sugerir dorama de forma geral pra quem pode estar logado — só cai nas listas fixas do prompt se vier nao_autenticado ou sem_historico
 - Prioriza validar comprovante no próprio chat antes de escalar pro WhatsApp — só escala se a pessoa preferir ou a validação falhar
 - gerar_link_pagamento: com plano E método de pagamento já escolhidos, intenção clara; nunca pra quem já é Stripe ativo
+- gerar_link_pagamento com metodo pix gera um código Pix copia-e-cola de verdade (Asaas) — manda o código isolado (|||), nunca manda a pessoa pro /plans nesse fluxo
 - Se gerar_link_pagamento retornar erro, segue a tabela de erros específica (seção RENOVAÇÃO) — nunca fala "deu um problema" genérico
+- Limite de reprodução/telas atingido: manda direto pra seção LIMITE DE REPRODUÇÃO ATINGIDO (login de novo resolve a maioria dos casos, é login desatualizado no aparelho)
 - Ao escalar pro suporte por problema de PAGAMENTO que você não resolveu sozinha, usa gerar_link_suporte_whatsapp com um resumo do que já foi tentado — nunca manda o link puro nesses casos, pra pessoa não ter que reexplicar tudo de novo pro atendente
 - Episódio faltando — tudo num único vídeo
 - Nunca assuma que tem ou não tem conta
@@ -988,7 +1057,7 @@ COMPORTAMENTO GERAL
 - Indicação vale pra PIX e cartão
 - Pra indicar precisa ter conta E já ter pago pelo menos uma vez
 - NUNCA menciona programa de indicação pra quem nunca pagou
-- Quando alguém quiser cancelar: usa status_assinatura pra identificar sozinha a forma de pagamento (nunca pergunta) — Stripe (cartão) manda pro suporte no WhatsApp; qualquer outro provider (PIX InfinityPay/Asaas, manual, comprovante) só avisa que não tem cobrança automática, sem precisar escalar
+- Quando alguém quiser cancelar: usa status_assinatura pra identificar sozinha a forma de pagamento (nunca pergunta) — Stripe (cartão) manda pro suporte no WhatsApp; qualquer outro provider (PIX Asaas, manual, comprovante) só avisa que não tem cobrança automática, sem precisar escalar
 - Quando alguém quiser EXCLUIR A CONTA (diferente de cancelar assinatura): NUNCA escala pro suporte, explica o passo a passo direto (seção EXCLUIR CONTA) — é autoatendimento simples, a pessoa faz sozinha no site
 - Comunidade só pra lançamentos — pedidos pro suporte
 - Maioria dublado, aba Dublados
@@ -1018,22 +1087,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ✅ 25/07: nunca confia em user_id vindo solto do front — valida o
-    // access_token da sessão Supabase no backend antes de usar em qualquer tool.
     const userId = await getAuthenticatedUserId(access_token || null);
 
-    // ✅ 25/07: prompt caching — o system prompt (~2100 tokens) ia inteiro,
-    // sem cache, em toda mensagem da conversa. cache_control marca esse bloco
-    // pra reaproveitar entre chamadas, cortando bastante o custo por turno.
     const systemBlocks = [
       { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     ];
 
     const conversation = [...messages];
 
-    // ✅ 25/07: comprovante de pagamento — o front manda a imagem separada
-    // do histórico de texto (não fica reenviando base64 de turnos antigos).
-    // Injeta como bloco multimodal só na última mensagem (a atual).
     if (image?.base64 && image?.mime_type && conversation.length > 0) {
       const lastIdx = conversation.length - 1;
       const last = conversation[lastIdx];
@@ -1051,9 +1112,6 @@ Deno.serve(async (req: Request) => {
     let data: any = null;
     let response: Response | null = null;
 
-    // ✅ Loop de tool use: no máximo 3 idas à API por mensagem do usuário
-    // (1 resposta direta + até 2 buscas encadeadas), pra nunca ficar preso
-    // caso o modelo insista em chamar a tool repetidamente.
     for (let turn = 0; turn < 4; turn++) {
       response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1065,8 +1123,6 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           model: 'claude-sonnet-5',
           max_tokens: 1000,
-          // sem isso o modelo manda um bloco "thinking" em content[0] e o front
-          // (que le content[0].text direto) recebe undefined e cai no fallback.
           thinking: { type: 'disabled' },
           system: systemBlocks,
           tools: TOOLS,
@@ -1075,8 +1131,6 @@ Deno.serve(async (req: Request) => {
       });
       data = await response.json();
       if (!response.ok) {
-        // Propaga o status real da Anthropic (antes voltava 200 mesmo em erro,
-        // e o front caía sempre no fallback genérico sem deixar rastro no log).
         console.error('Anthropic API error:', response.status, JSON.stringify(data));
         break;
       }
@@ -1112,6 +1166,8 @@ Deno.serve(async (req: Request) => {
           result = await analisarComprovantePix(userId, planoEsperado, image?.base64 || null, image?.mime_type || null);
         } else if (block.name === 'gerar_link_suporte_whatsapp') {
           result = gerarLinkSuporteWhatsapp(String(block.input?.resumo || ''));
+        } else if (block.name === 'registrar_pedido_dorama') {
+          result = await registrarPedidoDorama(userId, String(block.input?.titulo || ''));
         }
         toolResults.push({
           type: 'tool_result',
