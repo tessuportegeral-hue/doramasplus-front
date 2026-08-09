@@ -292,6 +292,30 @@ export default function AdminDoramas() {
     }
   };
 
+  // ✅ 09/08: tira um grupo do "tempo indeterminado" de volta pro "aguardando"
+  // comum, sem resolver — antes disso não tinha como reverter (o botão
+  // "Aguardar" ficava desabilitado pra sempre depois de marcar indeterminado).
+  const handleDowngradeIndefiniteGroup = async (group) => {
+    try {
+      setRequestActionBusy(true);
+      const ids = group.requests.map((r) => r.id);
+      const result = await callResolveDoramaRequest({
+        action: 'downgrade_indefinite',
+        ids,
+        dorama_name: group.dorama_name,
+      });
+      toast({
+        title: 'Aviso enviado',
+        description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" voltou pra fila normal.`,
+      });
+      await fetchDoramaRequests(false);
+    } catch {
+      toast({ title: 'Erro ao avisar', variant: 'destructive' });
+    } finally {
+      setRequestActionBusy(false);
+    }
+  };
+
   const searchCatalog = async (q) => {
     setCatalogQuery(q);
     if (!q.trim()) {
@@ -935,12 +959,18 @@ export default function AdminDoramas() {
                             </Button>
                             <Button
                               type="button"
-                              disabled={requestActionBusy || g.all_acknowledged}
-                              onClick={() => handleAcknowledgeGroup(g)}
+                              disabled={requestActionBusy || (g.all_acknowledged && !g.any_indefinite)}
+                              onClick={() =>
+                                g.any_indefinite ? handleDowngradeIndefiniteGroup(g) : handleAcknowledgeGroup(g)
+                              }
                               variant="outline"
                               className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-8 px-3 text-xs disabled:opacity-50"
                             >
-                              {g.all_acknowledged ? '⏳ Já avisado' : '⏳ Aguardar'}
+                              {g.any_indefinite
+                                ? '↩️ Tirar do indeterminado'
+                                : g.all_acknowledged
+                                ? '⏳ Já avisado'
+                                : '⏳ Aguardar'}
                             </Button>
                             <Button
                               type="button"
