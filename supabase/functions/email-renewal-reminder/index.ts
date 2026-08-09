@@ -58,31 +58,31 @@ function buildHtml(name: string, kind: ReminderKind, link: string): string {
     renew_3d: {
       subject: "Seu acesso ao DoramasPlus vence em 3 dias 💜",
       headline: "Seu acesso vence em 3 dias!",
-      body: `Oi, <strong>${name}</strong>! 👋<br><br>Só um aviso: seu acesso ao DoramasPlus vence em <strong>3 dias</strong>. Para continuar assistindo seus doramas favoritos sem interrupção, renove agora mesmo! Por apenas <strong>R$16,90/mês</strong>.`,
+      body: `Oi, <strong>${name}</strong>! 👋<br><br>Só um aviso: seu acesso ao DoramasPlus vence em <strong>3 dias</strong>. Para continuar assistindo seus doramas favoritos sem interrupção, renove agora mesmo! Por apenas <strong>R$17,90/mês</strong>.`,
       cta: "Renovar meu acesso",
     },
     renew_1d: {
       subject: "Seu acesso ao DoramasPlus vence HOJE ⚠️",
       headline: "Seu acesso vence hoje!",
-      body: `Oi, <strong>${name}</strong>! 😰<br><br>Hoje seu acesso ao DoramasPlus expira. Não perca seus doramas — renove agora por apenas <strong>R$16,90</strong> e continue de onde parou!`,
+      body: `Oi, <strong>${name}</strong>! 😰<br><br>Hoje seu acesso ao DoramasPlus expira. Não perca seus doramas — renove agora por apenas <strong>R$17,90</strong> e continue de onde parou!`,
       cta: "Renovar agora antes que expire",
     },
     renew_1d_trial: {
       subject: "Seu acesso teste ao DoramasPlus vence HOJE ⏰",
       headline: "Renovação Urgente — Aviso Hoje!",
-      body: `Oi, <strong>${name}</strong>! 😱<br><br>Seu passe de teste do DoramasPlus vence <strong>hoje</strong>! Gostou do que viu? Vire assinante agora e continue maratonando seus doramas favoritos sem parar, por apenas <strong>R$16,90/mês</strong>.`,
+      body: `Oi, <strong>${name}</strong>! 😱<br><br>Seu passe de teste do DoramasPlus vence <strong>hoje</strong>! Gostou do que viu? Vire assinante agora e continue maratonando seus doramas favoritos sem parar, por apenas <strong>R$17,90/mês</strong>.`,
       cta: "Quero continuar assistindo",
     },
     return_7d: {
       subject: "Sentimos sua falta no DoramasPlus 🥺",
       headline: "A gente sentiu sua falta...",
-      body: `Oi, <strong>${name}</strong>! 💜<br><br>Faz 7 dias que seu acesso ao DoramasPlus expirou e a gente sentiu sua falta. Tem muita coisa nova esperando por você! Renove por apenas <strong>R$16,90/mês</strong>.`,
+      body: `Oi, <strong>${name}</strong>! 💜<br><br>Faz 7 dias que seu acesso ao DoramasPlus expirou e a gente sentiu sua falta. Tem muita coisa nova esperando por você! Renove por apenas <strong>R$17,90/mês</strong>.`,
       cta: "Voltar ao DoramasPlus",
     },
     stripe_failed_3d: {
       subject: "Não conseguimos renovar seu acesso ao DoramasPlus 😕",
       headline: "Seu acesso expirou",
-      body: `Oi, <strong>${name}</strong>! 👋<br><br>Tentamos renovar seu acesso automaticamente mas não conseguimos completar a cobrança no seu cartão.<br><br>Isso pode acontecer por falta de saldo, cartão vencido ou bloqueio do banco. Sem problemas — você pode reativar agora mesmo pagando por PIX ou outro cartão, por apenas <strong>R$16,90/mês</strong>!`,
+      body: `Oi, <strong>${name}</strong>! 👋<br><br>Tentamos renovar seu acesso automaticamente mas não conseguimos completar a cobrança no seu cartão.<br><br>Isso pode acontecer por falta de saldo, cartão vencido ou bloqueio do banco. Sem problemas — você pode reativar agora mesmo pagando por PIX ou outro cartão, por apenas <strong>R$17,90/mês</strong>!`,
       cta: "Reativar meu acesso",
     },
   };
