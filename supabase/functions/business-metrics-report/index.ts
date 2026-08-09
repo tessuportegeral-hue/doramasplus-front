@@ -191,6 +191,27 @@ async function computePanelMetrics(p: Period): Promise<any> {
         and coalesce(plan,'') <> 'series'
         and created_at between period.p_start and period.p_end
     ),
+    -- ✅ 05/08: separa as mesmas vendas acima por canal, usando
+    -- pix_payments.source (não dá pra usar "provider": Asaas hoje atende
+    -- tanto o bot quanto vendas diretas do site). "bot" = veio da conversa
+    -- com o bot de vendas do WhatsApp; "site" = todo o resto (checkout
+    -- direto, ads, lembretes de renovação, Dora chat, linhas antigas sem
+    -- source). Mesma lógica usada em admin-analytics/AdminAnalytics.jsx.
+    canal as (
+      select
+        count(*) filter (where source = 'whatsapp_sales_bot') as bot_qtd,
+        count(*) filter (where source = 'whatsapp_sales_bot' and plan = 'quarterly') as bot_trimestral,
+        count(*) filter (where source = 'whatsapp_sales_bot' and (plan <> 'quarterly' or plan is null)) as bot_mensal,
+        coalesce(sum(amount_cents) filter (where source = 'whatsapp_sales_bot'),0)/100.0 as bot_total_reais,
+        count(*) filter (where source is distinct from 'whatsapp_sales_bot') as site_pix_qtd,
+        count(*) filter (where source is distinct from 'whatsapp_sales_bot' and plan = 'quarterly') as site_pix_trimestral,
+        count(*) filter (where source is distinct from 'whatsapp_sales_bot' and (plan <> 'quarterly' or plan is null)) as site_pix_mensal,
+        coalesce(sum(amount_cents) filter (where source is distinct from 'whatsapp_sales_bot'),0)/100.0 as site_pix_total_reais
+      from pix_payments, period
+      where status = 'paid' and provider in ('infinitepay','asaas')
+        and coalesce(plan,'') <> 'series'
+        and created_at between period.p_start and period.p_end
+    ),
     stripe_ren as (
       select
         count(*) filter (where coalesce(sr.plan_interval,'') = 'quarter' or coalesce(sr.plan_name,'') ilike '%trimestral%') as qtd_trimestral,
@@ -275,6 +296,14 @@ async function computePanelMetrics(p: Period): Promise<any> {
       (select qtd from pix) as pix_qtd,
       (select qtd_mensal from pix) as pix_qtd_mensal,
       (select qtd_trimestral from pix) as pix_qtd_trimestral,
+      (select bot_qtd from canal) as bot_qtd,
+      (select bot_mensal from canal) as bot_mensal,
+      (select bot_trimestral from canal) as bot_trimestral,
+      (select bot_total_reais from canal) as bot_total_reais,
+      (select site_pix_qtd from canal) as site_pix_qtd,
+      (select site_pix_mensal from canal) as site_pix_mensal,
+      (select site_pix_trimestral from canal) as site_pix_trimestral,
+      (select site_pix_total_reais from canal) as site_pix_total_reais,
       (select qtd_mensal * ${PRICE_MONTHLY} + qtd_trimestral * ${PRICE_QUARTERLY} from stripe_ren) as stripe_total,
       (select qtd_mensal from stripe_ren) as stripe_qtd_mensal,
       (select qtd_trimestral from stripe_ren) as stripe_qtd_trimestral,
@@ -302,6 +331,24 @@ async function computePanelMetrics(p: Period): Promise<any> {
   const soldQuarterly = Number(rev.pix_qtd_trimestral || 0) + Number(rev.stripe_qtd_trimestral || 0);
   const soldTotal = Number(rev.pix_qtd || 0) + Number(rev.stripe_qtd_mensal || 0) + Number(rev.stripe_qtd_trimestral || 0) + Number(rev.manual_qtd || 0);
 
+  // ✅ 05/08: vendas por canal (bot do WhatsApp x site) — bot é sempre
+  // pix_payments.source = 'whatsapp_sales_bot'; Stripe e PIX manual do
+  // admin nunca passam pelo bot, então entram inteiros como "site".
+  const botMensal = Number(rev.bot_mensal || 0);
+  const botTrimestral = Number(rev.bot_trimestral || 0);
+  const botQtd = Number(rev.bot_qtd || 0);
+  const botTotalReais = Number(rev.bot_total_reais || 0);
+
+  const sitePixMensal = Number(rev.site_pix_mensal || 0);
+  const sitePixTrimestral = Number(rev.site_pix_trimestral || 0);
+  const sitePixQtd = Number(rev.site_pix_qtd || 0);
+  const sitePixTotalReais = Number(rev.site_pix_total_reais || 0);
+
+  const siteMensal = sitePixMensal + Number(rev.stripe_qtd_mensal || 0) + Number(rev.manual_qtd || 0);
+  const siteTrimestral = sitePixTrimestral + Number(rev.stripe_qtd_trimestral || 0);
+  const siteQtd = sitePixQtd + Number(rev.stripe_qtd_mensal || 0) + Number(rev.stripe_qtd_trimestral || 0) + Number(rev.manual_qtd || 0);
+  const siteTotalReais = sitePixTotalReais + stripeTotal + manualTotal;
+
   const pendingRows = await runSql(`select count(*) as qtd from pix_payments where status = 'pending'`);
   const pendingNow = Number(pendingRows[0]?.qtd || 0);
 
@@ -314,6 +361,10 @@ async function computePanelMetrics(p: Period): Promise<any> {
     sold_total: soldTotal,
     sold_monthly: soldMonthly,
     sold_quarterly: soldQuarterly,
+    sold_by_channel: {
+      bot: { total: botQtd, mensal: botMensal, trimestral: botTrimestral, revenue_estimated: botTotalReais },
+      site: { total: siteQtd, mensal: siteMensal, trimestral: siteTrimestral, revenue_estimated: siteTotalReais },
+    },
     revenue_period: pixTotal + stripeTotal + manualTotal,
     revenue_breakdown: { pix_infinitepay_asaas: pixTotal, stripe_estimated: stripeTotal, manual_estimated: manualTotal },
     active_now: Number(rev.ativos_total || 0),
@@ -376,6 +427,8 @@ async function buildSection(p: Period): Promise<Section> {
         <tr><td colspan="2" style="padding:10px 0 4px 0;border-top:1px solid #333;color:#888;font-size:11px;">Painel (mesma conta do /admin/analytics)</td></tr>
         <tr><td style="padding:4px 0;">💰 Faturamento do período</td><td style="text-align:right;font-weight:bold;">${fmtBRL(panel.revenue_period)}</td></tr>
         <tr><td style="padding:4px 0;">🧾 Vendas no período (mensal/trimestral)</td><td style="text-align:right;">${panel.sold_total} (${panel.sold_monthly}/${panel.sold_quarterly})</td></tr>
+        <tr><td style="padding:4px 0 4px 16px;color:#aaa;">🤖 …via Bot (WhatsApp)</td><td style="text-align:right;color:#aaa;">${panel.sold_by_channel.bot.total} (${panel.sold_by_channel.bot.mensal}/${panel.sold_by_channel.bot.trimestral}) — ${fmtBRL(panel.sold_by_channel.bot.revenue_estimated)}</td></tr>
+        <tr><td style="padding:4px 0 4px 16px;color:#aaa;">🌐 …via Site</td><td style="text-align:right;color:#aaa;">${panel.sold_by_channel.site.total} (${panel.sold_by_channel.site.mensal}/${panel.sold_by_channel.site.trimestral}) — ${fmtBRL(panel.sold_by_channel.site.revenue_estimated)}</td></tr>
         <tr><td style="padding:4px 0;">✅ Assinantes ativos agora</td><td style="text-align:right;font-weight:bold;">${panel.active_now} (${panel.active_now_monthly} mensal / ${panel.active_now_quarterly} trimestral)</td></tr>
         <tr><td style="padding:4px 0;">⏳ Pix pendente agora</td><td style="text-align:right;">${panel.pending_now}</td></tr>
         <tr><td style="padding:4px 0;">📊 Retenção do período</td><td style="text-align:right;">${panel.churn.retention_rate}% (${panel.churn.retained}/${panel.churn.cohort}) — período anterior: ${panel.churn.compare.retention_rate}%</td></tr>
@@ -397,6 +450,8 @@ async function buildSection(p: Period): Promise<Section> {
       recuperaram_apos_perda: custom.winback,
       taxa_recuperacao_real_pct: winbackRate,
       faturamento: panel.revenue_period,
+      vendas_via_bot: panel.sold_by_channel.bot.total,
+      vendas_via_site: panel.sold_by_channel.site.total,
       assinantes_ativos_agora: panel.active_now,
       taxa_retencao_pct: panel.churn.retention_rate,
       taxa_retencao_periodo_anterior_pct: panel.churn.compare.retention_rate,
@@ -486,7 +541,7 @@ async function buildLoyaltyTierHtml(): Promise<string> {
 
   return `
     <div style="margin-bottom:20px;">
-      <h3 style="color:#fff;margin:0 0 8px 0;">🪜 Funil de lealdade (por número de renovações)</h3>
+      <h3 style="color:#fff;margin:0 0 8px 0;">🪨 Funil de lealdade (por número de renovações)</h3>
       <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
         <tr style="color:#888;font-size:11px;"><td style="padding:0 8px 4px 0;">Faixa</td><td style="padding:0 8px;text-align:right;">Ativos agora</td><td style="padding:0 8px;text-align:right;">% da base</td><td style="padding:0;text-align:right;">Renovação (mês passado)</td></tr>
         ${rowsHtml}
@@ -498,6 +553,72 @@ async function buildLoyaltyTierHtml(): Promise<string> {
         sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa já tinha renovado. Faixas abrem sozinhas
         conforme mais gente for acumulando renovações.
       </p>
+    </div>`;
+}
+
+// ✅ 09/08: pedidos de dorama (dorama_requests) — quantos pediram, quantos
+// resolvemos e a que velocidade, e quantos voltaram de verdade pra assistir
+// depois do aviso. Só entra no relatório MENSAL. Olha os pedidos CRIADOS no
+// período (mesmo padrão de coorte do resto do relatório, ver buildSection),
+// mas o "voltou e assistiu" conta mesmo que o retorno tenha sido depois do
+// período fechar (não faz sentido zerar isso só porque virou o mês).
+async function buildDoramaRequestsHtml(p: Period): Promise<string> {
+  const rows = await runSql(`
+    with period as (select '${p.start}'::timestamptz as p_start, '${p.end}'::timestamptz as p_end),
+    base as (
+      select * from dorama_requests, period
+      where created_at >= period.p_start and created_at < period.p_end
+    ),
+    stats as (
+      select
+        count(*) as total,
+        count(*) filter (where notified_at is not null) as resolvidos,
+        count(*) filter (where dismissed_at is not null) as descartados,
+        count(*) filter (where notified_at is null and dismissed_at is null and acknowledged_at is null) as novos,
+        count(*) filter (where notified_at is null and dismissed_at is null and indefinite_at is not null) as indeterminado,
+        count(*) filter (where notified_at is null and dismissed_at is null and acknowledged_at is not null and indefinite_at is null) as aguardando,
+        count(distinct user_id) filter (where user_id is not null) as pessoas,
+        round(avg(extract(epoch from (notified_at - created_at))/3600) filter (where notified_at is not null)::numeric, 1) as horas_media
+      from base
+    ),
+    engajamento as (
+      select
+        count(*) as resolvidos_com_conta,
+        count(*) filter (where wh.user_id is not null) as assistiram
+      from base dr
+      left join watch_history wh
+        on wh.user_id = dr.user_id and wh.dorama_id = dr.dorama_id and wh.updated_at >= dr.notified_at
+      where dr.notified_at is not null and dr.user_id is not null
+    )
+    select s.*, e.resolvidos_com_conta, e.assistiram from stats s, engajamento e
+  `);
+
+  const r = rows[0] || {};
+  const total = Number(r.total || 0);
+  if (total === 0) return "";
+
+  const resolvidos = Number(r.resolvidos || 0);
+  const descartados = Number(r.descartados || 0);
+  const novos = Number(r.novos || 0);
+  const indeterminado = Number(r.indeterminado || 0);
+  const aguardando = Number(r.aguardando || 0);
+  const pessoas = Number(r.pessoas || 0);
+  const horasMedia = r.horas_media !== null && r.horas_media !== undefined ? Number(r.horas_media) : null;
+  const resolvidosComConta = Number(r.resolvidos_com_conta || 0);
+  const assistiram = Number(r.assistiram || 0);
+  const taxaVolta = resolvidosComConta > 0 ? Math.round((assistiram / resolvidosComConta) * 1000) / 10 : 0;
+
+  return `
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#fff;margin:0 0 8px 0;">🎬 Pedidos de dorama</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
+        <tr><td style="padding:4px 0;">📝 Pedidos no período</td><td style="text-align:right;font-weight:bold;">${total} (${pessoas} pessoa${pessoas !== 1 ? "s" : ""})</td></tr>
+        <tr><td style="padding:4px 0;">✅ Resolvidos (dorama adicionado)</td><td style="text-align:right;font-weight:bold;color:#2ecc71;">${resolvidos}</td></tr>
+        <tr><td style="padding:4px 0;">🚫 Descartados</td><td style="text-align:right;">${descartados}</td></tr>
+        <tr><td style="padding:4px 0;">⏳ Aguardando / ♾️ indeterminado / 🆕 sem triagem</td><td style="text-align:right;">${aguardando} / ${indeterminado} / ${novos}</td></tr>
+        <tr><td style="padding:4px 0;">⚡ Tempo médio até resolver</td><td style="text-align:right;">${horasMedia !== null ? `${horasMedia}h` : "—"}</td></tr>
+        <tr><td style="padding:4px 0;">🔁 Voltaram e assistiram após o aviso</td><td style="text-align:right;font-weight:bold;">${taxaVolta}% (${assistiram}/${resolvidosComConta})</td></tr>
+      </table>
     </div>`;
 }
 
@@ -592,7 +713,10 @@ Deno.serve(async (req) => {
   }
 
   // ✅ 01/08: funil de lealdade só entra no relatório mensal
-  const extraHtml = isFirstDay ? await buildLoyaltyTierHtml() : "";
+  // ✅ 09/08: pedidos de dorama também só entra no mensal
+  const extraHtml = isFirstDay
+    ? (await buildLoyaltyTierHtml()) + (await buildDoramaRequestsHtml(mainPeriod))
+    : "";
 
   const subjectLabel = isFirstDay ? "mês inteiro" : isSunday ? "diário + semanal" : "diário";
   await sendEmail(sections, subjectLabel, extraHtml);
