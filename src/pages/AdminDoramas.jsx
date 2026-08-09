@@ -84,7 +84,6 @@ export default function AdminDoramas() {
   // ✅ Pedidos de dorama (dorama_requests) — o que as pessoas estão pedindo
   const [doramaRequests, setDoramaRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
-  const [requestsTotal, setRequestsTotal] = useState(0);
   const [requestsError, setRequestsError] = useState('');
   const [expandedRequestGroup, setExpandedRequestGroup] = useState(null);
   // ✅ Minimizada por padrão — lista longa de pedidos não deve atrapalhar
@@ -198,7 +197,6 @@ export default function AdminDoramas() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Erro ao carregar pedidos');
       setDoramaRequests(data.grouped || []);
-      setRequestsTotal(data.total || 0);
       if (wantHistory) setRequestsHistory(data.history || []);
     } catch (err) {
       setRequestsError('Não foi possível carregar os pedidos agora.');
@@ -763,9 +761,9 @@ export default function AdminDoramas() {
             >
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 📋 Pedidos de Dorama
-                {requestsTotal > 0 && (
+                {doramaRequests.length > 0 && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-purple-600/30 text-purple-300 font-semibold">
-                    {requestsTotal} pendente{requestsTotal > 1 ? 's' : ''}
+                    {doramaRequests.length} pendente{doramaRequests.length > 1 ? 's' : ''}
                   </span>
                 )}
               </h2>
