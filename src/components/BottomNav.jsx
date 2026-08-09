@@ -21,7 +21,10 @@ export default function BottomNav() {
 
   // Esconde no player (não sobrepor os controles do vídeo)
   const isPlayerRoute = location.pathname.includes('/watch');
-  const visible = enabled && !isPlayerRoute;
+  // Esconde nas páginas /admin (têm o próprio AdminTabs) — sem isso ela
+  // sobrepõe o campo de resposta no /admin/dora no mobile.
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const visible = enabled && !isPlayerRoute && !isAdminRoute;
 
   // Publica a altura pra outros elementos fixos (Dora chat, InstallAppBanner)
   // não ficarem escondidos atrás da barra — mesmo padrão do InstallAppBanner.
