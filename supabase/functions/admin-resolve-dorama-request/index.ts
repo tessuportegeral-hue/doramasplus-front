@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "acknowledge") {
+      const reason = String(body?.reason || "").trim();
       const doramaName = String(body?.dorama_name || "esse título");
 
       const { data: rows } = await admin
@@ -127,7 +128,9 @@ Deno.serve(async (req) => {
       const targets = rows || [];
       const withUser = targets.filter((r: any) => r.user_id);
 
-      const mensagem = `Sobre o pedido de *${doramaName}*: está na fila pra subir, assim que tiver disponível te envio o link dele aqui no chat e no painel de pedir doramas`;
+      const mensagem = reason
+        ? `Sobre o pedido de *${doramaName}*: ${reason}`
+        : `Sobre o pedido de *${doramaName}*: está na fila pra subir, assim que tiver disponível te envio o link dele aqui no chat e no painel de pedir doramas`;
 
       if (withUser.length) {
         await admin.from("dora_conversations").insert(
@@ -145,7 +148,7 @@ Deno.serve(async (req) => {
       for (const r of withUser) {
         const res = await sendPushToUser(admin, r.user_id, {
           title: "Sobre o seu pedido de dorama",
-          body: `${doramaName}: está na fila pra subir!`,
+          body: reason || `${doramaName}: está na fila pra subir!`,
           url: "/",
         });
         pushSent += res.sent;
@@ -164,6 +167,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "acknowledge_indefinite") {
+      const reason = String(body?.reason || "").trim();
       const doramaName = String(body?.dorama_name || "esse título");
 
       const { data: rows } = await admin
@@ -177,7 +181,9 @@ Deno.serve(async (req) => {
       const targets = rows || [];
       const withUser = targets.filter((r: any) => r.user_id);
 
-      const mensagem = `Sobre o pedido de *${doramaName}*: no momento não temos esse título e não temos previsão de quando (ou se) vamos conseguir adicionar. Fica anotado aqui — se um dia rolar, aviso você por aqui 🤞`;
+      const mensagem = reason
+        ? `Sobre o pedido de *${doramaName}*: ${reason}`
+        : `Sobre o pedido de *${doramaName}*: no momento não temos esse título e não temos previsão de quando (ou se) vamos conseguir adicionar. Fica anotado aqui — se um dia rolar, aviso você por aqui 🤞`;
 
       if (withUser.length) {
         await admin.from("dora_conversations").insert(
@@ -195,7 +201,7 @@ Deno.serve(async (req) => {
       for (const r of withUser) {
         const res = await sendPushToUser(admin, r.user_id, {
           title: "Sobre o seu pedido de dorama",
-          body: `${doramaName}: sem previsão de adicionar no momento, mas está anotado.`,
+          body: reason || `${doramaName}: sem previsão de adicionar no momento, mas está anotado.`,
           url: "/",
         });
         pushSent += res.sent;

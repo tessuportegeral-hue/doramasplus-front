@@ -92,6 +92,13 @@ export default function AdminDoramas() {
   const [searchingGroup, setSearchingGroup] = useState(null);
   const [dismissingGroup, setDismissingGroup] = useState(null);
   const [dismissReason, setDismissReason] = useState('');
+  // ✅ 09/08: mesma ideia do dismissReason, só que pra "Aguardar" e "Tempo
+  // indeterminado" — antes só dava pra escrever uma mensagem customizada
+  // no "Não tenho", os outros dois mandavam sempre o texto fixo.
+  const [acknowledgingGroup, setAcknowledgingGroup] = useState(null);
+  const [acknowledgeReason, setAcknowledgeReason] = useState('');
+  const [indefiniteGroup, setIndefiniteGroup] = useState(null);
+  const [indefiniteReason, setIndefiniteReason] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState([]);
   const [requestActionBusy, setRequestActionBusy] = useState(false);
@@ -250,7 +257,7 @@ export default function AdminDoramas() {
     }
   };
 
-  const handleAcknowledgeGroup = async (group) => {
+  const handleAcknowledgeGroup = async (group, reason) => {
     try {
       setRequestActionBusy(true);
       const ids = group.requests.map((r) => r.id);
@@ -258,11 +265,14 @@ export default function AdminDoramas() {
         action: 'acknowledge',
         ids,
         dorama_name: group.dorama_name,
+        reason: (reason || '').trim(),
       });
       toast({
         title: 'Aviso enviado',
         description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" ainda está na fila.`,
       });
+      setAcknowledgingGroup(null);
+      setAcknowledgeReason('');
       await fetchDoramaRequests(false);
     } catch {
       toast({ title: 'Erro ao avisar', variant: 'destructive' });
@@ -271,7 +281,7 @@ export default function AdminDoramas() {
     }
   };
 
-  const handleAcknowledgeIndefiniteGroup = async (group) => {
+  const handleAcknowledgeIndefiniteGroup = async (group, reason) => {
     try {
       setRequestActionBusy(true);
       const ids = group.requests.map((r) => r.id);
@@ -279,11 +289,14 @@ export default function AdminDoramas() {
         action: 'acknowledge_indefinite',
         ids,
         dorama_name: group.dorama_name,
+        reason: (reason || '').trim(),
       });
       toast({
         title: 'Aviso enviado',
         description: `${result?.notified_conversations ?? 0} pessoa(s) avisada(s) que "${group.dorama_name}" não tem previsão de chegada.`,
       });
+      setIndefiniteGroup(null);
+      setIndefiniteReason('');
       await fetchDoramaRequests(false);
     } catch {
       toast({ title: 'Erro ao avisar', variant: 'destructive' });
@@ -946,6 +959,8 @@ export default function AdminDoramas() {
                                 const opening = searchingGroup !== key;
                                 setSearchingGroup(opening ? key : null);
                                 setDismissingGroup(null);
+                                setAcknowledgingGroup(null);
+                                setIndefiniteGroup(null);
                                 if (opening) {
                                   searchCatalog(g.dorama_name);
                                 } else {
@@ -960,9 +975,17 @@ export default function AdminDoramas() {
                             <Button
                               type="button"
                               disabled={requestActionBusy || (g.all_acknowledged && !g.any_indefinite)}
-                              onClick={() =>
-                                g.any_indefinite ? handleDowngradeIndefiniteGroup(g) : handleAcknowledgeGroup(g)
-                              }
+                              onClick={() => {
+                                if (g.any_indefinite) {
+                                  handleDowngradeIndefiniteGroup(g);
+                                  return;
+                                }
+                                setAcknowledgingGroup(acknowledgingGroup === key ? null : key);
+                                setSearchingGroup(null);
+                                setDismissingGroup(null);
+                                setIndefiniteGroup(null);
+                                setAcknowledgeReason('');
+                              }}
                               variant="outline"
                               className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 h-8 px-3 text-xs disabled:opacity-50"
                             >
@@ -975,7 +998,13 @@ export default function AdminDoramas() {
                             <Button
                               type="button"
                               disabled={requestActionBusy || g.all_indefinite}
-                              onClick={() => handleAcknowledgeIndefiniteGroup(g)}
+                              onClick={() => {
+                                setIndefiniteGroup(indefiniteGroup === key ? null : key);
+                                setSearchingGroup(null);
+                                setDismissingGroup(null);
+                                setAcknowledgingGroup(null);
+                                setIndefiniteReason('');
+                              }}
                               variant="outline"
                               className="border-slate-500/40 text-slate-300 hover:bg-slate-500/10 h-8 px-3 text-xs disabled:opacity-50"
                             >
@@ -987,6 +1016,8 @@ export default function AdminDoramas() {
                               onClick={() => {
                                 setDismissingGroup(dismissingGroup === key ? null : key);
                                 setSearchingGroup(null);
+                                setAcknowledgingGroup(null);
+                                setIndefiniteGroup(null);
                                 setDismissReason('');
                               }}
                               variant="outline"
@@ -1011,6 +1042,48 @@ export default function AdminDoramas() {
                                 disabled={requestActionBusy}
                                 onClick={() => handleDismissGroup(g, dismissReason)}
                                 className="bg-red-600 hover:bg-red-700 h-8 px-3 text-xs"
+                              >
+                                {requestActionBusy ? 'Enviando…' : 'Confirmar e avisar'}
+                              </Button>
+                            </div>
+                          )}
+
+                          {acknowledgingGroup === key && (
+                            <div className="pt-2 space-y-2">
+                              <textarea
+                                autoFocus
+                                value={acknowledgeReason}
+                                onChange={(e) => setAcknowledgeReason(e.target.value)}
+                                placeholder="Mensagem (opcional) — vai junto no aviso pra pessoa. Sem nada, manda o texto padrão."
+                                rows={2}
+                                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-amber-500/60 resize-none"
+                              />
+                              <Button
+                                type="button"
+                                disabled={requestActionBusy}
+                                onClick={() => handleAcknowledgeGroup(g, acknowledgeReason)}
+                                className="bg-amber-600 hover:bg-amber-700 h-8 px-3 text-xs"
+                              >
+                                {requestActionBusy ? 'Enviando…' : 'Confirmar e avisar'}
+                              </Button>
+                            </div>
+                          )}
+
+                          {indefiniteGroup === key && (
+                            <div className="pt-2 space-y-2">
+                              <textarea
+                                autoFocus
+                                value={indefiniteReason}
+                                onChange={(e) => setIndefiniteReason(e.target.value)}
+                                placeholder="Mensagem (opcional) — vai junto no aviso pra pessoa. Sem nada, manda o texto padrão."
+                                rows={2}
+                                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white outline-none focus:border-slate-500/60 resize-none"
+                              />
+                              <Button
+                                type="button"
+                                disabled={requestActionBusy}
+                                onClick={() => handleAcknowledgeIndefiniteGroup(g, indefiniteReason)}
+                                className="bg-slate-600 hover:bg-slate-700 h-8 px-3 text-xs"
                               >
                                 {requestActionBusy ? 'Enviando…' : 'Confirmar e avisar'}
                               </Button>
