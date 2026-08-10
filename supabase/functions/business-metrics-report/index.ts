@@ -622,6 +622,93 @@ async function buildDoramaRequestsHtml(p: Period): Promise<string> {
     </div>`;
 }
 
+// ✅ 10/08: "raio-x de segurança" — versão em SQL dos 3 achados reais da
+// varredura manual desse dia (exec_sql aberto pra anon era o pior: SQL
+// arbitrário ignorando RLS). O relatório roda por cron, sem acesso às
+// ferramentas de advisor da Supabase — isso replica os padrões mais
+// perigosos encontrados na prática, pra pegar regressão ou função nova mal
+// configurada sem precisar de auditoria manual toda vez. Só entra no
+// relatório MENSAL.
+async function buildSecuritySnapshotHtml(): Promise<string> {
+  const rows = await runSql(`
+    with rls_off as (
+      select count(*) as qtd
+      from pg_tables t
+      join pg_class c on c.relname = t.tablename and c.relnamespace = 'public'::regnamespace
+      where t.schemaname = 'public' and not c.relrowsecurity
+    ),
+    dynamic_sql_fns as (
+      select array_agg(p.proname) as names
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.prosecdef = true
+        and (
+          pg_get_functiondef(p.oid) ilike '%execute%||%'
+          or pg_get_functiondef(p.oid) ilike '%execute format%'
+        )
+        and exists (
+          select 1 from information_schema.routine_privileges rp
+          where rp.routine_name = p.proname and rp.routine_schema = 'public'
+          and rp.grantee in ('anon','authenticated','PUBLIC')
+        )
+    ),
+    public_true_policies as (
+      select array_agg(tablename || ' (' || policyname || ')') as names
+      from pg_policies
+      where schemaname = 'public'
+        and (qual = 'true' or with_check = 'true')
+        and (roles::text ilike '%anon%')
+        and tablename not in ('doramas', 'slug_redirects', 'series_catalog')
+    ),
+    definer_anon_fns as (
+      select count(*) as qtd
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.prosecdef = true
+        and exists (
+          select 1 from information_schema.routine_privileges rp
+          where rp.routine_name = p.proname and rp.routine_schema = 'public'
+          and rp.grantee = 'anon'
+        )
+    )
+    select
+      (select qtd from rls_off) as rls_off_count,
+      (select names from dynamic_sql_fns) as dynamic_sql_fn_names,
+      (select names from public_true_policies) as public_true_policy_names,
+      (select qtd from definer_anon_fns) as definer_anon_count
+  `);
+
+  const r = rows[0] || {};
+  const rlsOff = Number(r.rls_off_count || 0);
+  const dynamicFns: string[] = r.dynamic_sql_fn_names || [];
+  const publicPolicies: string[] = r.public_true_policy_names || [];
+  const definerAnonCount = Number(r.definer_anon_count || 0);
+
+  const ok = rlsOff === 0 && dynamicFns.length === 0 && publicPolicies.length === 0;
+
+  const rowsHtml = `
+    <tr><td style="padding:4px 0;">🔓 Tabelas sem RLS habilitada</td><td style="text-align:right;font-weight:bold;color:${rlsOff > 0 ? "#e74c3c" : "#2ecc71"};">${rlsOff}</td></tr>
+    <tr><td style="padding:4px 0;">🧨 Funções tipo "SQL livre" abertas pra visitante</td><td style="text-align:right;font-weight:bold;color:${dynamicFns.length > 0 ? "#e74c3c" : "#2ecc71"};">${dynamicFns.length > 0 ? dynamicFns.join(", ") : "0"}</td></tr>
+    <tr><td style="padding:4px 0;">🌐 Políticas "aberto pra todo mundo" fora do esperado</td><td style="text-align:right;font-weight:bold;color:${publicPolicies.length > 0 ? "#e74c3c" : "#2ecc71"};">${publicPolicies.length > 0 ? publicPolicies.join(", ") : "0"}</td></tr>
+    <tr><td style="padding:4px 0;">👀 Total de funções sensíveis (SECURITY DEFINER) chamáveis por visitante</td><td style="text-align:right;">${definerAnonCount}</td></tr>
+  `;
+
+  return `
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#fff;margin:0 0 8px 0;">${ok ? "🔒" : "🚨"} Raio-X de segurança</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#ddd;">
+        ${rowsHtml}
+      </table>
+      <p style="color:#888;font-size:11px;margin-top:8px;">
+        ${ok
+          ? "Nada fora do esperado nos padrões mais perigosos já vistos aqui (SQL livre exposto, RLS desligada, política pública indevida). Não substitui uma auditoria completa de vez em quando."
+          : "⚠️ Achou algo — vale conferir com atenção antes do próximo mês. Isso cobre só os padrões já vistos na prática, não é uma auditoria completa."}
+      </p>
+    </div>`;
+}
+
 async function generateOpinion(sectionsData: Record<string, unknown>[]): Promise<string | null> {
   if (!ANTHROPIC_API_KEY) return null;
   try {
@@ -715,7 +802,7 @@ Deno.serve(async (req) => {
   // ✅ 01/08: funil de lealdade só entra no relatório mensal
   // ✅ 09/08: pedidos de dorama também só entra no mensal
   const extraHtml = isFirstDay
-    ? (await buildLoyaltyTierHtml()) + (await buildDoramaRequestsHtml(mainPeriod))
+    ? (await buildLoyaltyTierHtml()) + (await buildDoramaRequestsHtml(mainPeriod)) + (await buildSecuritySnapshotHtml())
     : "";
 
   const subjectLabel = isFirstDay ? "mês inteiro" : isSunday ? "diário + semanal" : "diário";
