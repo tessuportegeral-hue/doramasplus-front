@@ -34,7 +34,7 @@ Site: https://doramasplus.com.br
 
 ## Regras importantes
 - NUNCA mexer em arquivos sem ser solicitado
-- NUNCA fazer git push por conta própria (sem pedido ou pergunta antes) — mas quando o usuário pedir commit, ou eu perguntar "quer que eu commite?" e ele confirmar, faz commit + push juntos numa ação só (não separar em duas confirmações)
+- Autorização permanente (10/08): sempre que fizer um commit, faz o push logo em seguida, sem perguntar antes — não precisa mais separar em duas confirmações nem esperar pedido explícito de push
 - NUNCA alterar lógica de pagamento sem autorização
 - Sempre testar mudanças no usuário `tesagencia@gmail.com` antes de abrir para todos
 - O admin do sistema é `tessuportegeral@gmail.com`
