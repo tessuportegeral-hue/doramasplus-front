@@ -506,10 +506,6 @@ const DoramaSection = ({
 const normalizeText = (str) =>
   (str || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-// Converte para slug (igual ao admin) — usado para busca tolerante a acentos no banco
-const slugifyQuery = (str) =>
-  normalizeText(str).trim().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
-
 // ---------------- DASHBOARD PRINCIPAL ----------------
 // ✅ 07/08 — "Continuar Assistindo" sai daqui pra quem está logado, porque
 // virou a aba "Histórico" da barra inferior (BottomNav.jsx). Testado com
@@ -814,7 +810,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     });
   }, [authLoading, fetchCategory]);
 
-  // ✅ BUSCA: ILIKE + slug (acentos) + Fuse.js (typos)
+  // ✅ BUSCA: RPC search_doramas_ranked (ILIKE + ranking por word_similarity
+  // no banco, pg_trgm) + Fuse.js só como fallback de typo (0 resultado).
+  // Antes: ILIKE solto (até 80 resultados sem ordem nenhuma do banco) +
+  // Fuse.js reordenando por cima — com o catálogo grande isso enterrava o
+  // título certo no meio de matches fracos (só bateu na descrição, por
+  // exemplo). Agora o banco já entrega ordenado por relevância real.
   useEffect(() => {
     const q = (searchQuery || "").trim();
 
@@ -845,22 +846,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
     const timer = setTimeout(async () => {
       try {
-        const escapeForPostgrestQuoted = (value) => {
-          return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-        };
-
-        const slugQ = slugifyQuery(q);
-        const pattern = escapeForPostgrestQuoted(`%${q}%`);
-        const slugPattern = escapeForPostgrestQuoted(`%${slugQ}%`);
-        const orClause = `title.ilike.${pattern},description.ilike.${pattern},slug.ilike.${slugPattern}`;
-
         const { data, error: err } = await runQueryWithFallback((selectStr) =>
-          supabase
-            .from("doramas")
-            .select(selectStr)
-            .or(orClause)
-            .order("created_at", { ascending: false })
-            .limit(80)
+          supabase.rpc("search_doramas_ranked", { search_query: q }).select(selectStr)
         );
 
         if (isCancelled) return;
@@ -875,10 +862,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
         const dbResults = data || [];
 
         if (dbResults.length > 0) {
-          // Banco encontrou algo — reordena por relevância fuzzy
-          const fuse = new Fuse(dbResults, fuseOptions);
-          const hits = fuse.search(normalizeText(q));
-          setSearchResults(hits.length > 0 ? hits.map((r) => r.item) : dbResults);
+          // Banco já veio ordenado por relevância — usa direto.
+          setSearchResults(dbResults);
         } else {
           // Banco não encontrou nada — Fuse no índice completo (typos).
           // Carrega o índice na demanda (1ª busca paga o custo, demais reusam).
