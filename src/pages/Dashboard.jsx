@@ -1077,31 +1077,14 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             : undefined
         }
       >
-        {/* ✅ (NOVO) BOTÃO "ASSINE AGORA" — só pra logado que NUNCA foi assinante */}
-        {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
-          <div className="mb-4 md:mb-6">
-            <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 md:px-5 md:py-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-emerald-200">
-                    Assine agora e libere o acesso completo ✅
-                  </p>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Você já tem conta. Falta só assinar para assistir sem limites.
-                  </p>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={goPlans}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                >
-                  Assine agora <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ✅ 11/08 — o banner "Assine agora" (pra logado que nunca assinou)
+            SAIU daqui de cima. Ele só aparece depois de uma consulta async ao
+            Supabase (checkEverSubscribed); nascendo acima do hero, empurrava a
+            página inteira pra baixo quando chegava = CLS de corpo inteiro
+            (loadState "complete", confirmado por web_vitals_events). Agora
+            renderiza LOGO ABAIXO do hero (ver mais pra frente), onde o hero e o
+            topo da tela não se mexem e ele só empurra o que já está abaixo da
+            dobra. Ver [[project-web-vitals-rum-instrumentation]]. */}
 
         {/* ✅ NOVO: barra de busca para NÃO logado (não duplica para logado) */}
         {!user && (
@@ -1195,6 +1178,34 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             featuredDoramas={doramas.featured}
             loading={loading.featured}
           />
+        )}
+
+        {/* ✅ 11/08 — "Assine agora" (logado que nunca assinou) movido pra CÁ,
+            logo abaixo do hero. Aparece tarde (após checkEverSubscribed), então
+            fica abaixo da dobra e não empurra o hero/topo = quase zero CLS. */}
+        {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
+          <div className="mb-4 md:mb-6">
+            <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 md:px-5 md:py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-emerald-200">
+                    Assine agora e libere o acesso completo ✅
+                  </p>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Você já tem conta. Falta só assinar para assistir sem limites.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={goPlans}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                >
+                  Assine agora <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ✅ BUSCA (agora é do BANCO, não das categorias) */}
