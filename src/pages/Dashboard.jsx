@@ -167,8 +167,13 @@ const HeroSection = ({ featuredDoramas, loading }) => {
   };
 
   if (loading) {
+    // ✅ 11/08 — a altura TEM que bater com o hero real (h-[65vh] md:h-[70vh],
+    // logo abaixo). Antes o placeholder era h-[50vh] no celular e o conteúdo
+    // real 65vh: todo carregamento mobile empurrava a página 15vh pra baixo
+    // (CLS). Mesmo tipo de descompasso do fix de 26/07, só que na home. Ver
+    // [[project-cls-regression-favorites-fix]].
     return (
-      <div className="relative w-full h-[50vh] md:h-[70vh] bg-slate-900 flex items-center justify-center rounded-lg overflow-hidden">
+      <div className="relative w-full h-[65vh] md:h-[70vh] bg-slate-900 flex items-center justify-center rounded-lg overflow-hidden">
         <Loader2 className="w-10 h-10 animate-spin text-purple-400" />
       </div>
     );

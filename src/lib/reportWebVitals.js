@@ -1,0 +1,115 @@
+// ✅ 11/08 — telemetria de Core Web Vitals dos usuários REAIS, pra enxergar
+// CLS/LCP/INP de campo em HORAS (não nos 28 dias do CrUX) e — o principal —
+// saber o ELEMENTO exato do DOM que causou cada shift, junto do tipo de
+// conexão (o CLS ruim do site é específico de rede/aparelho lento).
+//
+// Usa web-vitals/attribution: a mesma medição que o Chrome/CrUX faz, mas com
+// o "porquê" anexado. Grava em public.web_vitals_events (RLS: anon só INSERT).
+// Fire-and-forget: nunca trava nem quebra a página se o insert falhar.
+import { onCLS, onLCP, onINP, onFCP, onTTFB } from 'web-vitals/attribution';
+import { supabase } from '@/lib/supabaseClient';
+
+// Path sem query string — nunca queremos PII em URL (ver regra de privacidade).
+function currentPath() {
+  try {
+    return window.location.pathname || '/';
+  } catch {
+    return null;
+  }
+}
+
+function connEffectiveType() {
+  try {
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    return c?.effectiveType || null; // '4g' | '3g' | '2g' | 'slow-2g'
+  } catch {
+    return null;
+  }
+}
+
+// Extrai o "culpado" e alguns extras úteis por tipo de métrica. Os campos de
+// attribution variam por métrica (largestShiftTarget pra CLS, element pro LCP,
+// interactionTarget pro INP) — normalizamos num alvo + um jsonb de detalhe.
+function extractAttribution(name, attribution) {
+  if (!attribution) return { target: null, detail: null };
+
+  if (name === 'CLS') {
+    return {
+      target: attribution.largestShiftTarget || null,
+      detail: {
+        largestShiftValue: attribution.largestShiftValue ?? null,
+        loadState: attribution.loadState ?? null,
+        largestShiftTime: attribution.largestShiftTime ?? null,
+      },
+    };
+  }
+  if (name === 'LCP') {
+    return {
+      target: attribution.element || null,
+      detail: {
+        url: attribution.url ? String(attribution.url).slice(0, 300) : null,
+        timeToFirstByte: attribution.timeToFirstByte ?? null,
+        resourceLoadDelay: attribution.resourceLoadDelay ?? null,
+        elementRenderDelay: attribution.elementRenderDelay ?? null,
+      },
+    };
+  }
+  if (name === 'INP') {
+    return {
+      target: attribution.interactionTarget || null,
+      detail: {
+        interactionType: attribution.interactionType ?? null,
+        inputDelay: attribution.inputDelay ?? null,
+        processingDuration: attribution.processingDuration ?? null,
+        presentationDelay: attribution.presentationDelay ?? null,
+      },
+    };
+  }
+  return { target: null, detail: null };
+}
+
+function send(metric) {
+  try {
+    const { target, detail } = extractAttribution(metric.name, metric.attribution);
+    const row = {
+      metric: metric.name,
+      value: metric.value,
+      rating: metric.rating || null,
+      page_path: currentPath(),
+      attribution_target: target ? String(target).slice(0, 500) : null,
+      attribution_detail: detail,
+      is_mobile: typeof window !== 'undefined' ? window.innerWidth < 768 : null,
+      viewport_w: typeof window !== 'undefined' ? window.innerWidth : null,
+      effective_type: connEffectiveType(),
+      navigation_type: metric.navigationType || null,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    };
+
+    // Fire-and-forget. Nunca await, nunca deixa erro subir.
+    supabase
+      .from('web_vitals_events')
+      .insert(row)
+      .then(() => {})
+      .catch(() => {});
+  } catch {
+    /* telemetria nunca pode quebrar a página */
+  }
+}
+
+let started = false;
+export function reportWebVitals() {
+  if (started) return;
+  started = true;
+  try {
+    // CLS/LCP/INP são o que importa pra SEO/UX; FCP/TTFB entram de brinde pra
+    // contexto. Cada callback dispara quando a métrica fica "final" (CLS e INP
+    // ao esconder a aba; LCP quando o maior elemento se estabiliza).
+    onCLS(send);
+    onLCP(send);
+    onINP(send);
+    onFCP(send);
+    onTTFB(send);
+  } catch {
+    /* se a lib não carregar, o resto do site segue normal */
+  }
+}
