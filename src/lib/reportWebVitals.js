@@ -34,12 +34,24 @@ function extractAttribution(name, attribution) {
   if (!attribution) return { target: null, detail: null };
 
   if (name === 'CLS') {
+    // ✅ 11/08 (v2) — guarda o retângulo ANTES/DEPOIS do elemento que mais
+    // deslocou. É isso que revela se ele CRESCEU (dH>0, mudou de altura) ou só
+    // FOI EMPURRADO (dH~0, dY>0, vítima de algo acima). Sem isso a gente fica
+    // chutando qual é a fonte real do shift.
+    const src = attribution.largestShiftSource;
+    const pr = src?.previousRect;
+    const cr = src?.currentRect;
     return {
       target: attribution.largestShiftTarget || null,
       detail: {
         largestShiftValue: attribution.largestShiftValue ?? null,
         loadState: attribution.loadState ?? null,
         largestShiftTime: attribution.largestShiftTime ?? null,
+        srcTag: src?.node ? (src.node.tagName || src.node.nodeName || null) : null,
+        prevH: pr ? Math.round(pr.height) : null,
+        curH: cr ? Math.round(cr.height) : null,
+        prevY: pr ? Math.round(pr.top) : null,
+        curY: cr ? Math.round(cr.top) : null,
       },
     };
   }
