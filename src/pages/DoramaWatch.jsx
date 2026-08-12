@@ -155,6 +155,20 @@ export default function DoramaWatch() {
           .single();
 
         if (queryError || !data) {
+          // ✅ 12/08 — antes de dar "não encontrado", confere se é um slug
+          // antigo com redirecionamento (dorama renomeado ou excluído como
+          // duplicado) — mesmo comportamento que DoramaDetail já tinha.
+          const { data: redirectRow } = await supabase
+            .from("slug_redirects")
+            .select("new_slug")
+            .eq("old_slug", normalizedSlug)
+            .maybeSingle();
+
+          if (redirectRow?.new_slug) {
+            navigate(`/dorama/${redirectRow.new_slug}/watch`, { replace: true });
+            return;
+          }
+
           console.error("Erro Supabase:", queryError);
           setError(true);
           return;

@@ -741,6 +741,76 @@ export default function AdminDoramas() {
     }
   };
 
+  // ✅ 12/08 — "Excluir como duplicado": em vez de só apagar, a RPC
+  // admin_delete_dorama_as_duplicate redireciona o slug antigo pro dorama
+  // original (slug_redirects, que DoramaDetail/DoramaWatch já seguem) e migra
+  // favoritos/histórico/pedidos. Assim o link que a Dora já mandou por
+  // WhatsApp/push continua abrindo o dorama certo mesmo depois da exclusão.
+  const [dupPanelOpen, setDupPanelOpen] = useState(false);
+  const [dupSearch, setDupSearch] = useState('');
+  const [dupCandidates, setDupCandidates] = useState([]);
+  const [dupSelected, setDupSelected] = useState(null);
+  const [dupBusy, setDupBusy] = useState(false);
+
+  const searchDupCandidates = async (q) => {
+    const query = (q || '').trim();
+    if (query.length < 2) {
+      setDupCandidates([]);
+      return;
+    }
+    // mesma busca rankeada do site (word_similarity) — o título mais
+    // parecido vem primeiro, que é justamente a sugestão de original
+    const { data, error } = await supabase.rpc('search_doramas_ranked', {
+      search_query: query,
+    });
+    if (!error) {
+      setDupCandidates((data || []).filter((d) => d.id !== editingId).slice(0, 6));
+    }
+  };
+
+  const openDupPanel = () => {
+    setDupPanelOpen(true);
+    setDupSelected(null);
+    setDupSearch(originalTitle);
+    searchDupCandidates(originalTitle);
+  };
+
+  const handleDeleteAsDuplicate = async () => {
+    if (!editingId || !dupSelected) return;
+    if (
+      !window.confirm(
+        `Excluir "${originalTitle}" e redirecionar tudo (link antigo, favoritos, histórico) para "${dupSelected.title}"?`
+      )
+    )
+      return;
+
+    setDupBusy(true);
+    try {
+      const { error } = await supabase.rpc('admin_delete_dorama_as_duplicate', {
+        p_duplicate_id: editingId,
+        p_target_id: dupSelected.id,
+      });
+      if (error) throw error;
+
+      toast({
+        title: 'Duplicado excluído ✅',
+        description: `Quem abrir o link antigo cai em "${dupSelected.title}". Favoritos e histórico migrados.`,
+      });
+      setDupPanelOpen(false);
+      resetForm();
+      fetchDoramas();
+    } catch (error) {
+      console.error('Erro ao excluir como duplicado:', error);
+      toast({
+        title: 'Erro ao excluir como duplicado',
+        description: error.message || 'Não foi possível concluir.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDupBusy(false);
+    }
+  };
+
   const filteredDoramas = doramas;
   const totalPages = Math.max(1, Math.ceil((totalDoramas || 0) / PAGE_SIZE));
 
@@ -1602,14 +1672,91 @@ export default function AdminDoramas() {
                     </div>
 
                     {isEditing && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() => handleDelete(editingId)}
-                        className="w-full bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" /> Excluir Dorama
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => handleDelete(editingId)}
+                          className="w-full bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" /> Excluir Dorama
+                        </Button>
+
+                        {!dupPanelOpen ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={openDupPanel}
+                            className="w-full border-amber-700/60 bg-amber-900/20 hover:bg-amber-900/40 text-amber-300"
+                          >
+                            <Layers className="w-4 h-4 mr-2" /> Excluir como duplicado…
+                          </Button>
+                        ) : (
+                          <div className="rounded-lg border border-amber-700/60 bg-slate-950/60 p-3 space-y-2">
+                            <p className="text-sm font-semibold text-amber-300">
+                              Este dorama é duplicado de qual?
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              O link antigo, favoritos e histórico passam a valer
+                              pro dorama escolhido.
+                            </p>
+
+                            <input
+                              type="text"
+                              value={dupSearch}
+                              onChange={(e) => {
+                                setDupSearch(e.target.value);
+                                setDupSelected(null);
+                                searchDupCandidates(e.target.value);
+                              }}
+                              placeholder="Buscar o dorama original…"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+
+                            {dupCandidates.length > 0 && (
+                              <div className="max-h-44 overflow-y-auto space-y-1">
+                                {dupCandidates.map((d) => (
+                                  <button
+                                    key={d.id}
+                                    type="button"
+                                    onClick={() => setDupSelected(d)}
+                                    className={cn(
+                                      'w-full text-left px-3 py-2 rounded-md text-sm border transition-colors',
+                                      dupSelected?.id === d.id
+                                        ? 'border-amber-500 bg-amber-900/30 text-amber-200'
+                                        : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-600'
+                                    )}
+                                  >
+                                    {d.title}
+                                    <span className="block text-[11px] text-slate-500">
+                                      /dorama/{d.slug}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2 pt-1">
+                              <Button
+                                type="button"
+                                disabled={!dupSelected || dupBusy}
+                                onClick={handleDeleteAsDuplicate}
+                                className="flex-1 bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+                              >
+                                {dupBusy ? 'Excluindo…' : 'Confirmar'}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setDupPanelOpen(false)}
+                                className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </form>
