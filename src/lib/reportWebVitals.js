@@ -95,6 +95,11 @@ function send(metric) {
       effective_type: connEffectiveType(),
       navigation_type: metric.navigationType || null,
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      // ✅ 12/08 — commit do bundle que gerou o evento (vem do define no
+      // vite.config.js). Essencial: o relatório de CLS chega na SAÍDA da
+      // página, então filtrar por created_at mistura aba velha com código
+      // novo — só o carimbo separa direito um deploy do outro.
+      app_version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null,
     };
 
     // Fire-and-forget. Nunca await, nunca deixa erro subir.

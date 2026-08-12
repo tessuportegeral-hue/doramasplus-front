@@ -235,6 +235,15 @@ logger.error = (msg, options) => {
 
 export default defineConfig({
 	customLogger: logger,
+	define: {
+		// ✅ 12/08 — carimbo de versão pra telemetria (web_vitals_events.app_version):
+		// commit do deploy no Vercel; fallback = hora do build local. Sem isso não
+		// dá pra separar evento de bundle novo vs aba antiga ainda aberta.
+		__APP_VERSION__: JSON.stringify(
+			(process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 8) ||
+				`local-${new Date().toISOString().slice(0, 16)}`
+		),
+	},
 	plugins: [
 		...(isDev ? [inlineEditPlugin(), editModeDevPlugin(), iframeRouteRestorationPlugin(), selectionModePlugin()] : []),
 		react(),
