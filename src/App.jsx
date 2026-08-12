@@ -385,6 +385,17 @@ function ScrollToTopOnNavigate() {
     // horário dos shifts de CLS e provar/refutar que o CLS é a navegação)
     if (prevPathRef.current !== pathname) {
       noteRouteChange(prevPathRef.current, pathname);
+      // ✅ 12/08 — também avisa o resto do app (PushPermissionPrompt usa
+      // "saiu do /watch" como hora certa de pedir permissão de push)
+      try {
+        window.dispatchEvent(
+          new CustomEvent('dp:routechange', {
+            detail: { from: prevPathRef.current, to: pathname },
+          })
+        );
+      } catch {
+        /* nunca quebra a navegação */
+      }
       prevPathRef.current = pathname;
     }
     if (navType !== 'POP') {

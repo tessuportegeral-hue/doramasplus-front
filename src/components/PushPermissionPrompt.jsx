@@ -4,11 +4,20 @@ import { supabase } from '@/lib/supabaseClient';
 import { isPushSupported, getNotificationPermission, subscribeToPush, ensureSubscriptionSynced } from '@/lib/pushNotifications';
 
 const DISMISS_KEY = 'dp_push_prompt_dismissed_at';
-// ✅ 10/08: banner volta a aparecer depois de alguns dias em vez de nunca
-// mais — "agora não" não é "nunca", e a maioria só precisa de mais de uma
-// chance pra decidir. Recusa real (permissão negada no navegador) continua
-// bloqueada pra sempre, isso aqui só controla o NOSSO banner.
-const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+// ✅ 12/08: cooldown caiu de 3 dias pra 1 dia — pedido do Stefano: insistir
+// diariamente até a pessoa ativar (o aceite estava em 1,3%, 161 de 2085
+// assinantes com push). Recusa real (permissão negada no navegador) continua
+// bloqueada pra sempre pelo próprio navegador, isso aqui só controla o
+// NOSSO banner.
+const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+// ✅ 12/08: o banner não aparece mais na cara do carregamento (era isso que
+// dava 1,3% de aceite — pergunta na hora errada, ~70% nem interagia). Agora
+// espera um momento de interesse real: a pessoa SAIU do player (acabou de
+// assistir = melhor hora pra "quer saber quando chega episódio novo?") ou,
+// como reserva, 45s de sessão navegando. O App.jsx dispara 'dp:routechange'
+// a cada troca de rota.
+const FALLBACK_DELAY_MS = 45 * 1000;
 
 // ✅ 09/08: registra cada etapa do funil (mostrou, aceitou, recusou, negou
 // no navegador, falhou tecnicamente, deu certo) — sem isso só sabíamos o
@@ -39,29 +48,44 @@ export default function PushPermissionPrompt() {
   };
 
   useEffect(() => {
-    if (!canShowBanner()) return;
-
     let mounted = true;
+    let currentUserId = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
-      if (session?.user?.id) {
-        setUserId(session.user.id);
-        setVisible(true);
-      }
+      currentUserId = session?.user?.id || null;
+      if (currentUserId) setUserId(currentUserId);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!canShowBanner()) return;
-      if (session?.user?.id) {
-        setUserId(session.user.id);
-        setVisible(true);
-      } else {
-        setVisible(false);
-      }
+      currentUserId = session?.user?.id || null;
+      if (currentUserId) setUserId(currentUserId);
+      else setVisible(false);
     });
+
+    // ✅ 12/08 — gatilho de HORA CERTA: mostra quando a pessoa sai do player
+    // (acabou de assistir; melhor momento pra oferecer aviso de episódio/
+    // dorama novo). Evento disparado pelo ScrollToTopOnNavigate no App.jsx.
+    const maybeShow = () => {
+      if (!mounted || !currentUserId) return;
+      if (!canShowBanner()) return;
+      setVisible(true);
+    };
+
+    const onRouteChange = (e) => {
+      const from = e?.detail?.from || '';
+      if (from.includes('/watch')) maybeShow();
+    };
+    window.addEventListener('dp:routechange', onRouteChange);
+
+    // Reserva: quem navega mas não assiste ainda vê o convite após 45s de
+    // sessão — engajou o suficiente, e não é mais o "na cara" do load.
+    const fallbackTimer = setTimeout(maybeShow, FALLBACK_DELAY_MS);
 
     return () => {
       mounted = false;
+      window.removeEventListener('dp:routechange', onRouteChange);
+      clearTimeout(fallbackTimer);
       authListener?.subscription?.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,9 +178,9 @@ export default function PushPermissionPrompt() {
         <Bell className="w-5 h-5 text-purple-400" />
       </div>
       <div className="flex-1">
-        <p className="text-slate-100 text-sm font-semibold">Não perca nada! 🔔</p>
+        <p className="text-slate-100 text-sm font-semibold">Dorama novo? Você fica sabendo primeiro 🔔</p>
         <p className="text-slate-400 text-xs mt-1">
-          Ative os avisos: te chamamos quando sai dorama novo e antes do seu acesso vencer, sem precisar ficar checando o site.
+          A gente te avisa na hora que chegar lançamento novo — é só apertar o botão. Sem spam, prometido. 💜
         </p>
         <div className="flex gap-2 mt-3">
           <button
@@ -165,7 +189,7 @@ export default function PushPermissionPrompt() {
             disabled={loading}
             className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-1.5 rounded-md disabled:opacity-60"
           >
-            {loading ? 'Ativando...' : 'Quero receber'}
+            {loading ? 'Ativando...' : 'Ativar avisos 🔔'}
           </button>
           <button
             type="button"

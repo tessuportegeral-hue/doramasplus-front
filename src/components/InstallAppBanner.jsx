@@ -36,8 +36,11 @@ async function isRelatedAppInstalled() {
   }
 }
 
-const PLAY_STORE_URL =
-  "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
+import { playStoreUrl } from "@/lib/playStoreLink";
+
+// ✅ 12/08 — links etiquetados por origem (install referrer): o Play
+// Console passa a mostrar qual convite gera instalação de verdade.
+const PLAY_STORE_URL = playStoreUrl("banner-rodape");
 
 // ✅ 05/08: o app de verdade (TWA instalado via Play Store) sempre abre com
 // esse referrer — é o único jeito confiável de diferenciar ele do atalho
@@ -70,7 +73,7 @@ export default function InstallAppBanner() {
       // bloqueia esse atalho velho e manda direto pro Play Store. iPhone
       // não tem app nativo, continua sem mexer.
       if (isAndroidMobile() && !isRealNativeApp()) {
-        window.location.replace(PLAY_STORE_URL);
+        window.location.replace(playStoreUrl("atalho-antigo"));
       }
       return;
     }

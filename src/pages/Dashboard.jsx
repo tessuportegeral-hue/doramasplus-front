@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import { playStoreUrl } from "@/lib/playStoreLink";
 import Fuse from "fuse.js";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -1006,8 +1007,49 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   // não muda pro iOS, continua só a instrução de tela de início.
   const isAndroidDevice =
     typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-  const PLAY_STORE_URL =
-    "https://play.google.com/store/apps/details?id=br.com.doramasplus.twa";
+
+  // ✅ 12/08 — banner do app pro logado (ver JSX mais abaixo). Decisão
+  // SÍNCRONA no primeiro render (sem CLS): Android + fora do app oficial +
+  // cooldown de 24h respeitado. O caso "já instalou pela loja mas abriu o
+  // site no navegador" é detectado async (getInstalledRelatedApps) e só
+  // ESCONDE — nunca insere depois.
+  const APP_INVITE_DISMISS_KEY = "dp_app_invite_dismissed_at";
+  const [showAppInvite, setShowAppInvite] = useState(() => {
+    try {
+      if (!isAndroidDevice) return false;
+      // dentro do app oficial (TWA) ou de atalho standalone não faz sentido
+      if (window.matchMedia("(display-mode: standalone)").matches) return false;
+      if (document.referrer.startsWith("android-app://br.com.doramasplus.twa")) return false;
+      const dismissedAt = Number(localStorage.getItem(APP_INVITE_DISMISS_KEY) || 0);
+      if (dismissedAt && Date.now() - dismissedAt < 24 * 60 * 60 * 1000) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!showAppInvite || typeof navigator === "undefined" || !navigator.getInstalledRelatedApps) return;
+    let cancelled = false;
+    navigator
+      .getInstalledRelatedApps()
+      .then((apps) => {
+        if (!cancelled && apps.length > 0) setShowAppInvite(false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [showAppInvite]);
+
+  const dismissAppInvite = () => {
+    try {
+      localStorage.setItem(APP_INVITE_DISMISS_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    setShowAppInvite(false);
+  };
 
   // Carrossel de banners no topo da home (alterna a cada 5s)
   // ✅ 27/07: slide do app (Android) / Dora (iPhone) vem primeiro agora —
@@ -1036,7 +1078,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           gradient: "from-blue-600 via-indigo-600 to-purple-600",
           glow: "from-blue-600 via-indigo-500 to-purple-600",
           onClick: () =>
-            window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer"),
+            window.open(playStoreUrl("carrossel-home"), "_blank", "noopener,noreferrer"),
         }
       : {
           icon: Bot,
@@ -1234,6 +1276,52 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                 >
                   Assine agora <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ 12/08 — convite dedicado do APP pro usuário logado no Android
+            que ainda não está no app oficial. Motivo: desde 07/08 o banner
+            do rodapé some pro logado (barra inferior), então justamente o
+            assinante não via convite nenhum — só 161 de 2085 com push.
+            CLS-safe: a decisão de aparecer é SÍNCRONA (Android + logado +
+            cooldown via localStorage), presente desde o 1º frame; só o caso
+            raro "já tem o app" esconde depois (checagem async ~ms).
+            Fechou? Volta em 24h (pedido do Stefano: insistir até instalar). */}
+        {!normalizedQuery && user && showAppInvite && (
+          <div className="mb-4 md:mb-6">
+            <div className="w-full rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 md:px-5 md:py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-indigo-200">
+                    📲 Leve seus doramas com você
+                  </p>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Baixe o app oficial: abre direto da tela inicial, mais
+                    rápido e com aviso de dorama novo.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      window.open(playStoreUrl("banner-assinante"), "_blank", "noopener,noreferrer")
+                    }
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                  >
+                    Baixar grátis <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={dismissAppInvite}
+                    aria-label="Fechar"
+                    className="text-slate-400 hover:text-slate-200 px-1.5 py-1 text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
           </div>
