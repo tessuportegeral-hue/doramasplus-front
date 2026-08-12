@@ -1246,11 +1246,19 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           </div>
         )}
 
+        {/* ✅ 12/08 (blindagem CLS) — SLOT de altura fixa pro hero, presente
+            desde o 1º frame em qualquer estado (carregando/vazio/pronto).
+            A telemetria mostrou fileiras sendo empurradas ~430px (≈65svh)
+            pra baixo aos ~2,4s do load puro: alguma transição de estado do
+            hero muda o tamanho dele. Com o slot fixo por fora, o que
+            acontece DENTRO nunca mais empurra o resto da página. */}
         {!normalizedQuery && (
-          <HeroSection
-            featuredDoramas={doramas.featured}
-            loading={loading.featured}
-          />
+          <div className="h-[65svh] md:h-[70svh] mb-6 md:mb-8 overflow-hidden">
+            <HeroSection
+              featuredDoramas={doramas.featured}
+              loading={loading.featured}
+            />
+          </div>
         )}
 
         {/* ✅ 11/08 — "Assine agora" (logado que nunca assinou) movido pra CÁ,

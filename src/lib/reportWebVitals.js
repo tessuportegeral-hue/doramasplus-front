@@ -42,6 +42,49 @@ try {
   /* ignore */
 }
 
+// ✅ 12/08 (v4) — diário dos maiores shifts da sessão, com a POSIÇÃO DO
+// SCROLL na hora de cada um. O attribution do web-vitals só entrega o maior
+// shift; sem o scroll não dá pra distinguir "algo nasceu em cima e empurrou"
+// de "a pessoa estava rolada e algo cresceu acima". Guarda os 10 maiores;
+// o envio anexa os 5 primeiros.
+const bigShifts = [];
+try {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (entry.hadRecentInput || entry.value < 0.05) continue;
+      const src = (entry.sources || [])[0];
+      const node = src?.node;
+      bigShifts.push({
+        t: Math.round(entry.startTime),
+        v: Math.round(entry.value * 1000) / 1000,
+        scrollY: Math.round(window.scrollY || 0),
+        tag: node?.tagName || null,
+        sel: node?.id
+          ? `#${node.id}`
+          : String(node?.className || '').slice(0, 60) || null,
+        py: src ? Math.round(src.previousRect.top) : null,
+        cy: src ? Math.round(src.currentRect.top) : null,
+        ph: src ? Math.round(src.previousRect.height) : null,
+        ch: src ? Math.round(src.currentRect.height) : null,
+      });
+      bigShifts.sort((a, b) => b.v - a.v);
+      if (bigShifts.length > 10) bigShifts.length = 10;
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+} catch {
+  /* navegador sem layout-shift API — segue sem o diário */
+}
+
+// Logado ou visitante? (leitura síncrona do storage do supabase — não dá
+// pra usar o client aqui sem criar dependência circular)
+function isLoggedSync() {
+  try {
+    return !!localStorage.getItem('sb-fbngdxhkaueaolnyswgn-auth-token');
+  } catch {
+    return null;
+  }
+}
+
 function connEffectiveType() {
   try {
     const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -94,6 +137,9 @@ function extractAttribution(name, attribution) {
         landingPath: LANDING_PATH,
         navBeforeShiftMs: navBefore ? Math.round(shiftTime - navBefore.at) : null,
         navBeforeShift: navBefore ? `${navBefore.from} -> ${navBefore.to}` : null,
+        logged: isLoggedSync(),
+        // os 5 maiores shifts da sessão, cada um com scrollY na hora — v4
+        shifts: bigShifts.slice(0, 5),
       },
     };
   }
