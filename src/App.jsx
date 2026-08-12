@@ -25,6 +25,7 @@ import UpdateEmailGate from '@/components/UpdateEmailGate';
 import BottomNav from '@/components/BottomNav';
 import SplashScreen from '@/components/SplashScreen';
 import { supabase } from '@/lib/supabaseClient';
+import { noteRouteChange } from '@/lib/reportWebVitals';
 
 // ✅ (NOVO) Gate obrigatório do WhatsApp/phone
 import RequirePhoneGate from '@/components/RequirePhoneGate';
@@ -378,12 +379,38 @@ function TrafficSourceTracker() {
 function ScrollToTopOnNavigate() {
   const { pathname } = useLocation();
   const navType = useNavigationType();
+  const prevPathRef = React.useRef(pathname);
   React.useLayoutEffect(() => {
+    // ✅ 12/08 — avisa a telemetria de cada troca de rota (pra cruzar com o
+    // horário dos shifts de CLS e provar/refutar que o CLS é a navegação)
+    if (prevPathRef.current !== pathname) {
+      noteRouteChange(prevPathRef.current, pathname);
+      prevPathRef.current = pathname;
+    }
     if (navType !== 'POP') {
       window.scrollTo(0, 0);
     }
   }, [pathname, navType]);
   return null;
+}
+
+// ✅ 12/08 — pré-carrega os chunks das 2 rotas mais navegadas assim que o
+// navegador ficar ocioso. No celular lento, tocar num dorama SEM o chunk em
+// cache = troca de página >500ms depois do toque = o Chrome conta a
+// desmontagem da home como CLS. Com o chunk quente, a troca é imediata
+// (dentro da janela de 500ms pós-toque, que o CLS ignora).
+if (typeof window !== 'undefined') {
+  window.addEventListener('load', () => {
+    const warm = () => {
+      import('@/pages/DoramaDetail');
+      import('@/pages/DoramaWatch');
+    };
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(warm, { timeout: 5000 });
+    } else {
+      setTimeout(warm, 3000);
+    }
+  });
 }
 
 // Fallback mínimo enquanto o chunk da rota baixa (code-splitting).

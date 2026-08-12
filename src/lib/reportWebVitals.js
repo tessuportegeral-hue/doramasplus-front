@@ -18,6 +18,30 @@ function currentPath() {
   }
 }
 
+// ✅ 12/08 (v3) — histórico das trocas de rota do SPA, pra cruzar com o
+// horário do maior shift e responder de vez: "o CLS é uma troca de página?"
+// (tese: no celular lento a troca acontece >500ms depois do toque e o
+// Chrome conta como shift da página de ENTRADA). App.jsx chama
+// noteRouteChange a cada navegação.
+const navHistory = [];
+export function noteRouteChange(from, to) {
+  try {
+    navHistory.push({ at: Math.round(performance.now()), from, to });
+    if (navHistory.length > 30) navHistory.shift();
+  } catch {
+    /* nunca quebra a página */
+  }
+}
+
+// path da ENTRADA (o que o CrUX usa como chave da página; currentPath() na
+// hora do envio pode já ser outra rota)
+let LANDING_PATH = null;
+try {
+  LANDING_PATH = window.location.pathname || '/';
+} catch {
+  /* ignore */
+}
+
 function connEffectiveType() {
   try {
     const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -41,17 +65,35 @@ function extractAttribution(name, attribution) {
     const src = attribution.largestShiftSource;
     const pr = src?.previousRect;
     const cr = src?.currentRect;
+
+    // ✅ 12/08 (v3) — qual foi a ÚLTIMA troca de rota ANTES do maior shift,
+    // e há quantos ms. navDeltaMs pequeno (< ~2000) = o shift É a troca de
+    // página; null/grande = o shift é do próprio carregamento da página.
+    const shiftTime = attribution.largestShiftTime ?? null;
+    let navBefore = null;
+    if (shiftTime != null) {
+      for (let i = navHistory.length - 1; i >= 0; i--) {
+        if (navHistory[i].at <= shiftTime) {
+          navBefore = navHistory[i];
+          break;
+        }
+      }
+    }
+
     return {
       target: attribution.largestShiftTarget || null,
       detail: {
         largestShiftValue: attribution.largestShiftValue ?? null,
         loadState: attribution.loadState ?? null,
-        largestShiftTime: attribution.largestShiftTime ?? null,
+        largestShiftTime: shiftTime,
         srcTag: src?.node ? (src.node.tagName || src.node.nodeName || null) : null,
         prevH: pr ? Math.round(pr.height) : null,
         curH: cr ? Math.round(cr.height) : null,
         prevY: pr ? Math.round(pr.top) : null,
         curY: cr ? Math.round(cr.top) : null,
+        landingPath: LANDING_PATH,
+        navBeforeShiftMs: navBefore ? Math.round(shiftTime - navBefore.at) : null,
+        navBeforeShift: navBefore ? `${navBefore.from} -> ${navBefore.to}` : null,
       },
     };
   }
