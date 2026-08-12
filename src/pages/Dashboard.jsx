@@ -418,6 +418,14 @@ const DoramaSection = ({
         </h2>
       </div>
 
+      {/* ✅ 11/08 — altura RESERVADA da fileira (medido: card = largura×1,5 +
+          66px de texto + 16px pb; mobile 104px→238, sm 130px→277, md 150px→307).
+          A telemetria real-user (web_vitals_events) provou que o conteúdo da
+          fileira colapsa de 242px pra 0 e volta (recarrega/pisca), e cada
+          colapso empurra ~700px = ~0,3 de CLS POR seção, ~7 seções = o 1,8-2,1
+          da home. Com min-height, skeleton/vazio/real ocupam sempre o mesmo
+          espaço → colapso não empurra mais nada. Ver [[project-web-vitals-rum-instrumentation]]. */}
+      <div className="min-h-[238px] sm:min-h-[277px] md:min-h-[307px]">
       {loading ? (
         compact ? (
           // ✅ 07/08 — skeleton bate com o card compacto de verdade (fileira
@@ -503,6 +511,7 @@ const DoramaSection = ({
           )}
         </div>
       )}
+      </div>
     </section>
   );
 };
