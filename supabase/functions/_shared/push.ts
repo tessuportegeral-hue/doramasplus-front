@@ -1,10 +1,17 @@
 // Módulo compartilhado de envio de Web Push.
-// Importado por: test-push, e futuramente pelos gatilhos de renovação,
-// dorama novo, disparo manual do admin e resposta da Dora.
+// Importado por: test-push, whatsapp-renewal-cron, admin-send-push,
+// push-new-doramas-digest, push-dora-admin-reply.
 //
 // Precisa dos secrets VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY e VAPID_SUBJECT
 // configurados no projeto (Supabase Dashboard > Edge Functions > Secrets) —
 // não dá pra setar isso via MCP, só pelo painel ou CLI.
+//
+// ✅ 12/08 (bundle do push-new-doramas-digest): TTL subiu de 60s pra 4h.
+// Com TTL 60, celular offline/em economia de bateria no minuto do disparo
+// = push DESCARTADO pelo FCM e a pessoa nunca vê (explicava parte dos
+// "não recebi"). 4h cobre o intervalo entre janelas do digest sem risco
+// de empilhar dia inteiro. Obs: cada function bundla sua própria cópia
+// deste arquivo — esta mudança só vale pro digest até redeployar as outras.
 
 import webpush from "npm:web-push@3.6.7";
 
@@ -32,9 +39,6 @@ export type PushSubscriptionRow = {
   auth: string;
 };
 
-// Manda pra uma subscription específica. Se o navegador confirmar que o
-// endpoint não existe mais (404/410 — desinstalou o app, revogou a
-// permissão, etc.), apaga a linha pra não ficar tentando de novo pra sempre.
 export async function sendPushToSubscription(
   supabase: any,
   sub: PushSubscriptionRow,
@@ -45,15 +49,10 @@ export async function sendPushToSubscription(
     return false;
   }
   try {
-    // ✅ 25/07: sem isso, o web-push manda com urgência/TTL padrão e o
-    // Google (FCM) pode segurar a entrega por tempo indefinido se o
-    // dispositivo estiver ocioso — confirmado hoje em testes onde o envio
-    // era aceito (sem 404/410) mas nunca chegava em nenhum aparelho.
-    // urgency "high" e TTL curto pedem entrega imediata, sem enfileirar.
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify(payload),
-      { TTL: 60, urgency: "high" }
+      { TTL: 14400, urgency: "high" }
     );
     return true;
   } catch (e) {
