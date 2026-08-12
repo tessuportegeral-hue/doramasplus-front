@@ -12,6 +12,7 @@ import {
   Navigate,
   useLocation,
   useNavigate,
+  useNavigationType,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
@@ -368,6 +369,23 @@ function TrafficSourceTracker() {
 // App (mantido exatamente como está)
 // ============================================================
 
+// ✅ 12/08 — scroll pro topo ao entrar numa página NOVA (PUSH). Antes não
+// existia scroll-to-top nenhum: quem tocava num dorama com a home rolada
+// 2000px aterrissava no MEIO da página nova, e a troca de conteúdo naquela
+// posição contava como CLS gigante da página de entrada (telemetria:
+// shifts aos 40-80s de sessão). Voltar (POP) fica como está, preservando
+// a posição — comportamento esperado de "voltar".
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation();
+  const navType = useNavigationType();
+  React.useLayoutEffect(() => {
+    if (navType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
+  }, [pathname, navType]);
+  return null;
+}
+
 // Fallback mínimo enquanto o chunk da rota baixa (code-splitting).
 // Cada página já tem seu próprio skeleton pro loading dos DADOS; isso aqui
 // só cobre o instante de download do JS, então fica neutro (sem "piscar"
@@ -396,6 +414,7 @@ function App() {
       <AuthProvider>
         <FavoritesProvider>
         <Router>
+          <ScrollToTopOnNavigate />
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
           <DoramasChat />

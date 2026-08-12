@@ -780,7 +780,15 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       }
     }
 
-    setDoramas((prev) => ({ ...prev, [category]: data || [] }));
+    // ✅ 12/08 — erro NÃO apaga o que a fileira já tinha (data null → []
+    // esvaziava a categoria e a seção inteira sumia via return null =
+    // shift de ~0,3 POR seção; em rede móvel instável — exatamente o
+    // público com CLS ruim — fetch falha toda hora). Telemetria:
+    // web_vitals_events, fileiras colapsando prev_h~280 → 0.
+    setDoramas((prev) => ({
+      ...prev,
+      [category]: data || prev[category] || [],
+    }));
     if (CATEGORY_QUERIES[category]) {
       setHasMore((prev) => ({ ...prev, [category]: (data || []).length === limit }));
     }
