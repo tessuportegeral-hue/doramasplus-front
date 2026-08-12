@@ -173,7 +173,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
     // (CLS). Mesmo tipo de descompasso do fix de 26/07, só que na home. Ver
     // [[project-cls-regression-favorites-fix]].
     return (
-      <div className="relative w-full h-[65vh] md:h-[70vh] bg-slate-900 flex items-center justify-center rounded-lg overflow-hidden">
+      <div className="relative w-full h-[65svh] md:h-[70svh] bg-slate-900 flex items-center justify-center rounded-lg overflow-hidden">
         <Loader2 className="w-10 h-10 animate-spin text-purple-400" />
       </div>
     );
@@ -192,7 +192,12 @@ const HeroSection = ({ featuredDoramas, loading }) => {
   const linkTarget = `/dorama/${current.slug}`;
 
   return (
-    <section className="relative w-full h-[65vh] md:h-[70vh] rounded-lg overflow-hidden home-hero mb-6 md:mb-8">
+    {/* ✅ 11/08 — svh (small viewport height) em vez de vh: vh muda quando a
+        barra de URL do celular some/aparece, então o hero (65vh) redimensionava
+        no load e empurrava TODAS as seções abaixo (a telemetria pegou o hero
+        indo de 438→514px). svh é fixo na tela pequena, não mexe. Ver
+        [[project-web-vitals-rum-instrumentation]]. */}
+    <section className="relative w-full h-[65svh] md:h-[70svh] rounded-lg overflow-hidden home-hero mb-6 md:mb-8">
       {/* MOBILE */}
       <div className="md:hidden relative w-full h-full">
         {bannerUrl ? (
