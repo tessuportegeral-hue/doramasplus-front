@@ -1080,15 +1080,19 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
       <main
         className={`container mx-auto px-4 sm:px-6 lg:px-8 ${
-          showBottomNav ? "pb-20" : "pt-[100px] md:pt-[110px]"
+          showBottomNav ? "pb-20" : ""
         }`}
         style={
           // ✅ 07/08 — usa a altura real do nav (mede via ResizeObserver em
           // Navbar.jsx) em vez de um px fixo chutado, que não cobria o caso
           // da faixa vermelha de renovação empurrando o nav pra baixo.
-          showBottomNav
-            ? { paddingTop: "calc(var(--dp-navbar-h, 64px) + 12px)" }
-            : undefined
+          // ✅ 12/08 — MESMA fórmula pra visitante e logado: antes o visitante
+          // usava pt-[100px] fixo e o logado calc(nav+12px); como todo mundo
+          // começa como "visitante" até o auth resolver, o padding pulava
+          // ~24px no flip e empurrava a página inteira (CLS pego pela
+          // telemetria, loadState=complete). Ver
+          // [[project-web-vitals-rum-instrumentation]].
+          { paddingTop: "calc(var(--dp-navbar-h, 64px) + 12px)" }
         }
       >
         {/* ✅ 11/08 — o banner "Assine agora" (pra logado que nunca assinou)
@@ -1101,7 +1105,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             dobra. Ver [[project-web-vitals-rum-instrumentation]]. */}
 
         {/* ✅ NOVO: barra de busca para NÃO logado (não duplica para logado) */}
-        {!user && (
+        {/* ✅ 12/08 — só depois do auth resolver (!authLoading): no primeiro
+            paint user ainda é null pra TODO MUNDO, então o logado via esta
+            caixa nascer e sumir quando a sessão chegava — a página inteira
+            subia ~150px (CLS). Visitante de verdade não muda nada (auth
+            resolve do localStorage antes do paint). */}
+        {!authLoading && !user && (
           <div className="mb-4 md:mb-6">
             <div className="w-full rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
               <p className="text-sm font-semibold text-slate-200 mb-2">
@@ -1261,7 +1270,11 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
         )}
 
         {/* CONTINUAR ASSISTINDO — pro tesagencia isso virou a aba Histórico */}
-        {!normalizedQuery && !showBottomNav && (
+        {/* ✅ 12/08 — !authLoading pelo mesmo motivo da caixa de busca acima:
+            o logado via esta seção inteira nascer no primeiro paint e
+            desmontar quando o auth resolvia (telemetria pegou o span
+            "Carregando seu histórico..." como vítima de shift). */}
+        {!normalizedQuery && !authLoading && !showBottomNav && (
           <section className="py-4 md:py-6 relative w-full">
             <div className="flex items-center gap-2 mb-3">
               <Play className="w-5 h-5 text-purple-400" />
