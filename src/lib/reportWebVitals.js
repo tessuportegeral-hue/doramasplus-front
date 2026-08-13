@@ -252,6 +252,32 @@ function extractAttribution(name, attribution) {
     };
   }
   if (name === 'INP') {
+    // ✅ 13/08 (v7) — Long Animation Frames da interação: nomeia o SCRIPT que
+    // segurou a thread no toque (o líder atual do INP é pointer sem target —
+    // sem isso não dá pra saber qual código é). Cada frame longo traz os
+    // scripts culpados (arquivo, função, invoker, duração) + quanto foi
+    // style/layout — separa "JS pesado" de "reflow pesado".
+    let loafs = null;
+    try {
+      loafs = (attribution.longAnimationFrameEntries || [])
+        .slice(0, 3)
+        .map((e) => ({
+          dur: Math.round(e.duration),
+          sl: Math.round(e.styleAndLayoutDuration || 0),
+          scripts: (e.scripts || [])
+            .map((s) => ({
+              inv: s.invoker ? String(s.invoker).slice(0, 80) : null,
+              src: s.sourceURL ? String(s.sourceURL).split('/').pop().slice(0, 60) : null,
+              fn: s.sourceFunctionName ? String(s.sourceFunctionName).slice(0, 40) : null,
+              dur: Math.round(s.duration),
+            }))
+            .sort((a, b) => b.dur - a.dur)
+            .slice(0, 4),
+        }));
+      if (!loafs.length) loafs = null;
+    } catch {
+      loafs = null;
+    }
     return {
       target: attribution.interactionTarget || null,
       detail: {
@@ -259,6 +285,10 @@ function extractAttribution(name, attribution) {
         inputDelay: attribution.inputDelay ?? null,
         processingDuration: attribution.processingDuration ?? null,
         presentationDelay: attribution.presentationDelay ?? null,
+        // quando na vida da página o toque ruim aconteceu (ainda carregando?)
+        loadState: attribution.loadState ?? null,
+        interactionTime: attribution.interactionTime != null ? Math.round(attribution.interactionTime) : null,
+        loafs,
       },
     };
   }

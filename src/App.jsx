@@ -451,7 +451,12 @@ function App() {
 
       <AuthProvider>
         <FavoritesProvider>
-        <Router>
+        {/* ✅ 13/08 (INP) — v7_startTransition: troca de rota vira transition
+            interrompível. O toque em card/menu disparava um render síncrono da
+            rota nova que segurava o frame (presentationDelay ~260-1100ms na
+            telemetria); em transition o React pinta o feedback do toque antes
+            e o render pesado cede a vez pra input novo. */}
+        <Router future={{ v7_startTransition: true }}>
           <ScrollToTopOnNavigate />
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
