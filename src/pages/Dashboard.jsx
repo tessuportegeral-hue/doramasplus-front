@@ -166,18 +166,19 @@ const HeroSection = ({ featuredDoramas, loading }) => {
 
   // ✅ 13/08 (sonda v6) — diário de branch do hero (mesma ideia das seções):
   // registra loading/null/ready e o desmonte (modo busca) com timestamp.
-  const heroBranch = loading
-    ? "loading"
-    : !featuredDoramas || featuredDoramas.length === 0
-      ? "null"
-      : "ready";
+  // ✅ 13/08 (LCP) — com o cache de destaques, "tem dado" ganha do "está
+  // carregando": o hero da revisita pinta no 1º frame e NÃO volta pro
+  // placeholder durante o refetch (remontar a img resetaria o LCP).
+  const hasFeatured = featuredDoramas && featuredDoramas.length > 0;
+  const heroBranch = hasFeatured ? "ready" : loading ? "loading" : "null";
   useEffect(() => {
     noteSectionState("hero", heroBranch);
   }, [heroBranch]);
   useEffect(() => () => noteSectionState("hero", "gone"), []);
 
-  // ✅ 13/08 (LCP) — guarda a URL do 1º banner pro preload do main.jsx
-  // (na PRÓXIMA visita a imagem do hero baixa antes do React montar).
+  // ✅ 13/08 (LCP) — guarda a URL do 1º banner pro preload do main.jsx e os
+  // próprios destaques pro render instantâneo do Dashboard (na PRÓXIMA
+  // visita o hero pinta no 1º frame, sem esperar o fetch).
   useEffect(() => {
     try {
       const first = featuredDoramas && featuredDoramas[0];
@@ -185,6 +186,10 @@ const HeroSection = ({ featuredDoramas, loading }) => {
       const url =
         first.banner_url || first.cover_url || first.thumbnail_url || "";
       if (url) localStorage.setItem("dp_last_hero_url", url);
+      localStorage.setItem(
+        "dp_featured_cache",
+        JSON.stringify(featuredDoramas.slice(0, 6))
+      );
     } catch {
       /* ignore */
     }
@@ -195,7 +200,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
     navigate(`/dorama/${slug}/watch`);
   };
 
-  if (loading) {
+  if (!hasFeatured && loading) {
     // ✅ 11/08 — a altura TEM que bater com o hero real (h-[65vh] md:h-[70vh],
     // logo abaixo). Antes o placeholder era h-[50vh] no celular e o conteúdo
     // real 65vh: todo carregamento mobile empurrava a página 15vh pra baixo
@@ -208,7 +213,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
     );
   }
 
-  if (!featuredDoramas || featuredDoramas.length === 0) return null;
+  if (!hasFeatured) return null;
 
   const current = featuredDoramas[currentIndex];
   if (!current) return null;
@@ -651,8 +656,22 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     } catch {}
   }, [location.search]);
 
-  const [doramas, setDoramas] = useState({
-    featured: [],
+  const [doramas, setDoramas] = useState(() => {
+    // ✅ 13/08 (LCP) — hero instantâneo: os destaques da última visita saem
+    // do localStorage já no 1º render, e o fetch atualiza por trás. Junto
+    // com o preload da imagem no main.jsx, a revisita pinta o hero sem
+    // esperar JS+React+fetch (renderDelay era 1,6s no p75). O HeroSection
+    // regrava o cache toda vez que o featured muda.
+    let cachedFeatured = [];
+    try {
+      const raw = localStorage.getItem("dp_featured_cache");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) cachedFeatured = parsed.slice(0, 6);
+    } catch {
+      /* cache corrompido = ignora */
+    }
+    return {
+    featured: cachedFeatured,
     new: [],
     recommended: [],
     dubbed: [],
@@ -663,6 +682,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     bl_gl: [],
     brasileiro: [],
     anime: [],
+    };
   });
 
   const [loading, setLoading] = useState({
@@ -917,9 +937,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   };
 
   // Carregar categorias
+  // ✅ 13/08 (LCP) — SEM esperar o authLoading: as queries de catálogo não
+  // dependem de usuário, e o gate atrasava o fetch do hero (e de tudo) nos
+  // ~2-3s que o auth leva em celular lento — era boa parte do renderDelay
+  // de 1,6s do LCP. fetchCategory é useCallback([]) estável, então o efeito
+  // roda UMA vez no mount.
   useEffect(() => {
-    if (authLoading) return;
-
     fetchCategory(
       "featured",
       (selectStr) =>
@@ -934,7 +957,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     Object.entries(CATEGORY_QUERIES).forEach(([key, cfg]) => {
       fetchCategory(key, cfg.build, cfg.limit);
     });
-  }, [authLoading, fetchCategory]);
+  }, [fetchCategory]);
 
   // ✅ BUSCA: RPC search_doramas_ranked (ILIKE + ranking por word_similarity
   // no banco, pg_trgm) + Fuse.js só como fallback de typo (0 resultado).
