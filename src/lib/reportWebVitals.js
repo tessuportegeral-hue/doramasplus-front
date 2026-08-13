@@ -54,14 +54,27 @@ try {
       if (entry.hadRecentInput || entry.value < 0.05) continue;
       const src = (entry.sources || [])[0];
       const node = src?.node;
+      // ✅ 12/08 (v5) — "relative w-full" existe em 3 componentes diferentes;
+      // sem o ancestral com id não dá pra saber QUAL. Sobe a árvore até achar
+      // um id e grava "#pai >> classeDoElemento".
+      let sel = null;
+      try {
+        const el = node instanceof Element ? node : node?.parentElement;
+        if (el) {
+          const own = el.id ? `#${el.id}` : String(el.className || '').slice(0, 40);
+          let p = el.parentElement;
+          while (p && !p.id) p = p.parentElement;
+          sel = (p && p.id ? `#${p.id} >> ` : '') + (own || '?');
+        }
+      } catch {
+        /* ignore */
+      }
       bigShifts.push({
         t: Math.round(entry.startTime),
         v: Math.round(entry.value * 1000) / 1000,
         scrollY: Math.round(window.scrollY || 0),
         tag: node?.tagName || null,
-        sel: node?.id
-          ? `#${node.id}`
-          : String(node?.className || '').slice(0, 60) || null,
+        sel,
         py: src ? Math.round(src.previousRect.top) : null,
         cy: src ? Math.round(src.currentRect.top) : null,
         ph: src ? Math.round(src.previousRect.height) : null,
