@@ -168,7 +168,11 @@ try {
 // pra usar o client aqui sem criar dependência circular)
 function isLoggedSync() {
   try {
-    return !!localStorage.getItem('sb-fbngdxhkaueaolnyswgn-auth-token');
+    // ⚠️ 13/08 — chave corrigida: customSupabaseClient define
+    // storageKey "sb-auth-token" (não o padrão sb-<ref>-auth-token).
+    // Todos os `logged` gravados até 13/08 ~15h UTC estão ERRADOS (false
+    // até pra logado) — não comparar com dados antigos.
+    return !!localStorage.getItem('sb-auth-token');
   } catch {
     return null;
   }

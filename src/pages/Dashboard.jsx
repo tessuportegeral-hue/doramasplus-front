@@ -462,6 +462,16 @@ const DoramaSection = ({
           colapso empurra ~700px = ~0,3 de CLS POR seção, ~7 seções = o 1,8-2,1
           da home. Com min-height, skeleton/vazio/real ocupam sempre o mesmo
           espaço → colapso não empurra mais nada. Ver [[project-web-vitals-rum-instrumentation]]. */}
+      {/* ⚠️ 13/08 — `key` DIFERENTE em cada branch (skeleton/erro/fileira).
+          A sonda v6 provou que CADA troca skeleton→fileira gerava um layout
+          shift de ~0,3 cobrado pelo Chrome MESMO com o min-h segurando a
+          altura: como os branches são <div> na mesma posição, o React
+          REAPROVEITA o nó do DOM, e o Chrome trata o nó reciclado como
+          "elemento que se moveu" (prevRect impossível, y=0). Com key própria
+          o nó é recriado — elemento NOVO não gera shift por spec, e nada
+          abaixo se move porque o min-h reserva o espaço. Era ISSO (×10
+          seções em cascata) o grosso do CLS 0,7-1,8 da home. Ver
+          [[project-web-vitals-rum-instrumentation]]. */}
       <div className="min-h-[238px] sm:min-h-[277px] md:min-h-[307px]">
       {loading ? (
         compact ? (
@@ -469,7 +479,7 @@ const DoramaSection = ({
           // horizontal, mesma largura/gap, com o bloco de texto reservado)
           // em vez do grid antigo só com o pôster — evita CLS na troca
           // loading → conteúdo real.
-          <div className={`flex ${rowGapClass} overflow-x-auto pb-4 no-scrollbar animate-pulse`}>
+          <div key="skeleton" className={`flex ${rowGapClass} overflow-x-auto pb-4 no-scrollbar animate-pulse`}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className={cardWidthClass}>
                 <div className="rounded-[12px] overflow-hidden">
@@ -483,19 +493,19 @@ const DoramaSection = ({
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-pulse">
+          <div key="skeleton" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-pulse">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="aspect-[2/3] bg-slate-800 rounded-lg" />
             ))}
           </div>
         )
       ) : error ? (
-        <div className="bg-slate-900 border border-red-500/30 text-red-400 p-6 rounded-lg text-center">
+        <div key="error" className="bg-slate-900 border border-red-500/30 text-red-400 p-6 rounded-lg text-center">
           <ServerCrash className="w-8 h-8 mx-auto mb-3" />
           Erro ao carregar esta seção.
         </div>
       ) : (
-        <div className="relative w-full">
+        <div key="rows" className="relative w-full">
           <div
             ref={listRef}
             className={`flex ${rowGapClass} overflow-x-auto pb-4 no-scrollbar`}
@@ -1050,9 +1060,14 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   // já decide certo pra ~100% dos casos: com token = trata como logado; sem
   // token = visitante, blocos aparecem DESDE O INÍCIO, sem inserção tardia.
   // Quando o auth resolve de verdade, a condição passa a usar o user real.
+  // ⚠️ 13/08 — a chave REAL é "sb-auth-token" (customSupabaseClient.js define
+  // storageKey explícito, NÃO usa o padrão sb-<ref>-auth-token). Com a chave
+  // errada, todo LOGADO era tratado como visitante no 1º frame: a caixa de
+  // busca nascia e sumia ~2s depois quando o auth resolvia = o shift de
+  // ~154px que a sonda v6 pegou (e o `logged` da telemetria mentia junto).
   const likelyLogged = (() => {
     try {
-      return !!localStorage.getItem("sb-fbngdxhkaueaolnyswgn-auth-token");
+      return !!localStorage.getItem("sb-auth-token");
     } catch {
       return false;
     }
