@@ -1005,6 +1005,22 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   // (Play Store, agora com o assetlinks.json corrigido) — no iPhone não tem
   // Play Store, então mantém a Dora normal ali. O rodapé (InstallAppBanner)
   // não muda pro iOS, continua só a instrução de tela de início.
+  // ✅ 12/08 (noite) — palpite SÍNCRONO de login: presença do token supabase
+  // no localStorage (leitura instantânea). A sonda provou que 92% dos shifts
+  // ruins eram o topo da página do VISITANTE nascendo ~3s atrasado (+172px):
+  // os blocos de visitante esperavam o authLoading resolver. Agora o 1º frame
+  // já decide certo pra ~100% dos casos: com token = trata como logado; sem
+  // token = visitante, blocos aparecem DESDE O INÍCIO, sem inserção tardia.
+  // Quando o auth resolve de verdade, a condição passa a usar o user real.
+  const likelyLogged = (() => {
+    try {
+      return !!localStorage.getItem("sb-fbngdxhkaueaolnyswgn-auth-token");
+    } catch {
+      return false;
+    }
+  })();
+  const showVisitorBlocks = authLoading ? !likelyLogged : !user;
+
   const isAndroidDevice =
     typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 
@@ -1155,12 +1171,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             dobra. Ver [[project-web-vitals-rum-instrumentation]]. */}
 
         {/* ✅ NOVO: barra de busca para NÃO logado (não duplica para logado) */}
-        {/* ✅ 12/08 — só depois do auth resolver (!authLoading): no primeiro
-            paint user ainda é null pra TODO MUNDO, então o logado via esta
-            caixa nascer e sumir quando a sessão chegava — a página inteira
-            subia ~150px (CLS). Visitante de verdade não muda nada (auth
-            resolve do localStorage antes do paint). */}
-        {!authLoading && !user && (
+        {/* ✅ 12/08 (noite) — showVisitorBlocks decide no 1º FRAME via token
+            do localStorage: nem o logado vê a caixa piscar, nem o visitante
+            espera 3s pra ela nascer empurrando a página (os 92% da sonda). */}
+        {showVisitorBlocks && (
           <div className="mb-4 md:mb-6">
             <div className="w-full rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
               <p className="text-sm font-semibold text-slate-200 mb-2">
@@ -1374,11 +1388,9 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
         )}
 
         {/* CONTINUAR ASSISTINDO — pro tesagencia isso virou a aba Histórico */}
-        {/* ✅ 12/08 — !authLoading pelo mesmo motivo da caixa de busca acima:
-            o logado via esta seção inteira nascer no primeiro paint e
-            desmontar quando o auth resolvia (telemetria pegou o span
-            "Carregando seu histórico..." como vítima de shift). */}
-        {!normalizedQuery && !authLoading && !showBottomNav && (
+        {/* ✅ 12/08 (noite) — mesma regra do 1º frame da caixa de busca:
+            visitante vê desde o início, logado nunca vê piscar. */}
+        {!normalizedQuery && showVisitorBlocks && (
           <section className="py-4 md:py-6 relative w-full">
             <div className="flex items-center gap-2 mb-3">
               <Play className="w-5 h-5 text-purple-400" />
