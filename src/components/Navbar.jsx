@@ -139,25 +139,48 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
       if (typeof window === 'undefined') return;
       if (!META_PIXEL_ID) return;
 
-      // Carrega o script 1x
+      // ✅ 13/08 (INP) — stub imediato + script ADIADO pro load+idle.
+      // O LoAF da sonda v7 pegou o fbevents.js cobrando 60-280ms POR toque
+      // (listener de click no document) em celular lento. O stub abaixo já
+      // ENFILEIRA todo init/track (nada se perde); o download do script de
+      // verdade só acontece depois do load, fora da janela crítica.
       if (!window.fbq) {
-        (function (f, b, e, v, n, t, s) {
-          if (f.fbq) return;
-          n = f.fbq = function () {
+        (function (f) {
+          var n = (f.fbq = function () {
             n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
-          };
+          });
           if (!f._fbq) f._fbq = n;
           n.push = n;
           n.loaded = true;
           n.version = '2.0';
           n.queue = [];
-          t = b.createElement(e);
-          t.async = true;
-          t.src = v;
-          t.id = 'dp-fb-pixel';
-          s = b.getElementsByTagName(e)[0];
-          s.parentNode.insertBefore(t, s);
-        })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+        })(window);
+      }
+      if (!document.getElementById('dp-fb-pixel') && !window.__dp_fb_script_scheduled) {
+        window.__dp_fb_script_scheduled = true;
+        const injectPixelScript = () => {
+          try {
+            if (document.getElementById('dp-fb-pixel')) return;
+            const t = document.createElement('script');
+            t.async = true;
+            t.src = 'https://connect.facebook.net/en_US/fbevents.js';
+            t.id = 'dp-fb-pixel';
+            const s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(t, s);
+          } catch {}
+        };
+        const onIdle = () => {
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(injectPixelScript, { timeout: 4000 });
+          } else {
+            setTimeout(injectPixelScript, 2500);
+          }
+        };
+        if (document.readyState === 'complete') {
+          onIdle();
+        } else {
+          window.addEventListener('load', onIdle, { once: true });
+        }
       }
 
       // Advanced Matching: o Pixel hasheia em/ph automaticamente.
@@ -165,6 +188,14 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
       const email = user?.email ? String(user.email).trim().toLowerCase() : '';
       const phone = userPhone || '';
       const initKey = `${email}|${phone}`;
+
+      if (window.__dp_fb_init_key === undefined) {
+        // ✅ 13/08 (INP) — desliga o autoConfig ANTES do 1º init: é ele que
+        // instala o processamento pesado de cada clique (SubscribedButtonClick/
+        // microdata). Não perdemos nada: Advanced Matching vai manual (em/ph
+        // abaixo) e Purchase é 100% backend/CAPI.
+        window.fbq('set', 'autoConfig', false, META_PIXEL_ID);
+      }
 
       if (window.__dp_fb_init_key !== initKey) {
         const advanced = {};

@@ -430,7 +430,14 @@ const VisitorSearchBox = ({ searchQuery, setSearchQuery }) => {
 };
 
 // ---------------- SECTION BLOCK (CARROSSEL COM SETAS) ----------------
-const DoramaSection = ({
+// ✅ 13/08 (INP) — React.memo com comparador próprio: o LoAF da sonda v7
+// mostrou o scheduler do React rodando fatias de render de 0,5-1,8s nos
+// toques ruins — cada setDoramas/tecla re-renderizava as 10+ seções
+// inteiras. Com memo, seção só re-renderiza quando OS DADOS DELA mudam.
+// icon/title/onLoadMore ficam fora do comparador de propósito: icon é JSX
+// recriado a cada render do pai (quebraria o memo) e o onLoadMore fica
+// "fresco" porque toda mudança de doramas/hasMore/loadingMore re-renderiza.
+const DoramaSection = React.memo(({
   title,
   icon,
   doramas,
@@ -500,6 +507,10 @@ const DoramaSection = ({
   return (
     <section
       id={id}
+      // ✅ 13/08 (INP) — content-visibility:auto pula layout/paint das seções
+      // fora da tela; contain-intrinsic-size "auto 340px" guarda a última
+      // altura real renderizada (não cria shift — o min-h interno segura).
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 340px" }}
       className={
         compact ? "py-1.5 relative w-full" : "py-4 md:py-8 relative w-full"
       }
@@ -623,7 +634,15 @@ const DoramaSection = ({
       </div>
     </section>
   );
-};
+}, (prev, next) =>
+  prev.id === next.id &&
+  prev.doramas === next.doramas &&
+  prev.loading === next.loading &&
+  prev.error === next.error &&
+  prev.hasMore === next.hasMore &&
+  prev.loadingMore === next.loadingMore &&
+  prev.hideDubladoBadge === next.hideDubladoBadge
+);
 
 // Remove acentos e converte para minúsculas — usado no Fuse e na query de slug
 const normalizeText = (str) =>
