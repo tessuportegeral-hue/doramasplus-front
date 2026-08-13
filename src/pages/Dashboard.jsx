@@ -942,8 +942,16 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   // ~2-3s que o auth leva em celular lento — era boa parte do renderDelay
   // de 1,6s do LCP. fetchCategory é useCallback([]) estável, então o efeito
   // roda UMA vez no mount.
+  // ✅ 13/08 (2ª calibragem) — só o DESTAQUE busca no mount. As fileiras
+  // esperam load da página + featured resolvido + idle, e carregam em levas
+  // de 3: os ~10 fetches simultâneos competiam com o download da imagem do
+  // hero (LCP 1ª visita 2480→4676ms no carimbo 272ca722) e o render em
+  // cascata das seções caía em cima dos primeiros toques (INP 368→622ms).
   useEffect(() => {
-    fetchCategory(
+    let cancelled = false;
+    let started = false;
+
+    const featuredPromise = fetchCategory(
       "featured",
       (selectStr) =>
         supabase
@@ -954,9 +962,44 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
       10
     );
 
-    Object.entries(CATEGORY_QUERIES).forEach(([key, cfg]) => {
-      fetchCategory(key, cfg.build, cfg.limit);
-    });
+    const startRows = async () => {
+      if (started || cancelled) return;
+      started = true;
+      const entries = Object.entries(CATEGORY_QUERIES);
+      for (let i = 0; i < entries.length && !cancelled; i += 3) {
+        await Promise.all(
+          entries
+            .slice(i, i + 3)
+            .map(([key, cfg]) => fetchCategory(key, cfg.build, cfg.limit))
+        );
+      }
+    };
+
+    const whenIdle = () => {
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(() => startRows(), { timeout: 1500 });
+      } else {
+        setTimeout(startRows, 200);
+      }
+    };
+
+    const onLoad = () => {
+      featuredPromise.finally(whenIdle);
+    };
+
+    if (document.readyState === "complete") {
+      onLoad();
+    } else {
+      window.addEventListener("load", onLoad, { once: true });
+    }
+    // Rede/evento nunca pode segurar as fileiras pra sempre
+    const safety = setTimeout(startRows, 4000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("load", onLoad);
+      clearTimeout(safety);
+    };
   }, [fetchCategory]);
 
   // ✅ BUSCA: RPC search_doramas_ranked (ILIKE + ranking por word_similarity
