@@ -42,6 +42,12 @@ export default function DoramaDetail() {
   const [dorama, setDorama] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // ✅ 13/08 — separa "confirmadamente não existe" (query OK, zero linhas,
+  // sem redirect) de "falha momentânea de rede/banco". O noindex só pode ir
+  // pro 1º caso: eram 429 páginas REAIS excluídas por noindex no Search
+  // Console porque o renderizador do Google visitava na hora de uma falha
+  // transitória e a tela de erro carimbava noindex na página inteira.
+  const [notFound, setNotFound] = useState(false);
 
   const { isAuthenticated } = useAuth();
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -129,6 +135,7 @@ export default function DoramaDetail() {
             navigate(`/dorama/${redirectRow.new_slug}`, { replace: true });
             return;
           }
+          setNotFound(true);
           setError(true);
         } else {
           setDorama(data);
@@ -178,9 +185,14 @@ export default function DoramaDetail() {
   if (error || !dorama) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white gap-4 p-4">
-        <Helmet>
-          <meta name="robots" content="noindex" />
-        </Helmet>
+        {/* noindex SÓ quando o dorama confirmadamente não existe — falha
+            momentânea de rede/banco mostra o erro pro usuário mas NÃO manda
+            o Google desindexar uma página real. */}
+        {notFound && (
+          <Helmet>
+            <meta name="robots" content="noindex" />
+          </Helmet>
+        )}
         <h2 className="text-xl font-semibold text-red-400">Dorama não encontrado</h2>
         <p className="text-slate-400 text-center max-w-md">
           Não foi possível encontrar o dorama "{slugFromUrl}". Ele pode ter sido removido ou o link está incorreto.
