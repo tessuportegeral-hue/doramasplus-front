@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 // ✅ 13/08 (INP) — a telemetria CWV pegou o campo de busca com INP p75 de
 // 1,3s no mobile (665ms só de inputDelay): cada tecla setava searchQuery lá
@@ -26,7 +26,13 @@ export default function useDebouncedField(value, onCommit, delay = 250) {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       lastCommitted.current = next;
-      onCommit(next);
+      // ✅ 13/08 (2ª dose) — o debounce sozinho não bastou: quando o commit
+      // dispara, o re-render do Dashboard (Fuse + trocar seções por
+      // resultados) bloqueia ~1s em celular lento, e a PRÓXIMA tecla chega
+      // no meio dele (telemetria: inputDelay 888ms com processing só 79ms).
+      // startTransition torna esse render interrompível: tecla nova tem
+      // prioridade e corta o render no meio, sem travar a digitação.
+      startTransition(() => onCommit(next));
     }, delay);
   };
 
