@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import { noteSearchState, noteSectionState } from "@/lib/reportWebVitals";
+import useDebouncedField from "@/hooks/useDebouncedField";
 import { playStoreUrl } from "@/lib/playStoreLink";
 import Fuse from "fuse.js";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
@@ -174,6 +175,20 @@ const HeroSection = ({ featuredDoramas, loading }) => {
     noteSectionState("hero", heroBranch);
   }, [heroBranch]);
   useEffect(() => () => noteSectionState("hero", "gone"), []);
+
+  // ✅ 13/08 (LCP) — guarda a URL do 1º banner pro preload do main.jsx
+  // (na PRÓXIMA visita a imagem do hero baixa antes do React montar).
+  useEffect(() => {
+    try {
+      const first = featuredDoramas && featuredDoramas[0];
+      if (!first) return;
+      const url =
+        first.banner_url || first.cover_url || first.thumbnail_url || "";
+      if (url) localStorage.setItem("dp_last_hero_url", url);
+    } catch {
+      /* ignore */
+    }
+  }, [featuredDoramas]);
 
   // ✅ ALTERAÇÃO ÚNICA: banner agora manda direto pro /watch (teste grátis funciona)
   const handleWatchClick = (slug) => {
@@ -364,6 +379,48 @@ const HeroSection = ({ featuredDoramas, loading }) => {
         )}
       </div>
     </section>
+  );
+};
+
+// ✅ 13/08 (INP) — caixa de busca do visitante como componente próprio com
+// estado local + commit debounced (useDebouncedField): a tecla re-renderiza
+// SÓ este box; o Dashboard inteiro (10+ seções) só depois da pausa. O campo
+// da navbar ganhou o mesmo tratamento (NavSearchInput). INP p75 do campo era
+// 1,3s no mobile, 665ms só de fila de main thread.
+const VisitorSearchBox = ({ searchQuery, setSearchQuery }) => {
+  const [localQuery, setLocalQuery] = useDebouncedField(searchQuery, setSearchQuery);
+  return (
+    <div className="mb-4 md:mb-6">
+      <div className="w-full rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
+        <p className="text-sm font-semibold text-slate-200 mb-2">
+          Pesquise um dorama no catálogo
+        </p>
+
+        <div className="flex items-center gap-2">
+          <input
+            value={localQuery}
+            onChange={(e) => setLocalQuery(e.target.value)}
+            placeholder="Digite o nome do dorama…"
+            className="w-full h-11 rounded-lg bg-slate-950/60 border border-slate-800 px-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-purple-500/60"
+          />
+
+          {localQuery?.trim() && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 bg-slate-950/60 border-slate-800 hover:bg-slate-900 text-slate-200"
+              onClick={() => setLocalQuery("")}
+            >
+              Limpar
+            </Button>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-400 mt-2">
+          Dica: você pode explorar e pesquisar livremente. Para assistir, crie sua conta.
+        </p>
+      </div>
+    </div>
   );
 };
 
@@ -1228,37 +1285,10 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             do localStorage: nem o logado vê a caixa piscar, nem o visitante
             espera 3s pra ela nascer empurrando a página (os 92% da sonda). */}
         {showVisitorBlocks && (
-          <div className="mb-4 md:mb-6">
-            <div className="w-full rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
-              <p className="text-sm font-semibold text-slate-200 mb-2">
-                Pesquise um dorama no catálogo
-              </p>
-
-              <div className="flex items-center gap-2">
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Digite o nome do dorama…"
-                  className="w-full h-11 rounded-lg bg-slate-950/60 border border-slate-800 px-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-purple-500/60"
-                />
-
-                {searchQuery?.trim() && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 bg-slate-950/60 border-slate-800 hover:bg-slate-900 text-slate-200"
-                    onClick={() => setSearchQuery("")}
-                  >
-                    Limpar
-                  </Button>
-                )}
-              </div>
-
-              <p className="text-xs text-slate-400 mt-2">
-                Dica: você pode explorar e pesquisar livremente. Para assistir, crie sua conta.
-              </p>
-            </div>
-          </div>
+          <VisitorSearchBox
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+          />
         )}
 
         {/* ✅ Carrossel de banners — logo abaixo da busca, acima do banner principal */}

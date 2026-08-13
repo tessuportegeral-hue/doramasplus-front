@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/supabaseClient';
+import useDebouncedField from '@/hooks/useDebouncedField';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+
+// ✅ 13/08 (INP) — input com estado local + commit debounced: a tecla
+// re-renderiza SÓ este componente; o App/Dashboard só depois da pausa.
+// (INP p75 do campo era 1,3s no mobile — ver telemetria CWV.)
+const NavSearchInput = ({ searchQuery, setSearchQuery }) => {
+  const [localQuery, setLocalQuery] = useDebouncedField(
+    searchQuery,
+    setSearchQuery || (() => {})
+  );
+  return (
+    <input
+      type="text"
+      value={localQuery}
+      onChange={(e) => setLocalQuery(e.target.value)}
+      placeholder="Buscar..."
+      className="bg-transparent border-none outline-none text-sm text-white/90 w-full placeholder:text-white/50"
+    />
+  );
+};
 
 const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
   const navigate = useNavigate();
@@ -408,12 +428,9 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
               <div className="w-full max-w-sm">
                 <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
                   <Search className="w-4 h-4 text-white/50" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar..."
-                    className="bg-transparent border-none outline-none text-sm text-white/90 w-full placeholder:text-white/50"
+                  <NavSearchInput
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
                   />
                 </div>
               </div>
