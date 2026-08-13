@@ -42,43 +42,119 @@ try {
   /* ignore */
 }
 
-// ✅ 12/08 (v4) — diário dos maiores shifts da sessão, com a POSIÇÃO DO
-// SCROLL na hora de cada um. O attribution do web-vitals só entrega o maior
-// shift; sem o scroll não dá pra distinguir "algo nasceu em cima e empurrou"
-// de "a pessoa estava rolada e algo cresceu acima". Guarda os 10 maiores;
+// ✅ 13/08 (v6) — três furos da v5 fechados:
+// (1) Só gravávamos sources[0] = a VÍTIMA (o elemento que mais se moveu).
+//     O elemento INSERIDO/removido que CAUSA o shift costuma estar na lista
+//     entry.sources (até 5 por entry). Agora gravamos todos.
+// (2) O scrollY era lido no callback do PerformanceObserver, que em aparelho
+//     lento roda BEM depois do shift — dado não confiável. Agora gravamos
+//     também há quantos ms foi o último input do usuário ANTES do shift
+//     (si) — shift logo depois de digitar/tocar = interação, não load.
+// (3) Não dava pra saber se a BUSCA estava ativa na hora (os `!normalizedQuery`
+//     desmontam banner+hero+seções a cada letra — suspeita nº 11). O Dashboard
+//     agora reporta liga/desliga da busca e cada troca de branch das seções
+//     (skeleton/erro/vazio/fileira/desmontou) via noteSearchState/
+//     noteSectionState, e o evento de CLS leva esse diário junto.
+
+// Últimos inputs do usuário (timestamps performance.now) — ring buffer.
+const inputTimes = [];
+try {
+  const markInput = () => {
+    inputTimes.push(performance.now());
+    if (inputTimes.length > 30) inputTimes.shift();
+  };
+  for (const ev of ['pointerdown', 'keydown', 'input']) {
+    window.addEventListener(ev, markInput, { passive: true, capture: true });
+  }
+} catch {
+  /* ignore */
+}
+// último input ANTES de um instante t (não o último absoluto — o callback
+// atrasa e um toque posterior contaminaria a leitura)
+function msSinceInputBefore(t) {
+  for (let i = inputTimes.length - 1; i >= 0; i--) {
+    if (inputTimes[i] <= t) return Math.round(t - inputTimes[i]);
+  }
+  return null;
+}
+
+// Busca ativa? (histórico de liga/desliga, pra casar com o t de cada shift)
+const searchLog = [];
+export function noteSearchState(active) {
+  try {
+    const last = searchLog[searchLog.length - 1];
+    if (last && last.on === !!active) return;
+    searchLog.push({ at: Math.round(performance.now()), on: !!active });
+    if (searchLog.length > 20) searchLog.shift();
+  } catch {
+    /* nunca quebra a página */
+  }
+}
+function searchActiveAt(t) {
+  for (let i = searchLog.length - 1; i >= 0; i--) {
+    if (searchLog[i].at <= t) return searchLog[i].on;
+  }
+  return false;
+}
+
+// Diário de branch das seções da home (skeleton/error/null/rows/gone) e do
+// hero (loading/null/ready) — quem desmontou/remontou, e quando.
+const sectionLog = [];
+export function noteSectionState(id, state) {
+  try {
+    sectionLog.push({ at: Math.round(performance.now()), id, s: state });
+    if (sectionLog.length > 60) sectionLog.shift();
+  } catch {
+    /* nunca quebra a página */
+  }
+}
+
+function selFor(node) {
+  try {
+    const el = node instanceof Element ? node : node?.parentElement;
+    if (!el) return null;
+    const own = el.id ? `#${el.id}` : String(el.className || '').slice(0, 40);
+    let p = el.parentElement;
+    while (p && !p.id) p = p.parentElement;
+    return (p && p.id ? `#${p.id} >> ` : '') + (own || '?');
+  } catch {
+    return null;
+  }
+}
+
+// ✅ 12/08 (v4) — diário dos maiores shifts da sessão. Guarda os 10 maiores;
 // o envio anexa os 5 primeiros.
 const bigShifts = [];
 try {
   new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (entry.hadRecentInput || entry.value < 0.05) continue;
-      const src = (entry.sources || [])[0];
+      const sources = (entry.sources || []).slice(0, 5);
+      const src = sources[0];
       const node = src?.node;
-      // ✅ 12/08 (v5) — "relative w-full" existe em 3 componentes diferentes;
-      // sem o ancestral com id não dá pra saber QUAL. Sobe a árvore até achar
-      // um id e grava "#pai >> classeDoElemento".
-      let sel = null;
-      try {
-        const el = node instanceof Element ? node : node?.parentElement;
-        if (el) {
-          const own = el.id ? `#${el.id}` : String(el.className || '').slice(0, 40);
-          let p = el.parentElement;
-          while (p && !p.id) p = p.parentElement;
-          sel = (p && p.id ? `#${p.id} >> ` : '') + (own || '?');
-        }
-      } catch {
-        /* ignore */
-      }
       bigShifts.push({
         t: Math.round(entry.startTime),
         v: Math.round(entry.value * 1000) / 1000,
         scrollY: Math.round(window.scrollY || 0),
+        ih: window.innerHeight || null,
+        si: msSinceInputBefore(entry.startTime),
+        sa: searchActiveAt(entry.startTime),
         tag: node?.tagName || null,
-        sel,
+        sel: selFor(node),
         py: src ? Math.round(src.previousRect.top) : null,
         cy: src ? Math.round(src.currentRect.top) : null,
         ph: src ? Math.round(src.previousRect.height) : null,
         ch: src ? Math.round(src.currentRect.height) : null,
+        // v6: TODOS os sources do entry (o insersor costuma estar aqui)
+        srcs: sources.map((s) => ({
+          sel: selFor(s?.node),
+          py: Math.round(s.previousRect.top),
+          cy: Math.round(s.currentRect.top),
+          ph: Math.round(s.previousRect.height),
+          ch: Math.round(s.currentRect.height),
+          pw: Math.round(s.previousRect.width),
+          cw: Math.round(s.currentRect.width),
+        })),
       });
       bigShifts.sort((a, b) => b.v - a.v);
       if (bigShifts.length > 10) bigShifts.length = 10;
@@ -153,6 +229,10 @@ function extractAttribution(name, attribution) {
         logged: isLoggedSync(),
         // os 5 maiores shifts da sessão, cada um com scrollY na hora — v4
         shifts: bigShifts.slice(0, 5),
+        // v6: diário de busca e de branch das seções — cruzar o `at` de cada
+        // troca com o `t` dos shifts responde QUEM desmontou/remontou antes.
+        searchLog: searchLog.slice(-8),
+        sectionLog: sectionLog.slice(-25),
       },
     };
   }

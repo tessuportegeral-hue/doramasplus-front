@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import { noteSearchState, noteSectionState } from "@/lib/reportWebVitals";
 import { playStoreUrl } from "@/lib/playStoreLink";
 import Fuse from "fuse.js";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
@@ -161,6 +162,18 @@ const HeroSection = ({ featuredDoramas, loading }) => {
       return () => clearInterval(timer);
     }
   }, [featuredDoramas.length, handleNext]);
+
+  // ✅ 13/08 (sonda v6) — diário de branch do hero (mesma ideia das seções):
+  // registra loading/null/ready e o desmonte (modo busca) com timestamp.
+  const heroBranch = loading
+    ? "loading"
+    : !featuredDoramas || featuredDoramas.length === 0
+      ? "null"
+      : "ready";
+  useEffect(() => {
+    noteSectionState("hero", heroBranch);
+  }, [heroBranch]);
+  useEffect(() => () => noteSectionState("hero", "gone"), []);
 
   // ✅ ALTERAÇÃO ÚNICA: banner agora manda direto pro /watch (teste grátis funciona)
   const handleWatchClick = (slug) => {
@@ -400,6 +413,24 @@ const DoramaSection = ({
       }
     }
   };
+
+  // ✅ 13/08 (sonda v6) — diário de branch da seção pro web_vitals_events:
+  // cada troca skeleton/erro/vazio/fileira (e o desmonte total, ex. modo
+  // busca) fica registrada com timestamp — o evento de CLS anexa isso e a
+  // gente cruza com o horário exato de cada shift. Ver
+  // [[project-web-vitals-rum-instrumentation]].
+  const probeBranch =
+    !loading && !error && (!doramas || doramas.length === 0)
+      ? "null"
+      : loading
+        ? "skeleton"
+        : error
+          ? "error"
+          : "rows";
+  useEffect(() => {
+    noteSectionState(id, probeBranch);
+  }, [id, probeBranch]);
+  useEffect(() => () => noteSectionState(id, "gone"), [id]);
 
   // Se veio vazio, não mostra seção (melhor que “erro”)
   if (!loading && !error && (!doramas || doramas.length === 0)) return null;
@@ -994,6 +1025,13 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   }, [authLoading, user]);
 
   const normalizedQuery = (searchQuery || "").trim().toLowerCase();
+
+  // ✅ 13/08 (sonda v6) — a busca ativa desmonta banner+hero+seções (os
+  // `!normalizedQuery &&` abaixo). Registra o liga/desliga com timestamp pra
+  // cruzar com o horário dos shifts (suspeita nº 11 da caçada ao CLS).
+  useEffect(() => {
+    noteSearchState(!!normalizedQuery);
+  }, [normalizedQuery]);
 
   const communityLink = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 
