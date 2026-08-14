@@ -5,7 +5,11 @@ import { Helmet } from "react-helmet";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Crown, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
-import Hls from "hls.js";
+// ✅ 14/08 (LCP) — hls.js saiu do import estático: ele respondia por ~500KB
+// do chunk do /watch e o LCP da página era texto/vídeo esperando ~2s de
+// renderDelay (download+parse do bundle inteiro antes do 1º paint). Agora é
+// import dinâmico: a tela pinta primeiro e o hls chega logo atrás (aquecido
+// no idle abaixo). O vídeo liga igual.
 import useSessionGuard from "@/hooks/useSessionGuard";
 
 // ✅ 29/07 — aposentado (modelo "Netflix"): login livre, trava só no vídeo
@@ -348,18 +352,46 @@ export default function DoramaWatch() {
       return;
     }
 
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        lowLatencyMode: false,
-        backBufferLength: 90,
+    let cancelled = false;
+    import("hls.js")
+      .then(({ default: Hls }) => {
+        if (cancelled) return;
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            lowLatencyMode: false,
+            backBufferLength: 90,
+          });
+          hlsRef.current = hls;
+          hls.loadSource(videoUrl);
+          hls.attachMedia(el);
+        } else {
+          el.src = videoUrl;
+        }
+      })
+      .catch(() => {
+        // rede falhou no chunk do hls: tenta o src direto como fallback
+        try {
+          el.src = videoUrl;
+        } catch {}
       });
-      hlsRef.current = hls;
-      hls.loadSource(videoUrl);
-      hls.attachMedia(el);
-    } else {
-      el.src = videoUrl;
-    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [videoUrl, playerType, claimAllowed]);
+
+  // aquece o chunk do hls.js no idle — quando o videoUrl chegar, o player
+  // liga sem esperar download nenhum
+  useEffect(() => {
+    const warm = () => {
+      import("hls.js").catch(() => {});
+    };
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(warm, { timeout: 3000 });
+    } else {
+      setTimeout(warm, 1500);
+    }
+  }, []);
 
   const goIphoneMode = () => {
     navigate(`/dorama/${dorama?.slug || slugFromUrl}/watch?mode=iphone`, { replace: true });
