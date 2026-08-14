@@ -2,16 +2,18 @@
 //
 // Só entra em ação pro usuário que o admin marcou em live_mirror_flags
 // (RLS: cada um só lê a própria chave). Custo pro tráfego normal: uma
-// consulta leve pós-load+idle e depois 1 re-checagem por minuto (só com a
-// aba visível — mesmo espírito do heartbeat de 3s que o /watch já faz).
-// Assim o admin liga a chave no painel e a transmissão começa SOZINHA em
-// até ~60s, sem pedir pro cliente recarregar. O rrweb (parte pesada) só é
-// baixado por import dinâmico quando a chave está ligada — não engorda o
-// bundle nem o INP de ninguém (lição do fbevents).
+// consulta leve pós-load+idle e re-checagem a cada 20s (só com a aba
+// visível) + checagem imediata quando o app volta a ficar visível.
+// O rrweb (parte pesada) só é baixado por import dinâmico quando a chave
+// está ligada — não engorda o bundle nem o INP de ninguém.
+//
+// PRESENÇA (14/08 v2): a gravação só roda ENQUANTO o admin está com a
+// página do Espelho aberta (presence no canal). Admin saiu/fechou/caiu →
+// 15s de tolerância → transmissão para sozinha. Chave com mais de 2h sem
+// atualização é tratada como esquecida (auto-expira do lado do cliente).
 //
 // Transporte: Supabase Realtime BROADCAST (canal efêmero `mirror-<uuid>`,
-// pub/sub puro — NÃO toca banco/WAL, nada a ver com o incidente do
-// playback_sessions). Lotes a cada 1s, fatiados em pedaços de ~100KB.
+// pub/sub puro — NÃO toca banco/WAL). Lotes de 1s fatiados em ~100KB.
 import { supabase } from '@/lib/supabaseClient';
 
 let booted = false;
@@ -39,10 +41,14 @@ async function flagLigada(userId) {
   try {
     const { data } = await supabase
       .from('live_mirror_flags')
-      .select('enabled')
+      .select('enabled, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
-    return !!data?.enabled;
+    if (!data?.enabled) return false;
+    // chave esquecida acesa não vale pra sempre: expira em 2h
+    const ts = Date.parse(data.updated_at);
+    if (Number.isFinite(ts) && Date.now() - ts > 2 * 60 * 60 * 1000) return false;
+    return true;
   } catch {
     return false;
   }
@@ -53,15 +59,32 @@ async function startStreaming(userId, onStopped) {
   streaming = true;
   try {
     const rrweb = await import('rrweb');
-    const channel = supabase.channel(`mirror-${userId}`);
+    const channel = supabase.channel(`mirror-${userId}`, {
+      config: { presence: { key: `c-${Math.random().toString(36).slice(2, 8)}` } },
+    });
     let queue = [];
     let stopRecord = null;
     let flushTimer = null;
+    let recording = false;
+    let stopGrace = null;
+    let idleGuard = null;
 
-    const stopAll = () => {
+    const pauseRec = () => {
+      recording = false;
       try {
         if (stopRecord) stopRecord();
-        if (flushTimer) clearInterval(flushTimer);
+      } catch {}
+      stopRecord = null;
+      if (flushTimer) clearInterval(flushTimer);
+      flushTimer = null;
+      queue = [];
+    };
+
+    const stopAll = () => {
+      pauseRec();
+      try {
+        if (stopGrace) clearTimeout(stopGrace);
+        if (idleGuard) clearTimeout(idleGuard);
         supabase.removeChannel(channel);
       } catch {}
       streaming = false;
@@ -69,7 +92,55 @@ async function startStreaming(userId, onStopped) {
       if (onStopped) onStopped();
     };
 
+    const startRec = () => {
+      if (recording) return;
+      recording = true;
+      if (idleGuard) {
+        clearTimeout(idleGuard);
+        idleGuard = null;
+      }
+      stopRecord = rrweb.record({
+        emit(event) {
+          queue.push(event);
+        },
+        maskAllInputs: true,
+        sampling: { mousemove: 200, scroll: 150, media: 800 },
+      });
+      flushTimer = setInterval(() => {
+        if (!queue.length) return;
+        const batch = queue;
+        queue = [];
+        sendChunked(channel, batch);
+      }, 1000);
+    };
+
+    const adminPresente = () => {
+      try {
+        const st = channel.presenceState();
+        return Object.values(st).some((metas) =>
+          (metas || []).some((m) => m.role === 'admin')
+        );
+      } catch {
+        return false;
+      }
+    };
+
     channel
+      // grava SÓ com o admin olhando; ele sumiu 15s → para sozinho
+      .on('presence', { event: 'sync' }, () => {
+        if (adminPresente()) {
+          if (stopGrace) {
+            clearTimeout(stopGrace);
+            stopGrace = null;
+          }
+          startRec();
+        } else if (recording && !stopGrace) {
+          stopGrace = setTimeout(() => {
+            stopGrace = null;
+            if (!adminPresente()) stopAll();
+          }, 15000);
+        }
+      })
       // admin pede um snapshot novo (entrou atrasado na transmissão)
       .on('broadcast', { event: 'resnap' }, () => {
         try {
@@ -79,20 +150,12 @@ async function startStreaming(userId, onStopped) {
       // admin desligou a chave — para tudo na hora
       .on('broadcast', { event: 'stop' }, stopAll)
       .subscribe((status) => {
-        if (status !== 'SUBSCRIBED' || stopRecord) return;
-        stopRecord = rrweb.record({
-          emit(event) {
-            queue.push(event);
-          },
-          maskAllInputs: true,
-          sampling: { mousemove: 200, scroll: 150, media: 800 },
-        });
-        flushTimer = setInterval(() => {
-          if (!queue.length) return;
-          const batch = queue;
-          queue = [];
-          sendChunked(channel, batch);
-        }, 1000);
+        if (status !== 'SUBSCRIBED') return;
+        // se ninguém aparecer pra assistir em 3min, desiste (evita canal
+        // aberto à toa por chave esquecida)
+        idleGuard = setTimeout(() => {
+          if (!recording) stopAll();
+        }, 180000);
       });
   } catch {
     streaming = false;
@@ -107,15 +170,11 @@ export async function initLiveMirror(userId) {
       if (streaming) return;
       if (document.visibilityState !== 'visible') return;
       if (await flagLigada(userId)) {
-        startStreaming(userId, () => {
-          /* stopAll já devolveu streaming=false; o intervalo segue vigiando */
-        });
+        startStreaming(userId, () => {});
       }
     };
     await tick();
-    // 20s de vigília (consulta por PK, mais leve que o heartbeat de 3s do
-    // /watch) + checagem IMEDIATA quando a pessoa volta pro app (no celular
-    // "abrir o app de novo" costuma ser só a aba voltando a ficar visível).
+    // 20s de vigília + checagem imediata quando a pessoa volta pro app
     setInterval(tick, 20000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') tick();

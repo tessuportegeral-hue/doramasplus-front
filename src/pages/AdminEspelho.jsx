@@ -18,7 +18,19 @@ const AdminEspelho = () => {
   const [status, setStatus] = useState('parado'); // parado | ligando | aguardando | transmitindo
   const [info, setInfo] = useState('');
   const containerRef = useRef(null);
-  const stRef = useRef({ channel: null, replayer: null, buffer: [], parts: {}, userId: null });
+  const stRef = useRef({ channel: null, replayer: null, buffer: [], parts: {}, userId: null, email: null });
+
+  // desliga a chave no banco sem mexer na UI (usado na saída automática)
+  const apagarChave = () => {
+    const st = stRef.current;
+    if (!st.email) return;
+    try {
+      if (st.channel) st.channel.send({ type: 'broadcast', event: 'stop', payload: {} });
+    } catch {}
+    try {
+      supabase.rpc('admin_mirror_set', { p_email: st.email, p_enabled: false });
+    } catch {}
+  };
 
   const cleanup = () => {
     const st = stRef.current;
@@ -29,10 +41,22 @@ const AdminEspelho = () => {
       if (st.replayer && st.replayer.destroy) st.replayer.destroy();
     } catch {}
     if (containerRef.current) containerRef.current.innerHTML = '';
-    stRef.current = { channel: null, replayer: null, buffer: [], parts: {}, userId: null };
+    stRef.current = { channel: null, replayer: null, buffer: [], parts: {}, userId: null, email: null };
   };
 
-  useEffect(() => () => cleanup(), []);
+  // ✅ AUTO-DESLIGA: saiu da página (troca de aba do painel) ou fechou o
+  // navegador → chave apagada e transmissão cortada. Mesmo que o rpc do
+  // beforeunload não complete, o cliente para sozinho em ~15s porque a
+  // PRESENÇA do admin some do canal (e a chave expira em 2h por garantia).
+  useEffect(() => {
+    const onBeforeUnload = () => apagarChave();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      apagarChave();
+      cleanup();
+    };
+  }, []);
 
   const handleEvent = (e) => {
     const st = stRef.current;
@@ -97,12 +121,17 @@ const AdminEspelho = () => {
       return;
     }
     stRef.current.userId = data.user_id;
-    setInfo(`Espelho LIGADO para ${data.name || email}. Peça pro cliente abrir o site (ou recarregar) — a tela aparece aqui.`);
-    const ch = supabase.channel(`mirror-${data.user_id}`);
+    stRef.current.email = email;
+    setInfo(`Espelho LIGADO para ${data.name || email}. Se a pessoa estiver com o site aberto, conecta em segundos; senão, na próxima vez que ela abrir.`);
+    const ch = supabase.channel(`mirror-${data.user_id}`, {
+      config: { presence: { key: 'admin' } },
+    });
     ch.on('broadcast', { event: 'evts' }, ({ payload }) => onEvts(payload)).subscribe(
       (s) => {
         if (s === 'SUBSCRIBED') {
           setStatus('aguardando');
+          // marca presença: o cliente só transmite ENQUANTO o admin está aqui
+          ch.track({ role: 'admin' });
           // se o cliente JÁ estiver transmitindo, pede um snapshot novo
           ch.send({ type: 'broadcast', event: 'resnap', payload: {} });
         }
@@ -187,7 +216,8 @@ const AdminEspelho = () => {
         <p className="text-xs text-slate-500">
           O vídeo do player não aparece no espelho (limitação técnica) — mas toda a
           navegação, telas, loadings e erros aparecem. Campos digitados vêm
-          mascarados. Lembre de DESLIGAR ao terminar o atendimento.
+          mascarados. Ao sair desta página o espelho DESLIGA SOZINHO (a
+          transmissão só roda enquanto você está aqui olhando).
         </p>
       </div>
     </div>
