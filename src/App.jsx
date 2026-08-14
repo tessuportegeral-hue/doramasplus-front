@@ -43,6 +43,15 @@ const Signup = lazy(() => import('@/pages/Signup'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const DoramaDetail = lazy(() => import('@/pages/DoramaDetail'));
 const DoramaWatch = lazy(() => import('@/pages/DoramaWatch'));
+// ✅ 13/08 (INP, dose fina) — o searchQuery mora no App: cada tecla
+// (debounced) re-renderizava o App INTEIRO, e com ele a rota atual — no
+// /watch isso era um commit de 1,2-1,6s (LoAF pós-29b1b033: os chunks
+// restantes do scheduler eram quase todos "digitou na busca estando no
+// player/detalhe"). Com o shell memoizado (zero props), o re-render do App
+// não desce mais pra essas páginas pesadas; mudança de rota/params continua
+// funcionando normal porque vem por CONTEXTO do React Router, não por prop.
+const MemoDoramaDetail = React.memo(() => <DoramaDetail />);
+const MemoDoramaWatch = React.memo(() => <DoramaWatch />);
 const SubscriptionPlans = lazy(() => import('@/pages/SubscriptionPlans'));
 const CheckoutSuccess = lazy(() => import('@/pages/CheckoutSuccess'));
 const CheckoutCanceled = lazy(() => import('@/pages/CheckoutCanceled'));
@@ -507,10 +516,10 @@ function App() {
                 <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* 🔓 DETALHE DO DORAMA PÚBLICO */}
-                <Route path="/dorama/:id" element={<DoramaDetail />} />
+                <Route path="/dorama/:id" element={<MemoDoramaDetail />} />
 
                 {/* 🎬 PLAYER (gate fica DENTRO da página) */}
-                <Route path="/dorama/:id/watch" element={<DoramaWatch />} />
+                <Route path="/dorama/:id/watch" element={<MemoDoramaWatch />} />
 
                 {/* Categorias (mantidas protegidas, igual antes) */}
                 <Route
