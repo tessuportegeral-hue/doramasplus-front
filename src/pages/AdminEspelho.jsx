@@ -10,6 +10,7 @@ import { Replayer } from 'rrweb';
 import 'rrweb/dist/style.css';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
+import AdminTabs from '@/components/AdminTabs';
 import { Monitor, Power, Loader2 } from 'lucide-react';
 
 const AdminEspelho = () => {
@@ -123,8 +124,9 @@ const AdminEspelho = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <AdminTabs />
+      <div className="max-w-5xl mx-auto space-y-6 p-4 md:p-8">
         <div className="flex items-center gap-3">
           <Monitor className="w-7 h-7 text-purple-400" />
           <h1 className="text-2xl font-bold">Modo Espelho — ver a tela do cliente ao vivo</h1>
