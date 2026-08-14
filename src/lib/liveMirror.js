@@ -1,18 +1,21 @@
 // Modo Espelho (14/08/2026) — transmissor do lado do CLIENTE.
 //
 // Só entra em ação pro usuário que o admin marcou em live_mirror_flags
-// (RLS: cada um só lê a própria chave). Pra todo o resto do tráfego o custo
-// é UMA consulta leve por sessão, feita depois do load+idle — o rrweb (a
-// parte pesada) só é baixado por import dinâmico se a chave estiver ligada,
-// então não engorda o bundle nem o INP de ninguém (lição do fbevents).
+// (RLS: cada um só lê a própria chave). Custo pro tráfego normal: uma
+// consulta leve pós-load+idle e depois 1 re-checagem por minuto (só com a
+// aba visível — mesmo espírito do heartbeat de 3s que o /watch já faz).
+// Assim o admin liga a chave no painel e a transmissão começa SOZINHA em
+// até ~60s, sem pedir pro cliente recarregar. O rrweb (parte pesada) só é
+// baixado por import dinâmico quando a chave está ligada — não engorda o
+// bundle nem o INP de ninguém (lição do fbevents).
 //
 // Transporte: Supabase Realtime BROADCAST (canal efêmero `mirror-<uuid>`,
 // pub/sub puro — NÃO toca banco/WAL, nada a ver com o incidente do
-// playback_sessions). Lotes a cada 1s, fatiados em pedaços de ~100KB
-// (o snapshot inicial do DOM pode ser grande).
+// playback_sessions). Lotes a cada 1s, fatiados em pedaços de ~100KB.
 import { supabase } from '@/lib/supabaseClient';
 
-let started = false;
+let booted = false;
+let streaming = false;
 
 function sendChunked(channel, events) {
   try {
@@ -32,17 +35,23 @@ function sendChunked(channel, events) {
   }
 }
 
-export async function initLiveMirror(userId) {
-  if (started || !userId) return;
-  started = true;
+async function flagLigada(userId) {
   try {
     const { data } = await supabase
       .from('live_mirror_flags')
       .select('enabled')
       .eq('user_id', userId)
       .maybeSingle();
-    if (!data?.enabled) return;
+    return !!data?.enabled;
+  } catch {
+    return false;
+  }
+}
 
+async function startStreaming(userId, onStopped) {
+  if (streaming) return;
+  streaming = true;
+  try {
     const rrweb = await import('rrweb');
     const channel = supabase.channel(`mirror-${userId}`);
     let queue = [];
@@ -55,6 +64,9 @@ export async function initLiveMirror(userId) {
         if (flushTimer) clearInterval(flushTimer);
         supabase.removeChannel(channel);
       } catch {}
+      streaming = false;
+      // volta pra vigília: se o admin religar depois, retoma sozinho
+      if (onStopped) onStopped();
     };
 
     channel
@@ -82,6 +94,26 @@ export async function initLiveMirror(userId) {
           sendChunked(channel, batch);
         }, 1000);
       });
+  } catch {
+    streaming = false;
+  }
+}
+
+export async function initLiveMirror(userId) {
+  if (booted || !userId) return;
+  booted = true;
+  try {
+    const tick = async () => {
+      if (streaming) return;
+      if (document.visibilityState !== 'visible') return;
+      if (await flagLigada(userId)) {
+        startStreaming(userId, () => {
+          /* stopAll já devolveu streaming=false; o intervalo segue vigiando */
+        });
+      }
+    };
+    await tick();
+    setInterval(tick, 60000);
   } catch {
     /* espelho nunca pode quebrar a página */
   }
