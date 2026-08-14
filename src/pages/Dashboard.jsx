@@ -769,9 +769,15 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     if (doramaIndexLoadingRef.current) return;
     doramaIndexLoadingRef.current = true;
     try {
+      // ✅ 14/08 (INP round 23) — SEM description: era o grosso do payload
+      // (~2MB) e o parse da resposta travava 1,3s a thread no meio da
+      // digitação (LoAF: Response.text.then). O typo-match do Fuse fica só
+      // por título (peso 0.8 já era; description com peso 0.2 quase não
+      // decidia nada — e busca por descrição o banco já cobre no caminho
+      // principal via search_doramas_ranked).
       const { data } = await supabase
         .from("doramas")
-        .select("id,slug,title,description,created_at,cover_url,language,is_featured,is_new")
+        .select("id,slug,title,created_at,cover_url,language,is_featured,is_new")
         .order("title");
       if (data) doramaIndexRef.current = data;
     } finally {
@@ -1044,11 +1050,14 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     setSearchLoading(true);
     setSearchError(false);
 
+    // ✅ 14/08 (INP round 23) — aquece o índice do fallback em paralelo já na
+    // primeira tecla (sem await): quando/se o banco devolver 0 resultado, o
+    // índice já chegou e o parse não acontece no meio da digitação.
+    ensureDoramaIndex();
+
     const fuseOptions = {
-      keys: [
-        { name: "title", weight: 0.8 },
-        { name: "description", weight: 0.2 },
-      ],
+      // ✅ 14/08 — só título: description saiu do índice (ver ensureDoramaIndex)
+      keys: [{ name: "title", weight: 1 }],
       threshold: 0.4,
       ignoreLocation: true,
       minMatchCharLength: 2,
