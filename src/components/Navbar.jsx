@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 're
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import PedirDoramaPopover from '@/components/PedirDoramaPopover';
+import { gaInit, gaPageView } from '@/lib/ga';
 import {
   User,
   LogOut,
@@ -132,6 +133,13 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
     })();
     return () => { cancelled = true; };
   }, [user]);
+
+  // ✅ GA4 (14/08) — mesmo padrão performático do pixel: stub imediato,
+  // script no load+idle; page_view manual por rota (SPA).
+  useEffect(() => {
+    gaInit();
+    gaPageView(location.pathname);
+  }, [location.pathname]);
 
   // ✅ META PIXEL — carrega 1x, re-init quando email/telefone mudarem (Advanced Matching)
   useEffect(() => {
