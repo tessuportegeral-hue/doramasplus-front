@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { toast } from '@/components/ui/use-toast';
+import { optimizeCover } from '@/lib/optimizeCover';
 
 // Views fictícios determinísticos a partir do id (djb2), entre 1300 e 3500
 const generateViews = (id) => {
@@ -119,7 +120,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       <div className="relative aspect-[2/3] overflow-hidden bg-slate-950 rounded-t-[12px]">
         {coverUrl ? (
           <img
-            src={coverUrl}
+            src={optimizeCover(coverUrl, 300)}
             alt={dorama.title}
             className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-110"
             loading="lazy"

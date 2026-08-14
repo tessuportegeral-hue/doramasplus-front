@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
 import { noteSearchState, noteSectionState } from "@/lib/reportWebVitals";
+import { optimizeCover } from "@/lib/optimizeCover";
 import useDebouncedField from "@/hooks/useDebouncedField";
 import { playStoreUrl } from "@/lib/playStoreLink";
 import Fuse from "fuse.js";
@@ -185,7 +186,9 @@ const HeroSection = ({ featuredDoramas, loading }) => {
       if (!first) return;
       const url =
         first.banner_url || first.cover_url || first.thumbnail_url || "";
-      if (url) localStorage.setItem("dp_last_hero_url", url);
+      // ✅ 14/08 (LCP) — salva já a URL OTIMIZADA (mesma do src do hero
+      // mobile) pra o preload do main.jsx acertar o cache byte a byte.
+      if (url) localStorage.setItem("dp_last_hero_url", optimizeCover(url, 828));
       localStorage.setItem(
         "dp_featured_cache",
         JSON.stringify(featuredDoramas.slice(0, 6))
@@ -236,7 +239,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
       <div className="md:hidden relative w-full h-full">
         {bannerUrl ? (
           <img
-            src={bannerUrl}
+            src={optimizeCover(bannerUrl, 828)}
             alt={current.title}
             className="absolute inset-0 w-full h-full object-cover"
             decoding="async"
@@ -309,7 +312,7 @@ const HeroSection = ({ featuredDoramas, loading }) => {
           >
             {bannerUrl ? (
               <img
-                src={bannerUrl}
+                src={optimizeCover(bannerUrl, 1600)}
                 alt={current.title}
                 className="w-full h-full object-cover"
                 decoding="async"

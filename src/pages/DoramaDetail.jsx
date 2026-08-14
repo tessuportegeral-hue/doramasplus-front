@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { optimizeCover } from '@/lib/optimizeCover';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Play, Heart } from 'lucide-react';
@@ -233,7 +234,7 @@ export default function DoramaDetail() {
               {dorama.cover_url && (
                 <div className="aspect-[2/3] rounded-2xl overflow-hidden border border-slate-800 shadow-lg max-w-sm mx-auto bg-slate-900">
                   <img
-                    src={dorama.cover_url}
+                    src={optimizeCover(dorama.cover_url, 600)}
                     alt={`Capa de ${dorama.title}`}
                     width={400}
                     height={600}
