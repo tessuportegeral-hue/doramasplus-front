@@ -69,9 +69,9 @@ const LiveMirrorAgent = () => {
     };
     const onIdle = () => {
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(kick, { timeout: 8000 });
+        requestIdleCallback(kick, { timeout: 2500 });
       } else {
-        setTimeout(kick, 4000);
+        setTimeout(kick, 2000);
       }
     };
     if (document.readyState === 'complete') onIdle();

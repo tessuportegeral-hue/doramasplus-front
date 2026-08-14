@@ -113,7 +113,13 @@ export async function initLiveMirror(userId) {
       }
     };
     await tick();
-    setInterval(tick, 60000);
+    // 20s de vigília (consulta por PK, mais leve que o heartbeat de 3s do
+    // /watch) + checagem IMEDIATA quando a pessoa volta pro app (no celular
+    // "abrir o app de novo" costuma ser só a aba voltando a ficar visível).
+    setInterval(tick, 20000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') tick();
+    });
   } catch {
     /* espelho nunca pode quebrar a página */
   }
