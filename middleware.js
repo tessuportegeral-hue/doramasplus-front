@@ -37,6 +37,42 @@ const SUPABASE_ANON_KEY =
 const BOT_UA_RE =
   /bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegrambot|slackbot|discordbot|linkedinbot|pinterest|embedly|quora link preview|showyoubot|outbrain|w3c_validator|redditbot|applebot/i;
 
+// ✅ 14/08 — telemetria dos crawlers: registra QUEM está lendo as páginas
+// de dorama (Googlebot, GPTBot/ChatGPT, ClaudeBot, PerplexityBot...) em
+// ai_crawler_hits. Fire-and-forget: nunca atrasa a resposta.
+function botLabel(ua) {
+  const u = (ua || "").toLowerCase();
+  if (u.includes("gptbot") || u.includes("oai-searchbot") || u.includes("chatgpt")) return "chatgpt";
+  if (u.includes("claudebot") || u.includes("claude-web") || u.includes("anthropic")) return "claude";
+  if (u.includes("perplexity")) return "perplexity";
+  if (u.includes("googlebot")) return "google";
+  if (u.includes("bingbot")) return "bing";
+  if (u.includes("bytespider")) return "bytedance";
+  if (u.includes("meta-external")) return "meta-ai";
+  if (u.includes("amazonbot")) return "amazon";
+  if (u.includes("applebot")) return "apple";
+  if (u.includes("facebookexternalhit") || u.includes("whatsapp") || u.includes("telegrambot")) return "preview-link";
+  return "outro";
+}
+
+function logCrawlerHit(context, ua, path) {
+  try {
+    const p = fetch(`${SUPABASE_URL}/rest/v1/ai_crawler_hits`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ bot: botLabel(ua), path, user_agent: (ua || "").slice(0, 300) }),
+    }).catch(() => {});
+    if (context && typeof context.waitUntil === "function") context.waitUntil(p);
+  } catch {
+    /* telemetria nunca pode atrasar/derrubar a resposta */
+  }
+}
+
 function passThrough() {
   // Protocolo cru do Vercel Edge Middleware pra "continua o processamento
   // normal" (equivalente ao helper next() de @vercel/edge, sem precisar
@@ -117,7 +153,7 @@ function buildSeoShell(shellHtml, dorama, canonicalUrl) {
   return html;
 }
 
-export default async function middleware(request) {
+export default async function middleware(request, context) {
   const url = new URL(request.url);
   const match = url.pathname.match(/^\/dorama\/([^/]+)\/?$/);
   if (!match) return passThrough();
@@ -127,6 +163,8 @@ export default async function middleware(request) {
 
   const ua = request.headers.get("user-agent") || "";
   if (!BOT_UA_RE.test(ua)) return passThrough();
+
+  logCrawlerHit(context, ua, url.pathname);
 
   try {
     const doramaRows = await supabaseSelect(
