@@ -1,5 +1,5 @@
 // src/pages/Dashboard.jsx
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, startTransition } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1077,7 +1077,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
 
         if (dbResults.length > 0) {
           // Banco já veio ordenado por relevância — usa direto.
-          setSearchResults(dbResults);
+          // ✅ 14/08 (INP round 22) — startTransition: o commit dos resultados
+          // chega de um callback async, fora da transição do debounce, e o
+          // render do grid rodava em bloco único de ~1,6s no scheduler
+          // (LoAF: "V" via MessagePort.onmessage) segurando a tecla seguinte
+          // (inputDelay 1,3-1,7s). Como transição, a tecla nova interrompe.
+          startTransition(() => setSearchResults(dbResults));
         } else {
           // Banco não encontrou nada — Fuse no índice completo (typos).
           // Carrega o índice na demanda (1ª busca paga o custo, demais reusam).
@@ -1087,7 +1092,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           if (index.length > 0) {
             const fuse = new Fuse(index, { ...fuseOptions, threshold: 0.35 });
             const hits = fuse.search(normalizeText(q));
-            setSearchResults(hits.map((r) => r.item));
+            startTransition(() => setSearchResults(hits.map((r) => r.item)));
           } else {
             setSearchResults([]);
           }
