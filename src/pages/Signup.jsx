@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/use-toast';
 import { signUp } from '@/lib/auth';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/supabaseClient';
+import { gaEvent } from '@/lib/ga';
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -148,6 +149,10 @@ const Signup = () => {
       } catch {
         // silencioso: não deixa isso atrapalhar criação da conta
       }
+
+      // ✅ 14/08 — funil do GA4: conta criada com sucesso (os dois caminhos
+      // abaixo passam por aqui). Fire-and-forget, nunca atrapalha o fluxo.
+      gaEvent('sign_up', { method: 'email' });
 
       if (data?.session) {
         toast({

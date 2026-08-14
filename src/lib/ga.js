@@ -46,6 +46,17 @@ export function gaInit() {
   }
 }
 
+// Evento de conversão/funil (sign_up, purchase...) — enfileira no stub se o
+// script ainda não chegou, nada se perde.
+export function gaEvent(name, params) {
+  try {
+    if (typeof window === 'undefined' || !window.gtag) return;
+    window.gtag('event', name, params || {});
+  } catch {
+    /* analytics nunca pode quebrar a página */
+  }
+}
+
 export function gaPageView(path) {
   try {
     if (typeof window === 'undefined' || !window.gtag) return;

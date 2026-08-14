@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
+import { gaEvent } from "@/lib/ga";
 
 const CheckoutSuccess = () => {
   const location = useLocation();
@@ -93,6 +94,18 @@ const CheckoutSuccess = () => {
   const isChecking = status === "checking";
   const isActive = status === "active";
   const isPending = status === "pending";
+
+  // ✅ 14/08 — funil do GA4: dispara "purchase" UMA vez quando a assinatura
+  // confirma ativa nesta tela (guarda em sessionStorage pra reload não
+  // duplicar). Só telemetria — zero mudança na lógica de pagamento.
+  useEffect(() => {
+    if (!isActive) return;
+    try {
+      if (sessionStorage.getItem("dp_ga_purchase_sent")) return;
+      sessionStorage.setItem("dp_ga_purchase_sent", "1");
+      gaEvent("purchase", { currency: "BRL" });
+    } catch {}
+  }, [isActive]);
 
   const titleText = useMemo(() => {
     if (isActive) return "Assinatura Confirmada!";
