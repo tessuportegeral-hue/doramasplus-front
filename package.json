@@ -35,6 +35,7 @@
     "react-dom": "18.2.0",
     "react-helmet": "^6.1.0",
     "react-router-dom": "^6.16.0",
+    "rrweb": "^2.1.1",
     "stripe": "^14.14.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

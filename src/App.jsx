@@ -16,7 +16,7 @@ import {
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Toaster } from '@/components/ui/toaster';
-import { AuthProvider } from '@/contexts/SupabaseAuthContext';
+import { AuthProvider, useAuth } from '@/contexts/SupabaseAuthContext';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import InstallAppBanner from '@/components/InstallAppBanner';
 import PushPermissionPrompt from '@/components/PushPermissionPrompt';
@@ -52,6 +52,33 @@ const DoramaWatch = lazy(() => import('@/pages/DoramaWatch'));
 // funcionando normal porque vem por CONTEXTO do React Router, não por prop.
 const MemoDoramaDetail = React.memo(() => <DoramaDetail />);
 const MemoDoramaWatch = React.memo(() => <DoramaWatch />);
+const AdminEspelho = lazy(() => import('@/pages/AdminEspelho'));
+
+// ✅ 14/08 — Modo Espelho: se o admin ligou a chave pra ESTE usuário
+// (live_mirror_flags), o app transmite a tela via Realtime broadcast.
+// Custo pra todo o resto do tráfego: 1 consulta leve pós-load+idle; o
+// rrweb só é baixado (import dinâmico) se a chave estiver ligada.
+const LiveMirrorAgent = () => {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user?.id) return;
+    const kick = () => {
+      import('@/lib/liveMirror')
+        .then((m) => m.initLiveMirror(user.id))
+        .catch(() => {});
+    };
+    const onIdle = () => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(kick, { timeout: 8000 });
+      } else {
+        setTimeout(kick, 4000);
+      }
+    };
+    if (document.readyState === 'complete') onIdle();
+    else window.addEventListener('load', onIdle, { once: true });
+  }, [user?.id]);
+  return null;
+};
 const SubscriptionPlans = lazy(() => import('@/pages/SubscriptionPlans'));
 const CheckoutSuccess = lazy(() => import('@/pages/CheckoutSuccess'));
 const CheckoutCanceled = lazy(() => import('@/pages/CheckoutCanceled'));
@@ -469,6 +496,7 @@ function App() {
           <ScrollToTopOnNavigate />
           <PasswordRecoveryRedirect />
           <TrafficSourceTracker />
+          <LiveMirrorAgent />
           <DoramasChat />
           <UpdateEmailGate />
           <BottomNav />
@@ -716,6 +744,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminSupport />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ 14/08 — MODO ESPELHO (ver tela do cliente ao vivo) */}
+                <Route
+                  path="/admin/espelho"
+                  element={
+                    <AdminRoute>
+                      <AdminEspelho />
                     </AdminRoute>
                   }
                 />
