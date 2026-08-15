@@ -655,7 +655,14 @@ const normalizeText = (str) =>
 // ✅ 07/08 — "Continuar Assistindo" sai daqui pra quem está logado, porque
 // virou a aba "Histórico" da barra inferior (BottomNav.jsx). Testado com
 // tesagencia antes; liberado geral pra todo usuário logado em 07/08.
-const Dashboard = ({ searchQuery, setSearchQuery }) => {
+// ✅ 15/08 (INP round 26) — searchQuery agora mora AQUI, não no App. Antes,
+// cada commit da busca re-renderizava o App inteiro (providers, DoramasChat,
+// BottomNav, InstallAppBanner, gates) e o Dashboard por prop; mesmo com as
+// seções em `hidden` (7e24078b), essa reconciliação em cascata era o `V` de
+// 1-1,7s que sobrou no LoAF. Só o Dashboard usa a busca — o Navbar recebe
+// dele. Assinatura mantida com defaults pra não quebrar quem ainda passar prop.
+const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) => {
+  const [searchQuery, setSearchQuery] = useState("");
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation(); // ✅ (ADICIONADO) para capturar ?src=

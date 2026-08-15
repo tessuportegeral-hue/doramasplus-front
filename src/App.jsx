@@ -4,7 +4,7 @@
 // Não muda lógica / rotas / auth / nada do funcionamento.
 // ============================================================
 
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -469,8 +469,8 @@ function RouteFallback() {
 }
 
 function App() {
-  const [searchQuery, setSearchQuery] = useState('');
-
+  // ✅ 15/08 (INP) — searchQuery saiu daqui pro Dashboard: o App não
+  // re-renderiza mais a cada busca (ver comentário no Dashboard.jsx).
   return (
     <>
       <SplashScreen />
@@ -510,10 +510,7 @@ function App() {
                 <Route
                   path="/"
                   element={
-                    <Dashboard
-                      searchQuery={searchQuery}
-                      setSearchQuery={setSearchQuery}
-                    />
+                    <Dashboard />
                   }
                 />
 
@@ -521,10 +518,7 @@ function App() {
                 <Route
                   path="/dashboard"
                   element={
-                    <Dashboard
-                      searchQuery={searchQuery}
-                      setSearchQuery={setSearchQuery}
-                    />
+                    <Dashboard />
                   }
                 />
 
