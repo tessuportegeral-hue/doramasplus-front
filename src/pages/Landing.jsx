@@ -64,7 +64,7 @@ const Landing = () => {
   return (
     <>
       <Helmet>
-        <title>DoramaStream - Assista seus Dramas Asiáticos Favoritos</title>
+        <title>DoramasPlus - Doramas Dublados e Legendados Online</title>
         <meta
           name="description"
           content="Assista aos melhores doramas coreanos e asiáticos online. Descubra novos shows, assista seus favoritos e nunca perca um episódio."
@@ -185,7 +185,7 @@ const Landing = () => {
               <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
                 <Play className="w-4 h-4 text-white fill-white ml-0.5" />
               </div>
-              <span className="text-xl font-bold text-white">DoramaStream</span>
+              <span className="text-xl font-bold text-white">DoramasPlus</span>
             </div>
             <p className="text-slate-500 text-sm">© {new Date().getFullYear()} DoramasPlus. Todos os direitos reservados.</p>
             <div className="mt-3">

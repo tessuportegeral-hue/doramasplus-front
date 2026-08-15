@@ -55,7 +55,7 @@ export default function Favoritos() {
   return (
     <>
       <Helmet>
-        <title>Meus Favoritos - DoramaStream</title>
+        <title>Meus Favoritos - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">

@@ -476,7 +476,7 @@ function App() {
       <SplashScreen />
 
       <Helmet>
-        <title>DoramaStream - Assista seus Dramas Asiáticos Favoritos</title>
+        <title>DoramasPlus - Doramas Dublados e Legendados Online</title>
 
         {/* ✅ Meta Domain Verification (Meta Business) */}
         <meta

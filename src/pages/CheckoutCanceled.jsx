@@ -10,7 +10,7 @@ const CheckoutCanceled = () => {
   return (
     <>
       <Helmet>
-        <title>Checkout Cancelado - DoramaStream</title>
+        <title>Checkout Cancelado - DoramasPlus</title>
       </Helmet>
       <div className="min-h-screen bg-slate-950">
         <Navbar isAuthenticated={true} />

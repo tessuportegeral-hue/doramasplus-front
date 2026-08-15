@@ -103,7 +103,7 @@ export default function Historico() {
   return (
     <>
       <Helmet>
-        <title>Meu Histórico - DoramaStream</title>
+        <title>Meu Histórico - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">

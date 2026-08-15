@@ -65,7 +65,7 @@ const AdminLogin = () => {
   return (
     <>
       <Helmet>
-        <title>Login Admin - DoramaStream</title>
+        <title>Login Admin - DoramasPlus</title>
       </Helmet>
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-sm">

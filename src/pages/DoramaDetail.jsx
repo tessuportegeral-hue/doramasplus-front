@@ -215,7 +215,7 @@ export default function DoramaDetail() {
     <>
       <Helmet>
         <title>{dorama.title ? `${dorama.title} - Detalhes` : 'Detalhes do Dorama'}</title>
-        <meta name="description" content={dorama.description || 'Assista doramas online no DoramaStream.'} />
+        <meta name="description" content={dorama.description || 'Assista doramas online no DoramasPlus.'} />
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 pb-12">

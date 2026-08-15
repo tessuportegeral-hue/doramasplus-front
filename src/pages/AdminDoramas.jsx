@@ -829,7 +829,7 @@ export default function AdminDoramas() {
   return (
     <>
       <Helmet>
-        <title>Painel Admin - DoramaStream</title>
+        <title>Painel Admin - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">

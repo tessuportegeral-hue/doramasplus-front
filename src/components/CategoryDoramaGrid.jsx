@@ -84,7 +84,7 @@ export default function CategoryDoramaGrid({
   return (
     <>
       <Helmet>
-        <title>{pageTitle} - DoramaStream</title>
+        <title>{pageTitle} - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">

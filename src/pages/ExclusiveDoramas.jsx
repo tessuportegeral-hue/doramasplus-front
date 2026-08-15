@@ -43,7 +43,7 @@ export default function ExclusiveDoramas() {
   return (
     <>
       <Helmet>
-        <title>Doramas Exclusivos - DoramaStream</title>
+        <title>Doramas Exclusivos - DoramasPlus</title>
       </Helmet>
 
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -58,7 +58,7 @@ export default function ExclusiveDoramas() {
                 Exclusivos
               </h1>
               <p className="text-slate-400 mt-2">
-                Conteúdo premium que você só encontra aqui no DoramaStream.
+                Conteúdo premium que você só encontra aqui no DoramasPlus.
               </p>
             </div>
 
