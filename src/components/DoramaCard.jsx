@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, startTransition } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, Calendar, Eye, ImageOff, Heart } from 'lucide-react';
@@ -100,7 +100,13 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
-      onClick={compact ? () => navigate(linkTarget) : undefined}
+      // ✅ 16/08 (INP) — navigate dentro de startTransition: o toque no card
+      // era um onclick síncrono (LoAF `yS` 130-325ms + presentation 400-600ms
+      // no mobile) — o React montava a rota nova antes de pintar o feedback do
+      // toque. Como transição, o frame do toque sai primeiro e a página nova
+      // vem interrompível (mesma prioridade que o <Link> já tem com
+      // v7_startTransition).
+      onClick={compact ? () => startTransition(() => navigate(linkTarget)) : undefined}
       className={
         compact
           ? `group relative rounded-[12px] overflow-hidden

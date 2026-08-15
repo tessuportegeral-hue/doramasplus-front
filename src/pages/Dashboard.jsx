@@ -1,5 +1,5 @@
 // src/pages/Dashboard.jsx
-import React, { useEffect, useState, useCallback, useRef, startTransition } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo, startTransition } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -655,6 +655,70 @@ const normalizeText = (str) =>
 // ✅ 07/08 — "Continuar Assistindo" sai daqui pra quem está logado, porque
 // virou a aba "Histórico" da barra inferior (BottomNav.jsx). Testado com
 // tesagencia antes; liberado geral pra todo usuário logado em 07/08.
+// ---------------- BANNER ROTATIVO DA HOME ----------------
+// ✅ 16/08 (INP) — isolado do Dashboard: o setInterval de 10s re-renderiza
+// SÓ este componente. `banners` vem memoizado do pai (useMemo), então o
+// React.memo segura re-renders vindos de cima também.
+const HomeBannerRotator = React.memo(function HomeBannerRotator({ banners, showBottomNav }) {
+  const [bannerIndex, setBannerIndex] = useState(0);
+
+  useEffect(() => {
+    if (!banners || banners.length < 2) return;
+    const id = setInterval(() => {
+      setBannerIndex((i) => (i + 1) % banners.length);
+    }, 10000);
+    return () => clearInterval(id);
+  }, [banners]);
+
+  if (!banners || banners.length === 0) return null;
+  const banner = banners[bannerIndex % banners.length];
+  const Icon = banner.icon;
+
+  return (
+    <div className={showBottomNav ? "mb-2 md:mb-3" : "mb-4 md:mb-6"}>
+      <div className="group relative w-full rounded-xl">
+        {/* brilho pulsante atrás do banner — muda de cor com o slide atual */}
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r ${banner.glow || "from-purple-600 via-fuchsia-500 to-pink-500"} opacity-70 blur-lg animate-pulse transition-colors duration-500`}
+        />
+
+        {/* conteúdo (alterna entre os banners) */}
+        <div className="relative h-[84px] md:h-[96px] overflow-hidden rounded-xl">
+          <AnimatePresence mode="wait">
+            <motion.button
+              key={bannerIndex}
+              type="button"
+              onClick={banner.onClick}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+              className={`absolute inset-0 flex items-center gap-3 rounded-xl bg-gradient-to-r ${banner.gradient || "from-purple-600 via-fuchsia-600 to-pink-600"} px-4 py-3 md:px-5 md:py-4 text-left ring-1 ring-white/20 shadow-lg shadow-black/20 focus:outline-none focus:ring-2 focus:ring-white/40`}
+            >
+              <span className="flex-1 min-w-0">
+                <span className="block font-bold text-white text-base md:text-lg truncate">
+                  {banner.title}
+                </span>
+                <span className="block text-sm text-white/90 mt-0.5 truncate">
+                  {banner.subtitle}
+                </span>
+                {banner.note && (
+                  <span className="block text-[11px] md:text-xs text-white/70 mt-0.5 truncate">
+                    {banner.note}
+                  </span>
+                )}
+              </span>
+
+              <Icon className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
+            </motion.button>
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // ✅ 15/08 (INP round 26) — searchQuery agora mora AQUI, não no App. Antes,
 // cada commit da busca re-renderizava o App inteiro (providers, DoramasChat,
 // BottomNav, InstallAppBanner, gates) e o Dashboard por prop; mesmo com as
@@ -1219,9 +1283,9 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
 
   const communityLink = "https://chat.whatsapp.com/Kp6dQuElfhrHWeuv1qUwtR";
 
-  const goCommunity = () => {
+  const goCommunity = useCallback(() => {
     window.open(communityLink, "_blank", "noopener,noreferrer");
-  };
+  }, [communityLink]);
 
   // ✅ 27/07: no Android, troca o slide da Dora por "baixar o app oficial"
   // (Play Store, agora com o assetlinks.json corrigido) — no iPhone não tem
@@ -1297,7 +1361,10 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
   // Carrossel de banners no topo da home (alterna a cada 5s)
   // ✅ 27/07: slide do app (Android) / Dora (iPhone) vem primeiro agora —
   // era o último, pedido pra dar mais destaque pro app.
-  const homeBanners = [
+  // ✅ 16/08 (INP) — memoizado: referência estável pro React.memo do
+  // HomeBannerRotator segurar (senão o array literal novo a cada render
+  // do Dashboard furaria o memo).
+  const homeBanners = useMemo(() => [
     // ✅ 07/08 — TESTE: pro tesagencia, slide "Pedir um dorama" vem primeiro
     // de todos — mais visível que um ícone no topo, pra gente parar de
     // levar pedido pelo WhatsApp.
@@ -1349,17 +1416,8 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
       onClick: () =>
         navigate(user ? "/indicar" : "/login?redirect=/indicar"),
     },
-  ];
-
-  const [bannerIndex, setBannerIndex] = useState(0);
-
-  useEffect(() => {
-    if (normalizedQuery) return; // banner some durante a busca
-    const id = setInterval(() => {
-      setBannerIndex((i) => (i + 1) % homeBanners.length);
-    }, 10000);
-    return () => clearInterval(id);
-  }, [normalizedQuery]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [showBottomNav, isAndroidDevice, user, navigate, goCommunity]);
 
   return (
     <>
@@ -1409,55 +1467,14 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
         )}
 
         {/* ✅ Carrossel de banners — logo abaixo da busca, acima do banner principal */}
+        {/* ✅ 16/08 (INP round 29) — banner rotativo isolado no próprio
+            componente: o bannerIndex morava aqui no Dashboard e trocava a cada
+            10s, re-renderizando o Dashboard INTEIRO (navbar, hero, 10 seções,
+            busca) só pra trocar um slide — um toque que caísse nessa janela
+            pagava esse commit (LoAF: `V` de ~300ms sem alvo). Agora o timer e
+            o índice vivem dentro do HomeBannerRotator (memo). */}
         {!normalizedQuery && (
-          <div className={showBottomNav ? "mb-2 md:mb-3" : "mb-4 md:mb-6"}>
-            <div className="group relative w-full rounded-xl">
-              {/* brilho pulsante atrás do banner — muda de cor com o slide atual */}
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none absolute -inset-0.5 rounded-xl bg-gradient-to-r ${homeBanners[bannerIndex].glow || "from-purple-600 via-fuchsia-500 to-pink-500"} opacity-70 blur-lg animate-pulse transition-colors duration-500`}
-              />
-
-              {/* conteúdo (alterna entre os banners) */}
-              <div className="relative h-[84px] md:h-[96px] overflow-hidden rounded-xl">
-                <AnimatePresence mode="wait">
-                  {(() => {
-                    const banner = homeBanners[bannerIndex];
-                    const Icon = banner.icon;
-                    return (
-                      <motion.button
-                        key={bannerIndex}
-                        type="button"
-                        onClick={banner.onClick}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -12 }}
-                        transition={{ duration: 0.4, ease: "easeInOut" }}
-                        className={`absolute inset-0 flex items-center gap-3 rounded-xl bg-gradient-to-r ${banner.gradient || "from-purple-600 via-fuchsia-600 to-pink-600"} px-4 py-3 md:px-5 md:py-4 text-left ring-1 ring-white/20 shadow-lg shadow-black/20 focus:outline-none focus:ring-2 focus:ring-white/40`}
-                      >
-                        <span className="flex-1 min-w-0">
-                          <span className="block font-bold text-white text-base md:text-lg truncate">
-                            {banner.title}
-                          </span>
-                          <span className="block text-sm text-white/90 mt-0.5 truncate">
-                            {banner.subtitle}
-                          </span>
-                          {banner.note && (
-                            <span className="block text-[11px] md:text-xs text-white/70 mt-0.5 truncate">
-                              {banner.note}
-                            </span>
-                          )}
-                        </span>
-
-                        <Icon className="w-5 h-5 shrink-0 text-white/90 transition-transform group-hover:translate-x-0.5" />
-                      </motion.button>
-                    );
-                  })()}
-                </AnimatePresence>
-              </div>
-
-            </div>
-          </div>
+          <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} />
         )}
 
         {/* ✅ 12/08 (blindagem CLS) — SLOT de altura fixa pro hero, presente

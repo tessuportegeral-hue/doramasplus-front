@@ -34,9 +34,12 @@ export function gaInit() {
     };
     const onIdle = () => {
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(inject, { timeout: 4000 });
+        // ✅ 16/08 (INP) — timeout 4s -> 10s: em celular fraco os 4s
+        // caíam bem na hora do 1º toque (LoAF: gtag setTimeout 230-367ms
+        // no inputDelay). Nada se perde: o stub enfileira até o script chegar.
+        requestIdleCallback(inject, { timeout: 10000 });
       } else {
-        setTimeout(inject, 2500);
+        setTimeout(inject, 6000);
       }
     };
     if (document.readyState === 'complete') onIdle();

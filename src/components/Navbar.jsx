@@ -179,9 +179,11 @@ const Navbar = ({ searchQuery = '', setSearchQuery = null }) => {
         };
         const onIdle = () => {
           if ('requestIdleCallback' in window) {
-            requestIdleCallback(injectPixelScript, { timeout: 4000 });
+            // ✅ 16/08 (INP) — 4s -> 10s, mesmo motivo do gtag (ga.js):
+            // config do pixel (~300ms) batia no 1º toque em celular fraco.
+            requestIdleCallback(injectPixelScript, { timeout: 10000 });
           } else {
-            setTimeout(injectPixelScript, 2500);
+            setTimeout(injectPixelScript, 6000);
           }
         };
         if (document.readyState === 'complete') {
