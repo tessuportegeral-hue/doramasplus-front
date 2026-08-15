@@ -1706,7 +1706,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
           </section>
         )}
 
-        {!normalizedQuery && (
+        {/* ✅ 15/08 (INP round 25) — as 10 fileiras NÃO desmontam mais na
+            busca: ficam escondidas via `hidden`. Desmontar+remontar centenas
+            de cards a cada busca/limpar era o bloco `V` de 1-3s do scheduler
+            que sobrou depois do cap de 24 (LoAF, carimbo e1e9e45e). Com
+            hidden, a árvore + o React.memo das seções sobrevivem intactos. */}
+        <div hidden={!!normalizedQuery}>
           <DoramaSection
             id="novos"
             title="Novos Lançamentos"
@@ -1718,9 +1723,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.new}
             onLoadMore={() => loadMoreCategory("new")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="dublados"
             title="Séries Dubladas"
@@ -1733,9 +1736,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.dubbed}
             onLoadMore={() => loadMoreCategory("dubbed")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="baby"
             title="Bebês e Gravidezes"
@@ -1747,9 +1748,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.baby}
             onLoadMore={() => loadMoreCategory("baby")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="taboo"
             title="Relacionamento Tabu"
@@ -1761,9 +1760,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.taboo}
             onLoadMore={() => loadMoreCategory("taboo")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="lobos-vampiros"
             title="Lobos & Vampiros"
@@ -1775,9 +1772,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.lobos_vampiros}
             onLoadMore={() => loadMoreCategory("lobos_vampiros")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="bl-gl"
             title="BL & GL"
@@ -1789,9 +1784,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.bl_gl}
             onLoadMore={() => loadMoreCategory("bl_gl")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="brasileiros"
             title="Brasileiros"
@@ -1803,9 +1796,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.brasileiro}
             onLoadMore={() => loadMoreCategory("brasileiro")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="animes"
             title="Animes"
@@ -1817,9 +1808,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.anime}
             onLoadMore={() => loadMoreCategory("anime")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="hidden"
             title="Identidade Escondida"
@@ -1831,9 +1820,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.hidden}
             onLoadMore={() => loadMoreCategory("hidden")}
           />
-        )}
 
-        {!normalizedQuery && (
           <DoramaSection
             id="recomendados"
             title="Recomendados Para Você"
@@ -1845,7 +1832,7 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
             loadingMore={loadingMore.recommended}
             onLoadMore={() => loadMoreCategory("recommended")}
           />
-        )}
+        </div>
       </main>
 
       {/* ✅ 07/08 — TESTE: pro tesagencia, some (já tem o link em Configurações) */}
