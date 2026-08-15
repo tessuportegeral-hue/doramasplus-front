@@ -758,6 +758,12 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
+  // ✅ 14/08 (INP round 24, a pedido do Stefano: "o certo é tá certo até em
+  // horário de pico") — a busca desenha no máximo 24 cards de primeira; o
+  // resto entra pelo botão "Mostrar mais". O LoAF mostrou chunks de 1,0-1,2s
+  // em celular fraco = volume do grid (até 80+ cards de uma vez).
+  const SEARCH_RENDER_CAP = 24;
+  const [searchShowAll, setSearchShowAll] = useState(false);
 
   // Índice de todos os doramas (1791 rows) — usado pelo Fuse quando o banco
   // não retorna nada (typos). Carregado SOB DEMANDA na primeira busca pra
@@ -1049,6 +1055,8 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
     let isCancelled = false;
     setSearchLoading(true);
     setSearchError(false);
+    // Consulta nova volta pro cap de 24 cards (o "Mostrar mais" é por busca)
+    setSearchShowAll(false);
 
     // ✅ 14/08 (INP round 23) — aquece o índice do fallback em paralelo já na
     // primeira tecla (sem await): quando/se o banco devolver 0 resultado, o
@@ -1563,11 +1571,27 @@ const Dashboard = ({ searchQuery, setSearchQuery }) => {
                 Nenhum dorama encontrado com esse termo. Tente outra palavra.
               </p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {searchResults.map((dorama, index) => (
-                  <DoramaCard key={dorama.id} dorama={dorama} index={index} hideYear />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {(searchShowAll
+                    ? searchResults
+                    : searchResults.slice(0, SEARCH_RENDER_CAP)
+                  ).map((dorama, index) => (
+                    <DoramaCard key={dorama.id} dorama={dorama} index={index} hideYear />
+                  ))}
+                </div>
+                {!searchShowAll && searchResults.length > SEARCH_RENDER_CAP && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => startTransition(() => setSearchShowAll(true))}
+                      className="px-6 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-sm font-semibold transition-colors"
+                    >
+                      Mostrar mais {searchResults.length - SEARCH_RENDER_CAP} resultado
+                      {searchResults.length - SEARCH_RENDER_CAP === 1 ? "" : "s"}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
