@@ -1009,14 +1009,26 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
     // shift de ~0,3 POR seção; em rede móvel instável — exatamente o
     // público com CLS ruim — fetch falha toda hora). Telemetria:
     // web_vitals_events, fileiras colapsando prev_h~280 → 0.
-    setDoramas((prev) => ({
-      ...prev,
-      [category]: data || prev[category] || [],
-    }));
-    if (CATEGORY_QUERIES[category]) {
-      setHasMore((prev) => ({ ...prev, [category]: (data || []).length === limit }));
-    }
-    setLoading((prev) => ({ ...prev, [category]: false }));
+    // ✅ 16/08 (INP round 30) — o commit de dados de cada fileira era URGENTE
+    // (setState após await = síncrono). As fileiras chegam em ondas de 3, e
+    // cada onda = 3 seções × ~20 cards com motion = o `V` de 800-1700ms que
+    // o LoAF mostrou nos primeiros 2-30s da home (a maioria dos toques ruins
+    // é nessa janela: cliente toca enquanto a home ainda monta). Como
+    // TRANSIÇÃO, um toque interrompe o commit da fileira e é atendido antes;
+    // a fileira termina de montar logo depois. Só o `featured` (hero = LCP)
+    // continua urgente: precisa pintar o mais cedo possível.
+    const commit = () => {
+      setDoramas((prev) => ({
+        ...prev,
+        [category]: data || prev[category] || [],
+      }));
+      if (CATEGORY_QUERIES[category]) {
+        setHasMore((prev) => ({ ...prev, [category]: (data || []).length === limit }));
+      }
+      setLoading((prev) => ({ ...prev, [category]: false }));
+    };
+    if (category === "featured") commit();
+    else startTransition(commit);
   }, []);
 
   // ✅ "Carregar mais" na fileira da home — pega a partir de onde já carregou
