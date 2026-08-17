@@ -1,5 +1,4 @@
 import React, { useMemo, startTransition } from 'react';
-import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Play, Calendar, Eye, ImageOff, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -96,10 +95,17 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
   // Tab pro mesmo destino — clique no resto do card continua funcionando
   // por mouse/toque via este onClick.
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index ? index * 0.1 : 0 }}
+    // ✅ 17/08 (INP round 31) — motion.div → div + animação CSS. O Framer
+    // rodava JS a CADA FRAME de CADA card (opacity+translateY com stagger de
+    // index*100ms = até 2,3s de timers por grid), e isso acontece toda vez
+    // que cards entram: cada tecla na busca (grid muda) e cada onda de
+    // fileiras da home. Era o `h` FrameRequestCallback + boa parte do `V` e
+    // do presentationDelay do LoAF em celular fraco. A animação de entrada
+    // continua igual visualmente, mas em @keyframes: zero JS por frame, o
+    // compositor anima sozinho e não segura toque. Stagger limitado a 8
+    // cards (800ms) — depois disso ninguém percebe e economiza timeline.
+    <div
+      style={{ animationDelay: `${Math.min(index || 0, 8) * 0.1}s` }}
       // ✅ 16/08 (INP) — navigate dentro de startTransition: o toque no card
       // era um onclick síncrono (LoAF `yS` 130-325ms + presentation 400-600ms
       // no mobile) — o React montava a rota nova antes de pintar o feedback do
@@ -109,11 +115,11 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
       onClick={compact ? () => startTransition(() => navigate(linkTarget)) : undefined}
       className={
         compact
-          ? `group relative rounded-[12px] overflow-hidden
+          ? `dp-card-in group relative rounded-[12px] overflow-hidden
              transition-all duration-250 ease-in-out
              hover:scale-[1.03]
              flex flex-col cursor-pointer`
-          : `group relative bg-slate-900 rounded-[12px] overflow-hidden
+          : `dp-card-in group relative bg-slate-900 rounded-[12px] overflow-hidden
              border border-slate-800
              shadow-lg shadow-black/30
              hover:border-purple-500/50
@@ -210,7 +216,7 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
           </Link>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 

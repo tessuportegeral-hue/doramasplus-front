@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ✅ 17/08 (INP) — entrada do DoramaCard em CSS puro (era framer-motion com
+   JS por frame em cada card). Só opacity+transform = compositor, sem layout
+   e sem thread principal. `both` mantém o estado final; o delay vem inline
+   (animationDelay por índice). Respeita quem pede menos movimento. */
+@keyframes dp-card-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dp-card-in {
+  animation: dp-card-in 0.3s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dp-card-in { animation: none; }
+}
+
 * {
   margin: 0;
   padding: 0;
