@@ -1581,13 +1581,20 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
         {/* ✅ BUSCA (agora é do BANCO, não das categorias) */}
         {normalizedQuery && (
           <section className="py-4 md:py-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xl md:text-2xl font-bold text-white">
+            {/* ✅ 17/08 (CLS) — cabeçalho da busca com geometria FIXA: no
+                mobile o título longo quebrava em 2 linhas e o contador
+                ("Buscando..." ↔ "30 encontrados") mudava de largura a cada
+                busca, re-quebrando a linha e empurrando o grid (shifts de
+                0,08-0,18 em text-purple-400 / text-sm text-slate-400 na
+                telemetria). Agora: título em 1 linha com truncate, contador
+                com largura mínima reservada e sem encolher, linha com min-h. */}
+            <div className="flex items-center justify-between gap-3 mb-3 min-h-[2.25rem]">
+              <h2 className="text-xl md:text-2xl font-bold text-white truncate min-w-0">
                 Resultados para:{" "}
                 <span className="text-purple-400">"{searchQuery}"</span>
               </h2>
 
-              <span className="text-sm text-slate-400">
+              <span className="text-sm text-slate-400 shrink-0 min-w-[7.5rem] text-right tabular-nums">
                 {searchLoading
                   ? "Buscando..."
                   : `${searchResults.length} encontrado${
