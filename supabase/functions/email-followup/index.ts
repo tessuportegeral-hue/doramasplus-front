@@ -52,9 +52,12 @@ Clica no botão abaixo e começa a assistir agora mesmo!
 <table cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr><td style="background:linear-gradient(135deg,#6c2bd9,#a855f7);border-radius:10px;">
 <a href="${APP_LINK}" style="display:inline-block;padding:14px 36px;color:#fff;font-size:16px;font-weight:700;text-decoration:none;">Assistir agora →</a>
 </td></tr></table>
+<table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;"><tr><td style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.4);border-radius:12px;padding:16px 18px;text-align:center;">
+<p style="margin:0 0 6px;color:#f3e8ff;font-size:16px;font-weight:800;">📱 Baixe o app oficial da DoramasPlus!</p>
+<a href="${PLAY_STORE_URL}" style="color:#c084fc;font-size:15px;font-weight:700;text-decoration:underline;">Baixar agora na Google Play →</a>
+</td></tr></table>
 <p style="margin:0 0 8px;color:#64748b;font-size:13px;">Dúvidas? Fale com a gente pelo WhatsApp: <a href="${SUPORTE_LINK}" style="color:#a855f7;">${SUPORTE_TEL}</a></p>
-<p style="margin:0 0 8px;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
-<p style="margin:0;color:#64748b;font-size:13px;">📱 Se for Android, baixe nosso app oficial: <a href="${PLAY_STORE_URL}" style="color:#a855f7;">Google Play</a></p>
+<p style="margin:0;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
 </td></tr>
 <tr><td style="background:#111827;padding:20px 40px;text-align:center;">
 <p style="margin:0;color:#475569;font-size:12px;">&copy; 2026 DoramasPlus &middot; Obrigado por assinar!</p>
@@ -76,21 +79,21 @@ const followupConfigs: Record<"email_signup_24h" | "email_signup_7d" | "email_re
   email_signup_24h: {
     subject: "Você ainda não ativou seu acesso ao DoramasPlus 💜",
     headline: "Ainda dá tempo!",
-    body: (name) => `Oi, <strong>${name}</strong>! 👋<br><br>Ontem você criou sua conta na DoramasPlus mas ainda não ativou seu acesso.<br><br>Aqui tem milhares de doramas dublados em português, qualidade HD, sem anúncios. 🎬<br><br>Por apenas <strong>R$16,90/mês</strong> você começa a assistir agora!`,
+    body: (name) => `Oi, <strong>${name}</strong>! 👋<br><br>Ontem você criou sua conta na DoramasPlus mas ainda não ativou seu acesso.<br><br>Aqui tem milhares de doramas dublados em português, qualidade HD, sem anúncios. 🎬<br><br>Por apenas <strong>R$17,90/mês</strong> você começa a assistir agora!`,
     cta: "Ativar meu acesso",
     windowStart: 23 * 60 * 60 * 1000, windowEnd: 25 * 60 * 60 * 1000,
   },
   email_signup_7d: {
     subject: "Uma semana e você ainda não conheceu o DoramasPlus 🎬",
     headline: "O que está te impedindo?",
-    body: (name) => `Oi, <strong>${name}</strong>! 👋<br><br>Faz uma semana que você criou sua conta na DoramasPlus e a gente ficou na dúvida...<br><br>Por apenas <strong>R$16,90/mês</strong> você tem acesso a milhares de doramas dublados em português. 💜<br><br>Cancela quando quiser, sem fidelidade!`,
+    body: (name) => `Oi, <strong>${name}</strong>! 👋<br><br>Faz uma semana que você criou sua conta na DoramasPlus e a gente ficou na dúvida...<br><br>Por apenas <strong>R$17,90/mês</strong> você tem acesso a milhares de doramas dublados em português. 💜<br><br>Cancela quando quiser, sem fidelidade!`,
     cta: "Quero conhecer o DoramasPlus",
     windowStart: 6 * 24 * 60 * 60 * 1000, windowEnd: 8 * 24 * 60 * 60 * 1000,
   },
   email_return_30d: {
     subject: "30 dias sem doramas... a gente sentiu sua falta 🥺",
     headline: "30 dias sem você por aqui!",
-    body: (name) => `Oi, <strong>${name}</strong>! 💜<br><br>Faz 30 dias que seu acesso ao DoramasPlus expirou e a gente sentiu muito sua falta.<br><br>Seu histórico ainda está salvo te esperando, e chegaram muitos doramas novos! 🎬<br><br>Volta por apenas <strong>R$16,90</strong> e continue de onde parou!`,
+    body: (name) => `Oi, <strong>${name}</strong>! 💜<br><br>Faz 30 dias que seu acesso ao DoramasPlus expirou e a gente sentiu muito sua falta.<br><br>Seu histórico ainda está salvo te esperando, e chegaram muitos doramas novos! 🎬<br><br>Volta por apenas <strong>R$17,90</strong> e continue de onde parou!`,
     cta: "Voltar ao DoramasPlus",
     windowStart: 29 * 24 * 60 * 60 * 1000, windowEnd: 31 * 24 * 60 * 60 * 1000,
   },
@@ -140,9 +143,12 @@ async function processFollowup(kind: "email_signup_24h" | "email_signup_7d" | "e
 <table cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr><td style="background:linear-gradient(135deg,#6c2bd9,#a855f7);border-radius:10px;">
 <a href="${PLANS_LINK}" style="display:inline-block;padding:14px 36px;color:#fff;font-size:16px;font-weight:700;text-decoration:none;">${config.cta} →</a>
 </td></tr></table>
+<table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;"><tr><td style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.4);border-radius:12px;padding:16px 18px;text-align:center;">
+<p style="margin:0 0 6px;color:#f3e8ff;font-size:16px;font-weight:800;">📱 Baixe o app oficial da DoramasPlus!</p>
+<a href="${PLAY_STORE_URL}" style="color:#c084fc;font-size:15px;font-weight:700;text-decoration:underline;">Baixar agora na Google Play →</a>
+</td></tr></table>
 <p style="margin:0 0 8px;color:#64748b;font-size:13px;">Dúvidas? Fale com a gente pelo WhatsApp: <a href="${SUPORTE_LINK}" style="color:#a855f7;">${SUPORTE_TEL}</a></p>
-<p style="margin:0 0 8px;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
-<p style="margin:0;color:#64748b;font-size:13px;">📱 Se for Android, baixe nosso app oficial: <a href="${PLAY_STORE_URL}" style="color:#a855f7;">Google Play</a></p>
+<p style="margin:0;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
 </td></tr>
 <tr><td style="background:#111827;padding:20px 40px;text-align:center;">
 <p style="margin:0;color:#475569;font-size:12px;">&copy; 2026 DoramasPlus &middot; Você recebe este email por ter se cadastrado em nossa plataforma.</p>
@@ -166,5 +172,7 @@ Deno.serve(async (req) => {
     const r7d     = await processFollowup("email_signup_7d");
     const r30d    = await processFollowup("email_return_30d");
     return new Response(JSON.stringify({ ok: true, email_welcome: welcome, email_signup_24h: r24h, email_signup_7d: r7d, email_return_30d: r30d }), { status: 200 });
-  } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 200 }); }
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 200 });
+  }
 });
