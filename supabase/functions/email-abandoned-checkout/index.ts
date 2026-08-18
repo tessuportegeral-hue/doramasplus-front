@@ -19,7 +19,7 @@ async function alreadySentToUserLast48h(userId: string): Promise<boolean> {
 
 async function sendEmail(to: string, name: string, plan: string): Promise<void> {
   const planLabel = plan === "quarterly" ? "Trimestral" : "Mensal";
-  const price = plan === "quarterly" ? "R$47,90" : "R$16,90";
+  const price = plan === "quarterly" ? "R$49,90" : "R$17,90";
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
 <body style="margin:0;padding:0;background:#0f0f0f;font-family:'Segoe UI',Arial,sans-serif;">
@@ -36,9 +36,12 @@ async function sendEmail(to: string, name: string, plan: string): Promise<void> 
 <table cellpadding="0" cellspacing="0" style="margin:0 auto 28px;"><tr><td style="background:linear-gradient(135deg,#6c2bd9,#a855f7);border-radius:10px;">
 <a href="${PLANS_LINK}" style="display:inline-block;padding:14px 36px;color:#fff;font-size:16px;font-weight:700;text-decoration:none;">Ativar meu acesso agora →</a>
 </td></tr></table>
+<table cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 20px;"><tr><td style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.4);border-radius:12px;padding:16px 18px;text-align:center;">
+<p style="margin:0 0 6px;color:#f3e8ff;font-size:16px;font-weight:800;">📱 Baixe o app oficial da DoramasPlus!</p>
+<a href="${PLAY_STORE_URL}" style="color:#c084fc;font-size:15px;font-weight:700;text-decoration:underline;">Baixar agora na Google Play →</a>
+</td></tr></table>
 <p style="margin:0 0 8px;color:#64748b;font-size:13px;">Dúvidas? Fale com a gente pelo WhatsApp: <a href="${SUPORTE_LINK}" style="color:#a855f7;">(18) 99679-6654</a></p>
-<p style="margin:0 0 8px;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
-<p style="margin:0;color:#64748b;font-size:13px;">📱 Se for Android, baixe nosso app oficial: <a href="${PLAY_STORE_URL}" style="color:#a855f7;">Google Play</a></p>
+<p style="margin:0;color:#64748b;font-size:13px;">Entre na nossa comunidade: <a href="${COMUNIDADE_LINK}" style="color:#a855f7;">clique aqui</a></p>
 </td></tr>
 <tr><td style="background:#111827;padding:20px 40px;text-align:center;">
 <p style="margin:0;color:#475569;font-size:12px;">&copy; 2026 DoramasPlus · Você está recebendo este email porque iniciou um pagamento em nossa plataforma.</p>
