@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
+import { fetchDoramaBySlug, fetchSlugRedirect } from '@/lib/doramaLookup';
 import { optimizeCover } from '@/lib/optimizeCover';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
@@ -143,14 +144,16 @@ export default function DoramaDetail() {
         // carga) não pode virar "dorama não encontrado" + noindex pro
         // Google — isso tira conteúdo real do índice (achado 27/07: doramas
         // recém-criados marcados como noindex mesmo existindo no banco).
+        //
+        // ✅ 17/08 — lookup via RPC/POST (fetchDoramaBySlug), não mais
+        // `.eq('slug')` em GET: o renderizador do Google reescrevia o
+        // timestamp do fim do slug na query string e a busca voltava vazia
+        // (causa real das 568 páginas "excluídas por noindex"). Detalhes em
+        // src/lib/doramaLookup.js.
         let data = null;
         let queryError = null;
         for (let attempt = 0; attempt < 3; attempt++) {
-          const res = await supabase
-            .from('doramas')
-            .select('*')
-            .eq('slug', normalizedSlug)
-            .maybeSingle();
+          const res = await fetchDoramaBySlug(normalizedSlug);
           data = res.data;
           queryError = res.error;
           if (!queryError && data) break;
@@ -166,14 +169,10 @@ export default function DoramaDetail() {
           // com 301 real antes do React nem carregar, mas em dev local
           // (`vite dev` não roda o middleware do Vercel) e como defesa em
           // profundidade, confere aqui também se é um slug antigo renomeado.
-          const { data: redirectRow } = await supabase
-            .from('slug_redirects')
-            .select('new_slug')
-            .eq('old_slug', normalizedSlug)
-            .maybeSingle();
+          const { data: redirectSlug } = await fetchSlugRedirect(normalizedSlug);
 
-          if (redirectRow?.new_slug) {
-            navigate(`/dorama/${redirectRow.new_slug}`, { replace: true });
+          if (redirectSlug) {
+            navigate(`/dorama/${redirectSlug}`, { replace: true });
             return;
           }
           setNotFound(true);

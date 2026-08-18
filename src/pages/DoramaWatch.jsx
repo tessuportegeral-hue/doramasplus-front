@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchDoramaBySlug, fetchSlugRedirect } from "@/lib/doramaLookup";
 import { Helmet } from "react-helmet";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Crown, Loader2 } from "lucide-react";
@@ -152,24 +153,19 @@ export default function DoramaWatch() {
 
         const normalizedSlug = decodeURIComponent(slugFromUrl).trim().toLowerCase();
 
-        const { data, error: queryError } = await supabase
-          .from("doramas")
-          .select("*")
-          .eq("slug", normalizedSlug)
-          .single();
+        // ✅ 17/08 — lookup via RPC/POST (ver src/lib/doramaLookup.js): o
+        // renderizador do Google reescrevia o timestamp do slug no GET e o
+        // player caía em "erro" pra dorama real.
+        const { data, error: queryError } = await fetchDoramaBySlug(normalizedSlug);
 
         if (queryError || !data) {
           // ✅ 12/08 — antes de dar "não encontrado", confere se é um slug
           // antigo com redirecionamento (dorama renomeado ou excluído como
           // duplicado) — mesmo comportamento que DoramaDetail já tinha.
-          const { data: redirectRow } = await supabase
-            .from("slug_redirects")
-            .select("new_slug")
-            .eq("old_slug", normalizedSlug)
-            .maybeSingle();
+          const { data: redirectSlug } = await fetchSlugRedirect(normalizedSlug);
 
-          if (redirectRow?.new_slug) {
-            navigate(`/dorama/${redirectRow.new_slug}/watch`, { replace: true });
+          if (redirectSlug) {
+            navigate(`/dorama/${redirectSlug}/watch`, { replace: true });
             return;
           }
 
