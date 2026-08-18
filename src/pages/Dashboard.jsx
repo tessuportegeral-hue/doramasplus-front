@@ -830,6 +830,17 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
   // em celular fraco = volume do grid (até 80+ cards de uma vez).
   const SEARCH_RENDER_CAP = 24;
   const [searchShowAll, setSearchShowAll] = useState(false);
+  // ✅ 18/08 (CLS) — chave do CONJUNTO de resultados: quando a busca nova
+  // chega, o grid é remontado (nós novos não contam como layout shift) em
+  // vez de reposicionar os cards existentes. Manter o grid montado durante
+  // o loading (0963dc44) foi ótimo pro INP, mas os cards antigos se MOVIAM
+  // quando o resultado novo chegava (>500ms após a tecla = fora da janela
+  // que o Chrome ignora): CLS home 0,08 → 0,137 (vítima `div.dp-card-in`).
+  // Só muda quando o conjunto muda — digitar sem alterar resultado não remonta.
+  const searchGridKey = useMemo(
+    () => searchResults.map((d) => d.id).join("|"),
+    [searchResults]
+  );
 
   // (17/08) O índice local do Fuse pra typo saiu daqui — fallback de typo
   // agora é a RPC search_doramas_typo no banco. Ver efeito da busca abaixo.
@@ -1584,7 +1595,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
               </p>
             ) : (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <div key={searchGridKey} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {(searchShowAll
                     ? searchResults
                     : searchResults.slice(0, SEARCH_RENDER_CAP)
