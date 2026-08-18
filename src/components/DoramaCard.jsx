@@ -220,4 +220,9 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
   );
 };
 
-export default DoramaCard;
+// ✅ 17/08 (INP round 33) — React.memo: props são primitivos + o objeto
+// `dorama` (identidade estável dentro do array de estado). Sem memo, todo
+// re-render do Dashboard (tecla da busca, flag de loading, banner) refazia
+// os 24 cards do grid de resultados. Contextos (auth/favoritos) seguem
+// re-renderizando o card quando mudam — só o pai deixa de arrastar.
+export default React.memo(DoramaCard);

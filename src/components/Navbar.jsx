@@ -54,7 +54,10 @@ const NavSearchInput = ({ searchQuery, setSearchQuery }) => {
       value={localQuery}
       onChange={(e) => setLocalQuery(e.target.value)}
       placeholder="Buscar..."
-      className="bg-transparent border-none outline-none text-sm text-white/90 w-full placeholder:text-white/50"
+      // ✅ 17/08 (INP round 33) — 16px no mobile: com fonte <16px o iOS dá
+      // ZOOM automático na página ao focar o campo (animação cara: toque no
+      // input com presentation ~230ms na telemetria). Desktop segue text-sm.
+      className="bg-transparent border-none outline-none text-base md:text-sm text-white/90 w-full placeholder:text-white/50"
     />
   );
 };

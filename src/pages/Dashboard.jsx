@@ -8,7 +8,6 @@ import { noteSearchState, noteSectionState } from "@/lib/reportWebVitals";
 import { optimizeCover } from "@/lib/optimizeCover";
 import useDebouncedField from "@/hooks/useDebouncedField";
 import { playStoreUrl } from "@/lib/playStoreLink";
-import Fuse from "fuse.js";
 import { useAuth } from "@/contexts/SupabaseAuthContext";
 
 import Navbar from "@/components/Navbar";
@@ -647,10 +646,6 @@ const DoramaSection = React.memo(({
   prev.hideDubladoBadge === next.hideDubladoBadge
 );
 
-// Remove acentos e converte para minúsculas — usado no Fuse e na query de slug
-const normalizeText = (str) =>
-  (str || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
 // ---------------- DASHBOARD PRINCIPAL ----------------
 // ✅ 07/08 — "Continuar Assistindo" sai daqui pra quem está logado, porque
 // virou a aba "Histórico" da barra inferior (BottomNav.jsx). Testado com
@@ -836,31 +831,8 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
   const SEARCH_RENDER_CAP = 24;
   const [searchShowAll, setSearchShowAll] = useState(false);
 
-  // Índice de todos os doramas (1791 rows) — usado pelo Fuse quando o banco
-  // não retorna nada (typos). Carregado SOB DEMANDA na primeira busca pra
-  // não pesar o first paint da home (era ~2MB de JSON no mount).
-  const doramaIndexRef = useRef([]);
-  const doramaIndexLoadingRef = useRef(false);
-  const ensureDoramaIndex = useCallback(async () => {
-    if (doramaIndexRef.current.length > 0) return;
-    if (doramaIndexLoadingRef.current) return;
-    doramaIndexLoadingRef.current = true;
-    try {
-      // ✅ 14/08 (INP round 23) — SEM description: era o grosso do payload
-      // (~2MB) e o parse da resposta travava 1,3s a thread no meio da
-      // digitação (LoAF: Response.text.then). O typo-match do Fuse fica só
-      // por título (peso 0.8 já era; description com peso 0.2 quase não
-      // decidia nada — e busca por descrição o banco já cobre no caminho
-      // principal via search_doramas_ranked).
-      const { data } = await supabase
-        .from("doramas")
-        .select("id,slug,title,created_at,cover_url,language,is_featured,is_new")
-        .order("title");
-      if (data) doramaIndexRef.current = data;
-    } finally {
-      doramaIndexLoadingRef.current = false;
-    }
-  }, []);
+  // (17/08) O índice local do Fuse pra typo saiu daqui — fallback de typo
+  // agora é a RPC search_doramas_typo no banco. Ver efeito da busca abaixo.
 
   // ✅ refs e scroll para "Continuar Assistindo" (setas iguais às outras)
   const continueRef = useRef(null);
@@ -1120,7 +1092,8 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
   }, [fetchCategory]);
 
   // ✅ BUSCA: RPC search_doramas_ranked (ILIKE + ranking por word_similarity
-  // no banco, pg_trgm) + Fuse.js só como fallback de typo (0 resultado).
+  // no banco, pg_trgm) + RPC search_doramas_typo como fallback de typo (0
+  // resultado) — tudo no banco desde 17/08 (era Fuse.js no cliente).
   // Antes: ILIKE solto (até 80 resultados sem ordem nenhuma do banco) +
   // Fuse.js reordenando por cima — com o catálogo grande isso enterrava o
   // título certo no meio de matches fracos (só bateu na descrição, por
@@ -1136,27 +1109,16 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
     }
 
     let isCancelled = false;
-    setSearchLoading(true);
-    setSearchError(false);
-    // Consulta nova volta pro cap de 24 cards (o "Mostrar mais" é por busca)
-    setSearchShowAll(false);
-
-    // ✅ 14/08 (INP round 23) — aquece o índice do fallback em paralelo já na
-    // primeira tecla (sem await): quando/se o banco devolver 0 resultado, o
-    // índice já chegou e o parse não acontece no meio da digitação.
-    ensureDoramaIndex();
-
-    const fuseOptions = {
-      // ✅ 14/08 — só título: description saiu do índice (ver ensureDoramaIndex)
-      keys: [{ name: "title", weight: 1 }],
-      threshold: 0.4,
-      ignoreLocation: true,
-      minMatchCharLength: 2,
-      getFn: (obj, path) => {
-        const key = Array.isArray(path) ? path[0] : path;
-        return normalizeText(obj[key] || "");
-      },
-    };
+    // ✅ 17/08 (INP round 33) — flags de loading/erro/cap em transição: são
+    // só indicador visual, não precisam de commit urgente. Antes eram 3
+    // setState síncronos por tecla = render urgente do Dashboard inteiro
+    // enquanto a próxima tecla chegava (inputDelay 368ms no teclado).
+    startTransition(() => {
+      setSearchLoading(true);
+      setSearchError(false);
+      // Consulta nova volta pro cap de 24 cards (o "Mostrar mais" é por busca)
+      setSearchShowAll(false);
+    });
 
     const timer = setTimeout(async () => {
       try {
@@ -1184,18 +1146,18 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
           // (inputDelay 1,3-1,7s). Como transição, a tecla nova interrompe.
           startTransition(() => setSearchResults(dbResults));
         } else {
-          // Banco não encontrou nada — Fuse no índice completo (typos).
-          // Carrega o índice na demanda (1ª busca paga o custo, demais reusam).
-          await ensureDoramaIndex();
+          // Banco não encontrou nada — fallback de typo TAMBÉM no banco
+          // (pg_trgm similarity, RPC search_doramas_typo).
+          // ✅ 17/08 (INP round 33) — era Fuse.js sobre um índice de 3,2k
+          // títulos baixado + parseado na thread principal do celular na 1ª
+          // tecla (LoAF Response.text.then ~600ms = inputDelay da tecla
+          // seguinte). Agora zero download/parse no cliente e fuse.js fora
+          // do bundle.
+          const { data: typoData } = await runQueryWithFallback((selectStr) =>
+            supabase.rpc("search_doramas_typo", { search_query: q }).select(selectStr)
+          );
           if (isCancelled) return;
-          const index = doramaIndexRef.current;
-          if (index.length > 0) {
-            const fuse = new Fuse(index, { ...fuseOptions, threshold: 0.35 });
-            const hits = fuse.search(normalizeText(q));
-            startTransition(() => setSearchResults(hits.map((r) => r.item)));
-          } else {
-            setSearchResults([]);
-          }
+          startTransition(() => setSearchResults(typoData || []));
         }
       } catch (e) {
         if (isCancelled) return;
@@ -1211,7 +1173,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
       isCancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery, ensureDoramaIndex]);
+  }, [searchQuery]);
 
   // Carregar continuar assistindo (2 queries leves)
   useEffect(() => {
@@ -1603,7 +1565,14 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
               </span>
             </div>
 
-            {searchLoading ? (
+            {/* ✅ 17/08 (INP round 33) — resultados anteriores FICAM montados
+                enquanto a busca nova roda (o contador acima já diz
+                "Buscando..."). Antes, cada tecla desmontava o grid inteiro
+                (24 cards + 24 imagens) e remontava ~300ms depois = as "27 IMG
+                mutations por tecla" vistas ao vivo, layout+decode+paint em
+                celular fraco (presentation 130-250ms). Só mostra o texto de
+                "procurando" quando ainda não existe resultado nenhum. */}
+            {searchLoading && searchResults.length === 0 ? (
               <p className="text-sm text-slate-400">Procurando no catálogo...</p>
             ) : searchError ? (
               <p className="text-sm text-red-400">
