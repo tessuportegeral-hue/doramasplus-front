@@ -460,6 +460,63 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// ✅ 18/08 (INP) — KEEP-ALIVE DA HOME. Telemetria (LoAF, home mobile): o
+// toque no card era o maior INP restante — "pointer sem alvo" (o alvo é o
+// próprio card, que já não existe quando o Chrome mede) com presentation
+// ~250ms: o commit da troca de rota DESMONTAVA a home inteira (centenas de
+// nós, ~300 imagens, efeitos) e montava o detalhe no mesmo frame — commit
+// não é interrompível nem com startTransition. Agora a home fica MONTADA e
+// escondida (`hidden` = display:none, zero layout) enquanto a pessoa lê o
+// detalhe: o toque só esconde um nó e o detalhe monta como nó novo. Bônus:
+// "voltar" é instantâneo (sem refetch, sem skeleton, sem CLS) e restaura a
+// rolagem exata. No PLAYER (/watch) a home é desmontada — vídeo em celular
+// fraco precisa da memória; o caminho watch→voltar remonta como hoje.
+const HOME_PATHS = new Set(['/', '/dashboard']);
+function HomeKeepAlive() {
+  const { pathname } = useLocation();
+  const navType = useNavigationType();
+  const isHome = HOME_PATHS.has(pathname);
+  const isWatch = /^\/dorama\/[^/]+\/watch\/?$/.test(pathname);
+  const [mounted, setMounted] = React.useState(isHome);
+  const savedScrollRef = React.useRef(0);
+  const wasHomeRef = React.useRef(isHome);
+  const isHomeRef = React.useRef(isHome);
+
+  // Rolagem da home é gravada por listener ENQUANTO ela está visível (com
+  // trava por ref): o ScrollToTopOnNavigate roda antes deste efeito no
+  // mesmo commit e zera o scroll ao sair — ler window.scrollY na saída
+  // devolveria 0. A trava (isHomeRef) vira false no layout effect abaixo,
+  // antes de qualquer evento de scroll do scrollTo(0,0) chegar.
+  React.useEffect(() => {
+    const onScroll = () => {
+      if (isHomeRef.current) savedScrollRef.current = window.scrollY || 0;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    isHomeRef.current = isHome;
+    if (isHome) {
+      if (!mounted) setMounted(true);
+      // Voltou (POP) pra home viva: restaura a rolagem de onde saiu. Entrada
+      // nova (PUSH, ex.: toque no logo) o ScrollToTopOnNavigate já leva a 0.
+      if (mounted && !wasHomeRef.current && navType === 'POP') {
+        window.scrollTo(0, savedScrollRef.current || 0);
+      }
+    }
+    if (isWatch && mounted) setMounted(false);
+    wasHomeRef.current = isHome;
+  }, [isHome, isWatch, mounted, navType]);
+
+  if (!mounted) return null;
+  return (
+    <div hidden={!isHome}>
+      <Dashboard />
+    </div>
+  );
+}
+
 // Fallback mínimo enquanto o chunk da rota baixa (code-splitting).
 // Cada página já tem seu próprio skeleton pro loading dos DADOS; isso aqui
 // só cobre o instante de download do JS, então fica neutro (sem "piscar"
@@ -505,22 +562,16 @@ function App() {
             {/* ✅ (NOVO) Gate: se estiver logado e sem profiles.phone, trava tudo até salvar */}
             <RequirePhoneGate>
               <Suspense fallback={<RouteFallback />}>
+              {/* ✅ 18/08 (INP) — a home vive AQUI (keep-alive), fora do
+                  <Routes>: as rotas "/" e "/dashboard" só marcam que é home;
+                  quem renderiza o Dashboard é o HomeKeepAlive acima. */}
+              <HomeKeepAlive />
               <Routes>
-                {/* 🔓 CATÁLOGO PÚBLICO */}
-                <Route
-                  path="/"
-                  element={
-                    <Dashboard />
-                  }
-                />
+                {/* 🔓 CATÁLOGO PÚBLICO — renderizado pelo HomeKeepAlive */}
+                <Route path="/" element={null} />
 
                 {/* ✅ (ADICIONADO) Alias pra evitar bugs de código antigo que manda pra /dashboard */}
-                <Route
-                  path="/dashboard"
-                  element={
-                    <Dashboard />
-                  }
-                />
+                <Route path="/dashboard" element={null} />
 
                 {/* ✅ (ADICIONADO) Página do vídeo (conversão) */}
                 <Route path="/como-funciona" element={<ComoFunciona />} />
