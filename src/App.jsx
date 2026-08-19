@@ -50,7 +50,38 @@ const DoramaWatch = lazy(() => import('@/pages/DoramaWatch'));
 // player/detalhe"). Com o shell memoizado (zero props), o re-render do App
 // não desce mais pra essas páginas pesadas; mudança de rota/params continua
 // funcionando normal porque vem por CONTEXTO do React Router, não por prop.
-const MemoDoramaDetail = React.memo(() => <DoramaDetail />);
+// ✅ 19/08 (INP round 38) — TROCA DE ROTA EM DOIS FRAMES. Depois do
+// keep-alive, o toque no card ainda era o maior INP da home (p75 416ms,
+// presentationDelay 336ms no carimbo bee70990): o MESMO commit que esconde a
+// home também montava a página de detalhe INTEIRA, e o navegador só pintava
+// no fim. Agora o clique commita só a casca vazia (min-h-screen, pra não
+// puxar rodapé pra cima = zero CLS; nós novos não contam como shift) e o
+// Detalhe de verdade monta no frame SEGUINTE (rAF duplo — o 1º roda antes da
+// pintura do próprio frame, só o 2º garante que uma pintura aconteceu).
+// A casca dura ~1 frame e o Detalhe já abre no skeleton próprio dele.
+// key diferente por galho (casca vs conteúdo) — ver
+// feedback-skeleton-swap-key-phantom-cls: reciclar o nó cobra CLS fantasma.
+function DeferredMount({ children }) {
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+  if (!ready) return <div key="defer-shell" className="min-h-screen" aria-hidden="true" />;
+  return <React.Fragment key="defer-content">{children}</React.Fragment>;
+}
+
+const MemoDoramaDetail = React.memo(() => (
+  <DeferredMount>
+    <DoramaDetail />
+  </DeferredMount>
+));
 const MemoDoramaWatch = React.memo(() => <DoramaWatch />);
 const AdminEspelho = lazy(() => import('@/pages/AdminEspelho'));
 
