@@ -65,9 +65,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const group: string = body.group || "g1";
 
-    // Cota diaria atomica (2000/dia pra TODAS as campanhas somadas, trava por
+    // Cota diaria atomica (3.000/dia pra TODAS as campanhas somadas, trava por
     // linha no banco -- mesmo com os 5 crons disparando quase juntos, a soma
     // nunca ultrapassa o teto). Se ja bateu o teto hoje, nem busca gente.
+    // ✅ 19/08: a sobra da reserva é DEVOLVIDA no fim da rodada (ver refund
+    // abaixo) — antes, grupos com fila seca queimavam 100 de cota pra mandar
+    // 0-1 e-mail e a cota do dia evaporava em ~6h com só ~1.700 envios reais.
     const { data: allowed, error: quotaError } = await supabase.rpc("claim_mass_email_quota", { p_want: BATCH_SIZE });
     if (quotaError) throw new Error(quotaError.message);
     const wantBatch = allowed ?? 0;
@@ -98,7 +101,12 @@ Deno.serve(async (req) => {
       if (error) throw new Error(error.message);
       rows = data || [];
     }
-    if (!rows.length) return new Response(JSON.stringify({ ok: true, group, sent: 0, message: "grupo concluido" }), { status: 200 });
+    if (!rows.length) {
+      // fila seca: devolve a reserva inteira pra outro grupo usar hoje
+      await supabase.rpc("refund_mass_email_quota", { p_amount: wantBatch }).then(
+        () => {}, (e: unknown) => console.error("[mass] refund fail:", String(e)));
+      return new Response(JSON.stringify({ ok: true, group, sent: 0, refunded: wantBatch, message: "grupo concluido" }), { status: 200 });
+    }
     let sent = 0, skipped = 0;
     for (const profile of rows) {
       const email = profile.email;
@@ -135,6 +143,13 @@ Deno.serve(async (req) => {
         skipped++;
       }
     }
-    return new Response(JSON.stringify({ ok: true, group, sent, skipped }), { status: 200 });
+    // ✅ 19/08: devolve o que reservou e não usou (fila menor que a reserva,
+    // e-mails fake pulados, claims duplicados, falhas do Resend).
+    const unused = Math.max(wantBatch - sent, 0);
+    if (unused > 0) {
+      await supabase.rpc("refund_mass_email_quota", { p_amount: unused }).then(
+        () => {}, (e: unknown) => console.error("[mass] refund fail:", String(e)));
+    }
+    return new Response(JSON.stringify({ ok: true, group, sent, skipped, refunded: unused }), { status: 200 });
   } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 200 }); }
 });
