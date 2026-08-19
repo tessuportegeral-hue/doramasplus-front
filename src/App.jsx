@@ -147,6 +147,7 @@ const Historico = lazy(() => import('@/pages/Historico'));
 // Admin
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
 const AdminAnalytics = lazy(() => import('@/pages/AdminAnalytics'));
+const AdminHome = lazy(() => import('@/pages/AdminHome'));
 const AdminUsers = lazy(() => import('@/pages/AdminUsers'));
 import AdminRoute from '@/components/AdminRoute';
 
@@ -788,7 +789,16 @@ function App() {
 
                 {/* ADMIN */}
                 <Route path="/admin/login" element={<AdminLogin />} />
-                <Route path="/admin" element={<Navigate to="/admin/analytics" replace />} />
+                {/* ✅ 19/08 — /admin agora é a HOME do admin (visão geral do
+                    dia + pendências), não mais redirect pro Analytics. */}
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <AdminHome />
+                    </AdminRoute>
+                  }
+                />
                 <Route
                   path="/admin/analytics"
                   element={

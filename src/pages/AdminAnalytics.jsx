@@ -24,8 +24,12 @@ import {
  * - Mensal: DoramaPlay Padrão
  * - Trimestral: DoramaPlay Trimestral
  */
-const PRICE_MONTHLY = 15.9;
-const PRICE_QUARTERLY = 43.9;
+// ✅ 19/08 fix: tava 15,90/43,90 desde sempre — preço vigente é 17,90/49,90
+// (mensal desde 27/07). O MRR agora vem CALCULADO da edge function (fonte
+// única, separando os ~300 legados do Stripe que ainda pagam preço antigo);
+// estas constantes ficam só de rótulo/fallback.
+const PRICE_MONTHLY = 17.9;
+const PRICE_QUARTERLY = 49.9;
 
 /** Helpers */
 function pad2(n) {
@@ -124,7 +128,7 @@ export default function AdminAnalytics() {
   }, []);
 
   // Filtro de período
-  const [quickPeriod, setQuickPeriod] = useState("today"); // today | this_month | last_month | custom
+  const [quickPeriod, setQuickPeriod] = useState("this_month"); // ✅ 19/08: padrão era "today" (deixava retenção 0% com aviso assustador); mês em andamento é a visão mais útil. today | this_month | last_month | custom
   const [startDateStr, setStartDateStr] = useState("");
   const [endDateStr, setEndDateStr] = useState("");
 
@@ -450,9 +454,12 @@ export default function AdminAnalytics() {
       const activeNow = safeNum(pix.active_now);
       const activeMonthly = safeNum(pix.active_now_monthly);
       const activeQuarterly = safeNum(pix.active_now_quarterly);
-      const mrrMonthlyVal = activeMonthly * PRICE_MONTHLY;
-      const mrrQuarterlyVal = (activeQuarterly * PRICE_QUARTERLY) / 3;
-      const mrrTotalVal = mrrMonthlyVal + mrrQuarterlyVal;
+      // ✅ 19/08: MRR vem pronto da edge (v30) — preço vigente pros PIX e
+      // preço antigo pros legados do Stripe. Fallback local só se a edge
+      // for versão velha sem o campo.
+      const mrrMonthlyVal = safeNum(pix.mrr?.monthly) || activeMonthly * PRICE_MONTHLY;
+      const mrrQuarterlyVal = safeNum(pix.mrr?.quarterly) || (activeQuarterly * PRICE_QUARTERLY) / 3;
+      const mrrTotalVal = safeNum(pix.mrr?.total) || mrrMonthlyVal + mrrQuarterlyVal;
 
       setMetrics({
         active_now: activeNow,
@@ -897,8 +904,12 @@ export default function AdminAnalytics() {
         {/* Conteúdo */}
         {!loading && !error ? (
           <>
-            {/* Linha 1 */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-12 gap-3">
+            {/* ✅ 19/08 reorg ("tá muito bagunçado"): a página agora tem 4
+                seções por PERGUNTA — Agora / No período do filtro / Base e
+                retenção / Extras. Antes eram 20+ cards misturando 5 janelas
+                de tempo diferentes sem nenhuma hierarquia visual. */}
+            <SectionTitle title="Agora" hint="retrato deste momento — não depende do filtro de período" />
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-3">
                 {renderCard(
                   "Ativos agora",
@@ -912,16 +923,74 @@ export default function AdminAnalytics() {
 
               <div className="md:col-span-3">
                 {renderCard(
-                  "Pendentes agora",
-                  `${metrics.pending_now}`,
-                  <Clock className="w-5 h-5 text-yellow-300" />,
-                  "Pix pendente (agora)",
-                  "warn",
-                  "Pessoas que geraram um Pix pra pagar mas ainda não pagaram. Ainda não é dinheiro no bolso, é só uma intenção de compra."
+                  "MRR (total)",
+                  formatBRL(mrrTotal),
+                  <BarChart3 className="w-5 h-5 text-purple-300" />,
+                  "Preço vigente + legado Stripe no preço antigo",
+                  "default",
+                  "Quanto essa base de assinantes vale por mês, tipo 'piloto automático'. Calculado no servidor com o preço certo de cada grupo: quem paga via Pix usa o preço atual (17,90/49,90) e os ~300 assinantes antigos do Stripe usam o preço da época deles (15,90/43,90)."
                 )}
               </div>
 
               <div className="md:col-span-3">
+                {renderCard(
+                  "MRR Mensal",
+                  formatBRL(mrrMonthly),
+                  <CreditCard className="w-5 h-5 text-white/70" />,
+                  `${metrics.active_now_monthly} assinaturas`,
+                  "default",
+                  "A fatia do MRR (valor mensal recorrente) que vem só de quem paga o plano mensal."
+                )}
+              </div>
+
+              <div className="md:col-span-3">
+                {renderCard(
+                  "MRR Trimestral (÷ 3)",
+                  formatBRL(mrrQuarterly),
+                  <CreditCard className="w-5 h-5 text-yellow-300" />,
+                  `${metrics.active_now_quarterly} assinaturas`,
+                  "default",
+                  "A fatia do MRR de quem paga trimestral, dividida por 3 — senão contaria os 3 meses de uma vez e inflaria o número."
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="md:col-span-4">
+                {renderCard(
+                  "Cadastros hoje",
+                  `${signups.today.signups}`,
+                  <Users className="w-5 h-5 text-cyan-300" />,
+                  `Pagaram: ${signups.today.paid} (${signups.today.conversion_rate}%) • Ontem: ${signups.yesterday.signups} → ${signups.yesterday.paid} (${signups.yesterday.conversion_rate}%)`,
+                  "default",
+                  "Contas criadas hoje (desde 00:00 em Brasília) e quantas delas já pagaram. Ontem aparece do lado pra comparar. Mesma conta do relatório diário por e-mail."
+                )}
+              </div>
+              <div className="md:col-span-4">
+                {renderCard(
+                  "Cadastros este mês",
+                  `${signups.this_month.signups}`,
+                  <Users className="w-5 h-5 text-cyan-300" />,
+                  `Pagaram: ${signups.this_month.paid} (${signups.this_month.conversion_rate}%) • Mês passado: ${signups.last_month.signups} → ${signups.last_month.paid} (${signups.last_month.conversion_rate}%)`,
+                  "default",
+                  "Contas criadas do dia 1 até agora e quantas já pagaram. Mês passado inteiro aparece do lado pra comparar."
+                )}
+              </div>
+              <div className="md:col-span-4">
+                {renderCard(
+                  "Pendentes agora",
+                  `${metrics.pending_now}`,
+                  <Clock className="w-5 h-5 text-yellow-300" />,
+                  "Pix gerado e nunca pago (acumulado)",
+                  "warn",
+                  "Pessoas que geraram um Pix pra pagar mas ainda não pagaram — acumulado de toda a história, não só do período. Ainda não é dinheiro no bolso, é intenção de compra."
+                )}
+              </div>
+            </div>
+
+            <SectionTitle title="No período do filtro" hint={periodLabel} />
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="md:col-span-4">
                 {renderCard(
                   "Faturamento (período)",
                   formatBRL(revenuePeriod),
@@ -931,96 +1000,69 @@ export default function AdminAnalytics() {
                   "Quanto dinheiro entrou de verdade (pagamentos já confirmados) dentro do período que você escolheu no filtro."
                 )}
               </div>
-
-              <div className="md:col-span-3">
-                {renderCard(
-                  "MRR (total)",
-                  formatBRL(mrrTotal),
-                  <BarChart3 className="w-5 h-5 text-purple-300" />,
-                  "Mensal + (Trimestral ÷ 3)",
-                  "default",
-                  "Quanto essa base de assinantes vale por mês, tipo 'piloto automático'. Se ninguém entrasse nem saísse, é esse valor que cairia todo mês."
-                )}
-              </div>
-            </div>
-
-            {/* ✅ 18/08: Cadastros novos + conversão — MESMA conta do relatório
-                diário por e-mail (cadastro = conta criada; "pagaram" = desses,
-                quem já tem alguma assinatura registrada, mesmo que tenha pago
-                depois do período; conversão = pagaram ÷ cadastros). */}
-            <div className="mt-3">
-              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
-                Cadastros e conversão
-                <InfoTooltip text='Mesmos números do relatório diário que chega por e-mail. "Cadastros" = contas criadas na janela. "Pagaram" = dessas contas, quantas já têm alguma assinatura registrada (mesmo que tenham pago depois da janela fechar — por isso o número de um dia recente ainda pode subir nos dias seguintes). Conversão = pagaram ÷ cadastros. Hoje/ontem/mês são em horário de Brasília e não dependem do filtro lá em cima.' />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Cadastros hoje",
-                    `${signups.today.signups}`,
-                    <Users className="w-5 h-5 text-cyan-300" />,
-                    `Pagaram: ${signups.today.paid} (${signups.today.conversion_rate}%) • Ontem: ${signups.yesterday.signups} → ${signups.yesterday.paid} (${signups.yesterday.conversion_rate}%)`,
-                    "default",
-                    "Contas criadas hoje (desde 00:00 em Brasília) e quantas delas já pagaram. Ontem aparece do lado pra comparar."
-                  )}
-                </div>
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Cadastros este mês",
-                    `${signups.this_month.signups}`,
-                    <Users className="w-5 h-5 text-cyan-300" />,
-                    `Pagaram: ${signups.this_month.paid} (${signups.this_month.conversion_rate}%) • Mês passado: ${signups.last_month.signups} → ${signups.last_month.paid} (${signups.last_month.conversion_rate}%)`,
-                    "default",
-                    "Contas criadas do dia 1 até agora e quantas já pagaram. Mês passado inteiro aparece do lado pra comparar."
-                  )}
-                </div>
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Conversão (período)",
-                    `${signups.period.conversion_rate}%`,
-                    <BarChart3 className="w-5 h-5 text-cyan-300" />,
-                    `${signups.period.paid} pagaram de ${signups.period.signups} cadastros no período do filtro`,
-                    signups.period.conversion_rate >= 15 ? "ok" : signups.period.conversion_rate >= 10 ? "warn" : "default",
-                    "Conversão de quem se cadastrou DENTRO do período escolhido no filtro lá em cima. É o mesmo número que aparece como '% Desses, pagaram' no e-mail diário quando o período é o dia."
-                  )}
-                </div>
-                <div className="md:col-span-3">
-                  {renderCard(
-                    "Conversão (comparação)",
-                    `${signups.compare.conversion_rate}%`,
-                    <BarChart3 className="w-5 h-5 text-cyan-300" />,
-                    `${signups.compare.paid} pagaram de ${signups.compare.signups} cadastros no período de comparação`,
-                    "default",
-                    "Mesma conta, só que no período de comparação (por padrão, a mesma quantidade de dias um mês antes). Serve pra ver se a conversão tá subindo ou caindo."
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Vendas avulsas (R$10, dorama único via bot WhatsApp) — separado do faturamento acima */}
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
               <div className="md:col-span-4">
                 {renderCard(
-                  "Vendas avulsas (R$ 10)",
-                  formatBRL(avulsoTotal),
-                  <CreditCard className="w-5 h-5 text-pink-300" />,
-                  `${avulsoQtdPessoas} pessoa${avulsoQtdPessoas === 1 ? "" : "s"} • ${avulsoQtdVendas} venda${avulsoQtdVendas === 1 ? "" : "s"} no período`,
-                  "default",
-                  "Vendas do dorama avulso de R$ 10,00 (link único, vendido pelo bot do WhatsApp). Esse valor é separado e NÃO entra na conta do \"Faturamento (período)\" acima, pra não te confundir com o faturamento de assinatura."
+                  "Conversão (período)",
+                  `${signups.period.conversion_rate}%`,
+                  <BarChart3 className="w-5 h-5 text-cyan-300" />,
+                  `${signups.period.paid} pagaram de ${signups.period.signups} cadastros no período do filtro`,
+                  signups.period.conversion_rate >= 15 ? "ok" : signups.period.conversion_rate >= 10 ? "warn" : "default",
+                  "Conversão de quem se cadastrou DENTRO do período escolhido no filtro lá em cima. É o mesmo número que aparece como '% Desses, pagaram' no e-mail diário quando o período é o dia."
                 )}
               </div>
-
-              <div className="md:col-span-8">
+              <div className="md:col-span-4">
                 {renderCard(
-                  "Avulso → assinante (vitalício)",
-                  `${avulsoConversion.assinaram_depois} converteram`,
-                  <Users className="w-5 h-5 text-pink-300" />,
-                  `De ${avulsoConversion.pessoas_total} pessoas que já compraram avulso, só ${avulsoConversion.com_cadastro} têm conta com o mesmo telefone • ${avulsoConversion.ativos_agora} estão assinantes ativos agora`,
+                  "Conversão (comparação)",
+                  `${signups.compare.conversion_rate}%`,
+                  <BarChart3 className="w-5 h-5 text-cyan-300" />,
+                  `${signups.compare.paid} pagaram de ${signups.compare.signups} cadastros no período de comparação`,
                   "default",
-                  "De TODO MUNDO que já comprou o avulso de R$10 (histórico completo, não é só o período do filtro), quantos depois criaram conta e assinaram de verdade. LIMITAÇÃO: a compra avulsa não salva conta de usuário, só o telefone — então só enxergamos quem assinou usando o MESMO número de telefone que usou no bot. Quem assinou com outro número não aparece aqui, então esse número é um piso (o real tende a ser maior)."
+                  "Mesma conta, só que no período de comparação (por padrão, a mesma quantidade de dias um mês antes). Serve pra ver se a conversão tá subindo ou caindo."
                 )}
               </div>
             </div>
+
+
+            {/* Vendas (período selecionado) */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2">Vendas (período selecionado)</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-4">
+                  {renderCard(
+                    "Vendas (total)",
+                    `${metrics.sold_total}`,
+                    <Users className="w-5 h-5 text-green-300" />,
+                    `Mensal: ${metrics.sold_monthly} • Trimestral: ${metrics.sold_quarterly}`,
+                    "ok",
+                    "Quantos pagamentos (novos ou renovações) fecharam dentro do período, somando mensal + trimestral."
+                  )}
+                </div>
+
+                <div className="md:col-span-4">
+                  {renderCard(
+                    "Vendas (mensal)",
+                    `${metrics.sold_monthly}`,
+                    <CreditCard className="w-5 h-5 text-white/70" />,
+                    `Preço: ${formatBRL(PRICE_MONTHLY)}`,
+                    "default",
+                    "O mesmo de cima, mas só contando quem pagou o plano mensal."
+                  )}
+                </div>
+
+                <div className="md:col-span-4">
+                  {renderCard(
+                    "Vendas (trimestral)",
+                    `${metrics.sold_quarterly}`,
+                    <CreditCard className="w-5 h-5 text-yellow-300" />,
+                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`,
+                    "default",
+                    "O mesmo de cima, mas só contando quem pagou o plano trimestral."
+                  )}
+                </div>
+              </div>
+            </div>
+
 
             {/* Vendas por canal — Bot (WhatsApp) x Site — perto do faturamento, de propósito */}
             <div className="mt-3">
@@ -1054,156 +1096,6 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
-            {/* Linha 2 (MRR mensal/trimestral) */}
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
-              <div className="md:col-span-6">
-                {renderCard(
-                  "MRR Mensal",
-                  formatBRL(mrrMonthly),
-                  <CreditCard className="w-5 h-5 text-white/70" />,
-                  `${metrics.active_now_monthly} assinaturas`,
-                  "default",
-                  "A fatia do MRR (valor mensal recorrente) que vem só de quem paga o plano mensal."
-                )}
-              </div>
-              <div className="md:col-span-6">
-                {renderCard(
-                  "MRR Trimestral (÷ 3)",
-                  formatBRL(mrrQuarterly),
-                  <CreditCard className="w-5 h-5 text-yellow-300" />,
-                  `${metrics.active_now_quarterly} assinaturas`,
-                  "default",
-                  "A fatia do MRR de quem paga trimestral, dividida por 3 — senão contaria os 3 meses de uma vez e inflaria o número."
-                )}
-              </div>
-            </div>
-
-            {/* Retenção D30 (VIEW) */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Base com 30 dias",
-                    `${retD30.base_com_30_dias}`,
-                    <Users className="w-5 h-5 text-white/70" />,
-                    "Pagaram entre 60 e 30 dias atrás",
-                    "default",
-                    "Quantas pessoas pagaram a assinatura há entre 30 e 60 dias. É esse grupo que a gente observa pra ver se voltou a pagar."
-                  )}
-                </div>
-
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Ainda ativos",
-                    `${retD30.ainda_ativos}`,
-                    <CheckIcon />,
-                    "Pagaram novamente nos últimos 30 dias",
-                    "ok",
-                    "Dessa mesma turma de cima, quantos pagaram de novo nos últimos 30 dias — ou seja, continuaram assinando."
-                  )}
-                </div>
-
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Retenção D30",
-                    formatPct(retD30.retencao_d30),
-                    <TrendingUp className="w-5 h-5 text-green-300" />,
-                    "via edge function admin-analytics",
-                    "ok",
-                    "De quem pagou há 30-60 dias, quantos % continuaram pagando depois. Se fosse 100%, ninguém teria saído."
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
-            </div>
-
-            {/* Assinantes fiéis (estimativa) — sempre "agora", não depende do filtro de período */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Assinantes fiéis (estimativa)</div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-6">
-                  {renderCard(
-                    "Fiéis (já renovaram 1x+)",
-                    `${loyal.renewed_once}`,
-                    <Users className="w-5 h-5 text-green-300" />,
-                    `De ${loyal.active_total} ativos agora`,
-                    "ok",
-                    "De quem está pagando agora, quantos já renovaram pelo menos 1 vez — ou seja, já provaram que voltam a pagar, não estão só no primeiro ciclo. É a melhor estimativa de 'público fiel de verdade' que dá pra tirar do banco (confiança ~75-85%: a lógica é sólida, mas depende do histórico de renovações estar completo desde o início)."
-                  )}
-                </div>
-
-                <div className="md:col-span-6">
-                  {renderCard(
-                    "Fiéis raiz (2x+ renovações)",
-                    `${loyal.renewed_twice_plus}`,
-                    <Users className="w-5 h-5 text-purple-300" />,
-                    `De ${loyal.active_total} ativos agora`,
-                    "default",
-                    "Versão mais dura: só quem já renovou 2 vezes ou mais (ficou pelo menos 3 ciclos de pagamento). É o núcleo mais resistente da base, tende a ser mais estável que o número de cima."
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-2 text-xs text-white/45">
-                Atualiza sempre que a página recarrega ou o filtro muda (não é um número fixo salvo em algum lugar).
-                Baseado em subscription_renewals (histórico de pagamentos) — não usa nenhum número externo (comunidade, etc.).
-              </div>
-            </div>
-
-            {/* Funil de lealdade — composição por número de renovações */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
-                Funil de lealdade (por número de renovações)
-                <InfoTooltip text="Cada vez que a pessoa paga de novo (renova), ela sobe uma casinha nessa escada. Quem nunca pagou de novo tá na casinha 0 — é o mais fácil de sumir (só ~20% desses continuam). Quanto mais casinha a pessoa sobe, mais difícil ela abandonar (a % de quem continua vai subindo). É tipo uma peneira: a cada mês, uma parte cai fora, e quem sobra vai ficando cada vez mais 'grudado'." />
-              </div>
-
-              <div className="rounded-2xl bg-white/5 border border-white/10 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-white/50 text-xs border-b border-white/10">
-                      <th className="px-4 py-2 font-medium">Faixa</th>
-                      <th className="px-4 py-2 font-medium text-right">Ativos agora</th>
-                      <th className="px-4 py-2 font-medium text-right">% da base</th>
-                      <th className="px-4 py-2 font-medium text-right">
-                        <span className="inline-flex items-center gap-1">
-                          Renovação estimada
-                          <InfoTooltip text="Não dá pra medir 'agora' — precisa de um período fechado inteiro pra comparar quem tinha no início com quem sobrou no fim. Por isso essa coluna usa o ÚLTIMO MÊS FECHADO como referência, não o momento atual." />
-                        </span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tierComposition.map((row) => {
-                      const totalAtivos = tierComposition.reduce((acc, r) => acc + r.qtd, 0);
-                      const pct = totalAtivos > 0 ? ((row.qtd / totalAtivos) * 100).toFixed(1) : "0.0";
-                      const refRow = tierRetention.find((r) => r.faixa === row.faixa);
-                      const label = row.faixa === 0 ? "0 (1º ciclo)" : `${row.faixa}x`;
-                      return (
-                        <tr key={row.faixa} className="border-b border-white/5 last:border-0">
-                          <td className="px-4 py-2 text-white/80">{label}</td>
-                          <td className="px-4 py-2 text-right font-medium">{row.qtd}</td>
-                          <td className="px-4 py-2 text-right text-white/60">{pct}%</td>
-                          <td className="px-4 py-2 text-right text-white/60">
-                            {refRow ? `${refRow.taxa_pct}% (${refRow.retidos}/${refRow.cohort})` : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-2 text-xs text-white/45">
-                Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
-                disso a tabela de assinaturas era sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa
-                já tinha renovado. Quem já assinava antes dessa data pode aparecer numa faixa mais baixa do que
-                realmente é. As faixas abrem sozinhas conforme mais gente for acumulando renovações com o tempo.
-              </div>
-            </div>
 
             {/* Churn / Retenção (período selecionado vs. comparação) */}
             <div className="mt-6">
@@ -1333,45 +1225,168 @@ export default function AdminAnalytics() {
               </div>
             </div>
 
-            {/* Vendas (período selecionado) */}
+
+            <SectionTitle title="Base e retenção" hint="coortes de longo prazo — também não dependem do filtro" />
+
+            {/* Assinantes fiéis (estimativa) — sempre "agora", não depende do filtro de período */}
             <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Vendas (período selecionado)</div>
+              <div className="text-sm font-semibold text-white/80 mb-2">Assinantes fiéis (estimativa)</div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-6">
+                  {renderCard(
+                    "Fiéis (já renovaram 1x+)",
+                    `${loyal.renewed_once}`,
+                    <Users className="w-5 h-5 text-green-300" />,
+                    `De ${loyal.active_total} ativos agora`,
+                    "ok",
+                    "De quem está pagando agora, quantos já renovaram pelo menos 1 vez — ou seja, já provaram que voltam a pagar, não estão só no primeiro ciclo. É a melhor estimativa de 'público fiel de verdade' que dá pra tirar do banco (confiança ~75-85%: a lógica é sólida, mas depende do histórico de renovações estar completo desde o início)."
+                  )}
+                </div>
+
+                <div className="md:col-span-6">
+                  {renderCard(
+                    "Fiéis raiz (2x+ renovações)",
+                    `${loyal.renewed_twice_plus}`,
+                    <Users className="w-5 h-5 text-purple-300" />,
+                    `De ${loyal.active_total} ativos agora`,
+                    "default",
+                    "Versão mais dura: só quem já renovou 2 vezes ou mais (ficou pelo menos 3 ciclos de pagamento). É o núcleo mais resistente da base, tende a ser mais estável que o número de cima."
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                Atualiza sempre que a página recarrega ou o filtro muda (não é um número fixo salvo em algum lugar).
+                Baseado em subscription_renewals (histórico de pagamentos) — não usa nenhum número externo (comunidade, etc.).
+              </div>
+            </div>
+
+
+            {/* Funil de lealdade — composição por número de renovações */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                Funil de lealdade (por número de renovações)
+                <InfoTooltip text="Cada vez que a pessoa paga de novo (renova), ela sobe uma casinha nessa escada. Quem nunca pagou de novo tá na casinha 0 — é o mais fácil de sumir (só ~20% desses continuam). Quanto mais casinha a pessoa sobe, mais difícil ela abandonar (a % de quem continua vai subindo). É tipo uma peneira: a cada mês, uma parte cai fora, e quem sobra vai ficando cada vez mais 'grudado'." />
+              </div>
+
+              <div className="rounded-2xl bg-white/5 border border-white/10 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-white/50 text-xs border-b border-white/10">
+                      <th className="px-4 py-2 font-medium">Faixa</th>
+                      <th className="px-4 py-2 font-medium text-right">Ativos agora</th>
+                      <th className="px-4 py-2 font-medium text-right">% da base</th>
+                      <th className="px-4 py-2 font-medium text-right">
+                        <span className="inline-flex items-center gap-1">
+                          Renovação estimada
+                          <InfoTooltip text="Não dá pra medir 'agora' — precisa de um período fechado inteiro pra comparar quem tinha no início com quem sobrou no fim. Por isso essa coluna usa o ÚLTIMO MÊS FECHADO como referência, não o momento atual." />
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tierComposition.map((row) => {
+                      const totalAtivos = tierComposition.reduce((acc, r) => acc + r.qtd, 0);
+                      const pct = totalAtivos > 0 ? ((row.qtd / totalAtivos) * 100).toFixed(1) : "0.0";
+                      const refRow = tierRetention.find((r) => r.faixa === row.faixa);
+                      const label = row.faixa === 0 ? "0 (1º ciclo)" : `${row.faixa}x`;
+                      return (
+                        <tr key={row.faixa} className="border-b border-white/5 last:border-0">
+                          <td className="px-4 py-2 text-white/80">{label}</td>
+                          <td className="px-4 py-2 text-right font-medium">{row.qtd}</td>
+                          <td className="px-4 py-2 text-right text-white/60">{pct}%</td>
+                          <td className="px-4 py-2 text-right text-white/60">
+                            {refRow ? `${refRow.taxa_pct}% (${refRow.retidos}/${refRow.cohort})` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-2 text-xs text-white/45">
+                Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
+                disso a tabela de assinaturas era sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa
+                já tinha renovado. Quem já assinava antes dessa data pode aparecer numa faixa mais baixa do que
+                realmente é. As faixas abrem sozinhas conforme mais gente for acumulando renovações com o tempo.
+              </div>
+            </div>
+
+
+            {/* Retenção D30 (VIEW) */}
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-4">
                   {renderCard(
-                    "Vendas (total)",
-                    `${metrics.sold_total}`,
-                    <Users className="w-5 h-5 text-green-300" />,
-                    `Mensal: ${metrics.sold_monthly} • Trimestral: ${metrics.sold_quarterly}`,
+                    "Base com 30 dias",
+                    `${retD30.base_com_30_dias}`,
+                    <Users className="w-5 h-5 text-white/70" />,
+                    "Pagaram entre 60 e 30 dias atrás",
+                    "default",
+                    "Quantas pessoas pagaram a assinatura há entre 30 e 60 dias. É esse grupo que a gente observa pra ver se voltou a pagar."
+                  )}
+                </div>
+
+                <div className="md:col-span-4">
+                  {renderCard(
+                    "Ainda ativos",
+                    `${retD30.ainda_ativos}`,
+                    <CheckIcon />,
+                    "Pagaram novamente nos últimos 30 dias",
                     "ok",
-                    "Quantos pagamentos (novos ou renovações) fecharam dentro do período, somando mensal + trimestral."
+                    "Dessa mesma turma de cima, quantos pagaram de novo nos últimos 30 dias — ou seja, continuaram assinando."
                   )}
                 </div>
 
                 <div className="md:col-span-4">
                   {renderCard(
-                    "Vendas (mensal)",
-                    `${metrics.sold_monthly}`,
-                    <CreditCard className="w-5 h-5 text-white/70" />,
-                    `Preço: ${formatBRL(PRICE_MONTHLY)}`,
-                    "default",
-                    "O mesmo de cima, mas só contando quem pagou o plano mensal."
-                  )}
-                </div>
-
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Vendas (trimestral)",
-                    `${metrics.sold_quarterly}`,
-                    <CreditCard className="w-5 h-5 text-yellow-300" />,
-                    `Preço: ${formatBRL(PRICE_QUARTERLY)}`,
-                    "default",
-                    "O mesmo de cima, mas só contando quem pagou o plano trimestral."
+                    "Retenção D30",
+                    formatPct(retD30.retencao_d30),
+                    <TrendingUp className="w-5 h-5 text-green-300" />,
+                    "via edge function admin-analytics",
+                    "ok",
+                    "De quem pagou há 30-60 dias, quantos % continuaram pagando depois. Se fosse 100%, ninguém teria saído."
                   )}
                 </div>
               </div>
+
+              <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
             </div>
+
+
+            <SectionTitle title="Extras" hint="métricas de nicho — abre só quando precisar" />
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm text-white/60 hover:text-white/80 font-medium select-none py-1">Vendas avulsas (R$ 10) e conversão do avulso → assinante</summary>
+            {/* Vendas avulsas (R$10, dorama único via bot WhatsApp) — separado do faturamento acima */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="md:col-span-4">
+                {renderCard(
+                  "Vendas avulsas (R$ 10)",
+                  formatBRL(avulsoTotal),
+                  <CreditCard className="w-5 h-5 text-pink-300" />,
+                  `${avulsoQtdPessoas} pessoa${avulsoQtdPessoas === 1 ? "" : "s"} • ${avulsoQtdVendas} venda${avulsoQtdVendas === 1 ? "" : "s"} no período`,
+                  "default",
+                  "Vendas do dorama avulso de R$ 10,00 (link único, vendido pelo bot do WhatsApp). Esse valor é separado e NÃO entra na conta do \"Faturamento (período)\" acima, pra não te confundir com o faturamento de assinatura."
+                )}
+              </div>
+
+              <div className="md:col-span-8">
+                {renderCard(
+                  "Avulso → assinante (vitalício)",
+                  `${avulsoConversion.assinaram_depois} converteram`,
+                  <Users className="w-5 h-5 text-pink-300" />,
+                  `De ${avulsoConversion.pessoas_total} pessoas que já compraram avulso, só ${avulsoConversion.com_cadastro} têm conta com o mesmo telefone • ${avulsoConversion.ativos_agora} estão assinantes ativos agora`,
+                  "default",
+                  "De TODO MUNDO que já comprou o avulso de R$10 (histórico completo, não é só o período do filtro), quantos depois criaram conta e assinaram de verdade. LIMITAÇÃO: a compra avulsa não salva conta de usuário, só o telefone — então só enxergamos quem assinou usando o MESMO número de telefone que usou no bot. Quem assinou com outro número não aparece aqui, então esse número é um piso (o real tende a ser maior)."
+                )}
+              </div>
+            </div>
+
+            </details>
 
             {/* Insights rápidos */}
             <div className="mt-6 rounded-2xl bg-white/5 border border-white/10 p-4">
@@ -1394,6 +1409,17 @@ export default function AdminAnalytics() {
           </>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Cabeçalho de seção (reorg 19/08): divide a página por pergunta */
+function SectionTitle({ title, hint }) {
+  return (
+    <div className="mt-8 mb-3 flex items-center gap-3 flex-wrap">
+      <div className="text-sm font-extrabold tracking-widest uppercase text-white/90">{title}</div>
+      <div className="h-px flex-1 min-w-[40px] bg-white/10" />
+      {hint ? <div className="text-[11px] text-white/40">{hint}</div> : null}
     </div>
   );
 }

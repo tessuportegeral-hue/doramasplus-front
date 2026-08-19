@@ -15,9 +15,16 @@ function json(data: unknown, status = 200) {
 
 const ADMIN_ID = '094e70c6-0671-4401-89fe-31aa5242348a';
 
-// mesmos precos usados no front (src/pages/AdminAnalytics.jsx)
-const PRICE_MONTHLY = 15.9;
-const PRICE_QUARTERLY = 43.9;
+// ✅ 19/08 fix de preço: o painel calculava MRR/estimativas com 15,90 desde
+// sempre — mas o mensal PIX é 17,90 desde ~27/07 (e o trimestral 49,90).
+// O MRR mostrado ficava ~R$ 4 mil/mês ABAIXO do real. Stripe é caso à parte:
+// assinatura antiga do Stripe continua cobrando o preço da época (15,90 /
+// 43,90) — por isso constantes separadas, usadas nas estimativas do Stripe
+// e no MRR dos ativos com provider null (= Stripe legado, 302 contas em 19/08).
+const PRICE_MONTHLY = 17.9;
+const PRICE_QUARTERLY = 49.9;
+const STRIPE_PRICE_MONTHLY = 15.9;
+const STRIPE_PRICE_QUARTERLY = 43.9;
 
 // valida e normaliza uma data recebida do body antes de embutir em SQL cru (exec_sql)
 function safeIsoDate(value: unknown, fallback: Date): string {
@@ -162,7 +169,11 @@ Deno.serve(async (req) => {
         select
           count(*) as total,
           count(*) filter (where coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%') as trimestral,
-          count(*) filter (where not (coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%')) as mensal
+          count(*) filter (where not (coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%')) as mensal,
+          -- ✅ 19/08: split Stripe (provider null = legado, paga preço antigo)
+          -- x resto (PIX, paga preço vigente) pro MRR sair certo
+          count(*) filter (where s.provider is null and not (coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%')) as stripe_mensal,
+          count(*) filter (where s.provider is null and (coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%')) as stripe_trimestral
         from subscriptions s
         where s.status in ('active','trialing','paid')
           and (
@@ -285,7 +296,7 @@ Deno.serve(async (req) => {
         (select site_pix_mensal from canal) as site_pix_mensal,
         (select site_pix_trimestral from canal) as site_pix_trimestral,
         (select site_pix_total_reais from canal) as site_pix_total_reais,
-        (select qtd_mensal * ${PRICE_MONTHLY} + qtd_trimestral * ${PRICE_QUARTERLY} from stripe_ren) as stripe_total,
+        (select qtd_mensal * ${STRIPE_PRICE_MONTHLY} + qtd_trimestral * ${STRIPE_PRICE_QUARTERLY} from stripe_ren) as stripe_total,
         (select qtd_mensal from stripe_ren) as stripe_qtd_mensal,
         (select qtd_trimestral from stripe_ren) as stripe_qtd_trimestral,
         (select total from manual_ren) as manual_total,
@@ -293,6 +304,8 @@ Deno.serve(async (req) => {
         (select total from ativos) as ativos_total,
         (select mensal from ativos) as ativos_mensal,
         (select trimestral from ativos) as ativos_trimestral,
+        (select stripe_mensal from ativos) as ativos_stripe_mensal,
+        (select stripe_trimestral from ativos) as ativos_stripe_trimestral,
         (select count(*) from cohort_a_active) as churn_a_cohort,
         (select count(*) from retained_a) as churn_a_retained,
         (select qtd from new_a) as churn_a_new,
@@ -358,30 +371,44 @@ Deno.serve(async (req) => {
       .gte('created_at', periodStart)
       .lte('created_at', periodEnd);
 
-    // Retenção D30 (continua baseada em PIX, igual antes)
-    const d30Start = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const d30End = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const d30Recent = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-    const { data: d30BaseData } = await admin
-      .from('pix_payments')
-      .select('user_id')
-      .eq('status', 'paid')
-      .gte('created_at', d30Start)
-      .lte('created_at', d30End);
-
-    const d30BaseIds = [...new Set((d30BaseData || []).map((r: any) => r.user_id))];
-
-    const { data: d30RetainedData } = await admin
-      .from('pix_payments')
-      .select('user_id')
-      .eq('status', 'paid')
-      .gte('created_at', d30Recent)
-      .in('user_id', d30BaseIds.length > 0 ? d30BaseIds : ['no-match']);
-
-    const d30Retained = new Set((d30RetainedData || []).map((r: any) => r.user_id)).size;
-    const d30Base = d30BaseIds.length;
+    // ✅ 19/08 fix: Retenção D30 mostrava 0,00% há tempos — a versão antiga
+    // puxava a base (700+ user_ids) e passava tudo num .in() do PostgREST:
+    // a URL estourava, o erro era ENGOLIDO (data null) e "retidos" virava 0.
+    // Mesma família do bug que matou o email-reengagement por 2 meses.
+    // Agora é UMA query agregada no banco.
+    const { data: d30Rows, error: d30Err } = await admin.rpc('exec_sql', {
+      q: `
+      with base as (
+        select distinct user_id from pix_payments
+        where status = 'paid' and user_id is not null
+          and created_at between now() - interval '60 days' and now() - interval '30 days'
+      ),
+      ret as (
+        select distinct p.user_id from pix_payments p
+        join base b on b.user_id = p.user_id
+        where p.status = 'paid' and p.created_at > now() - interval '30 days'
+      )
+      select (select count(*) from base) as d30_base, (select count(*) from ret) as d30_retained
+    ` });
+    if (d30Err) console.error('[admin-analytics] d30_query_failed:', d30Err);
+    const d30Row = (d30Rows && d30Rows[0]) || {};
+    const d30Base = Number(d30Row.d30_base || 0);
+    const d30Retained = Number(d30Row.d30_retained || 0);
     const d30Rate = d30Base > 0 ? Math.round((d30Retained / d30Base) * 10000) / 100 : 0;
+
+    // ✅ 19/08: bloco da HOME do admin (/admin) — pendências do dia num lugar
+    // só, pra página inicial nova não precisar de N queries do front.
+    const { data: homeRows, error: homeErr } = await admin.rpc('exec_sql', {
+      q: `
+      select
+        (select count(distinct session_id) from dora_conversations where needs_human = true and role = 'assistant') as dora_pendentes,
+        (select count(*) from doramas where created_at > now() - interval '3 days' and (cover_url is null or length(title) > 120)) as catalogo_quebrado,
+        (select count(*) from pix_payments p where p.status='paid' and p.created_at > now() - interval '24 hours' and p.user_id is not null
+           and not exists (select 1 from subscriptions s where s.user_id = p.user_id and s.status in ('active','trialing','paid')
+             and (coalesce(s.end_at, s.current_period_end) > now() or (coalesce(s.end_at, s.current_period_end) is null and s.provider is null)))) as pix_sem_acesso_24h
+    ` });
+    if (homeErr) console.error('[admin-analytics] home_query_failed:', homeErr);
+    const homeRow = (homeRows && homeRows[0]) || {};
 
     // ✅ 01/08: "assinantes fiéis" — de quem está ativo AGORA, quantos já
     // renovaram pelo menos 1x (não é o primeiro ciclo, já provou que volta a
@@ -658,9 +685,30 @@ Deno.serve(async (req) => {
       // (ver limitação de matching por telefone no comentário acima).
       avulso_conversion: avulsoConversion,
       signups,
+      home: {
+        dora_pendentes: Number(homeRow.dora_pendentes || 0),
+        catalogo_quebrado: Number(homeRow.catalogo_quebrado || 0),
+        pix_sem_acesso_24h: Number(homeRow.pix_sem_acesso_24h || 0),
+      },
       active_now: Number(rev.ativos_total || 0),
       active_now_monthly: Number(rev.ativos_mensal || 0),
       active_now_quarterly: Number(rev.ativos_trimestral || 0),
+      // ✅ 19/08: MRR calculado AQUI (fonte única) com preço certo por grupo:
+      // Stripe legado (provider null) paga 15,90/43,90; resto paga 17,90/49,90.
+      mrr: (() => {
+        const sm = Number(rev.ativos_stripe_mensal || 0);
+        const st = Number(rev.ativos_stripe_trimestral || 0);
+        const pm = Number(rev.ativos_mensal || 0) - sm;
+        const pt = Number(rev.ativos_trimestral || 0) - st;
+        const monthly = pm * PRICE_MONTHLY + sm * STRIPE_PRICE_MONTHLY;
+        const quarterly = (pt * PRICE_QUARTERLY + st * STRIPE_PRICE_QUARTERLY) / 3;
+        return {
+          total: Math.round((monthly + quarterly) * 100) / 100,
+          monthly: Math.round(monthly * 100) / 100,
+          quarterly: Math.round(quarterly * 100) / 100,
+          stripe_actives: sm + st,
+        };
+      })(),
       pending_now: pendingNow || 0,
       pending_in_period: pendingInPeriod || 0,
       d30_base: d30Base,
