@@ -10,7 +10,7 @@ Lê a telemetria real-user da tabela `web_vitals_events` (Supabase), sempre **po
 ## Regras
 
 1. **NUNCA usar GSC/CrUX como termômetro de fix** — janela de 28 dias, número fica feio por semanas mesmo com fix certo. O RUM reporta em horas.
-2. **Sempre comparar carimbo atual vs anterior** — é o que prova se a última dose funcionou. Descobrir o carimbo atual: `git log --format=%h -1` (encurtar pra 8 chars) e conferir se já tem amostra; se o deploy é recente demais (<2h), avisar que a amostra é pequena.
+2. **O corte é pela ÚLTIMA MEXIDA NA MÉTRICA, não pelo último commit** (correção do Stefano, 19/08): TODO push vira deploy na Vercel — commit de skill, e-mail, admin etc. também gera carimbo novo e "rouba" amostra. Ao avaliar uma dose de INP/CLS/LCP: "depois" = POOL de TODOS os carimbos desde o commit da dose (listar com `select app_version, count(*), min(created_at) from web_vitals_events ... group by 1 order by min` e incluir todos os posteriores); "antes" = o(s) carimbo(s) entre a dose anterior e essa. Nunca comparar só o carimbo mais novo.
 3. **Antes de propor dose nova: ler a memória** `project-web-vitals-rum-instrumentation` — tem a lista de TESES TESTADAS E MORTAS. Nunca repetir tese morta.
 4. Mobile é o que importa (`is_mobile = true`).
 5. Dose aplicada = commit com prefixo `perf(inp):`/`fix(cls):` etc + push + atualizar a memória com o round e o que olhar no próximo verifica.
