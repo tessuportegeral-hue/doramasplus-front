@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, whatsappSupabase } from "@/lib/supabaseClient";
 import AdminTabs from "@/components/AdminTabs";
+import { INBOX_BASE, INBOX_COLORS } from "@/lib/adminInboxTheme";
 
 export default function AdminSupport() {
   const [conversations, setConversations] = useState([]);
@@ -682,7 +683,7 @@ export default function AdminSupport() {
       display: "flex",
       flex: 1,
       minHeight: 0,
-      background: "#0b0b0b",
+      background: "#0e0e16",
       color: "rgba(255,255,255,0.92)",
       position: "relative",
     },
@@ -694,7 +695,7 @@ export default function AdminSupport() {
     },
     panelHeader: {
       padding: 12,
-      borderBottom: "1px solid #2a2a2a",
+      borderBottom: "1px solid #26263a",
       background: "rgba(255,255,255,0.02)",
     },
     headerTitleRow: {
@@ -709,7 +710,7 @@ export default function AdminSupport() {
     btn: {
       padding: "8px 10px",
       borderRadius: 10,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       cursor: "pointer",
@@ -738,11 +739,11 @@ export default function AdminSupport() {
     listItem: (active, hasUnread) => ({
       padding: 12,
       paddingLeft: hasUnread && !active ? 10 : 12,
-      borderBottom: "1px solid #1f1f1f",
+      borderBottom: "1px solid #1d1d2c",
       borderLeft: hasUnread && !active ? "3px solid #ef4444" : "3px solid transparent",
       cursor: "pointer",
       background: active
-        ? "rgba(255,255,255,0.06)"
+        ? "rgba(168,85,247,0.14)"
         : hasUnread
         ? "rgba(239,68,68,0.05)"
         : "transparent",
@@ -786,7 +787,7 @@ export default function AdminSupport() {
     filterTab: (active) => ({
       padding: "5px 12px",
       borderRadius: 999,
-      border: active ? "1px solid rgba(255,255,255,0.28)" : "1px solid #2a2a2a",
+      border: active ? "1px solid rgba(255,255,255,0.28)" : "1px solid #26263a",
       background: active ? "rgba(255,255,255,0.10)" : "transparent",
       color: active ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.6)",
       cursor: "pointer",
@@ -803,7 +804,7 @@ export default function AdminSupport() {
       alignItems: "center",
       justifyContent: "center",
       border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(168,85,247,0.14)",
       fontSize: 12,
       fontWeight: 800,
       flex: "0 0 auto",
@@ -851,7 +852,7 @@ export default function AdminSupport() {
 
     composer: {
       padding: 12,
-      borderTop: "1px solid #2a2a2a",
+      borderTop: "1px solid #26263a",
       display: "flex",
       gap: 8,
       background: "rgba(0,0,0,0.35)",
@@ -861,7 +862,7 @@ export default function AdminSupport() {
       flex: 1,
       padding: 10,
       borderRadius: 12,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       outline: "none",
@@ -872,7 +873,7 @@ export default function AdminSupport() {
       marginTop: 10,
       padding: 10,
       borderRadius: 12,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.03)",
       display: "flex",
       flexDirection: "column",
@@ -883,7 +884,7 @@ export default function AdminSupport() {
       flex: 1,
       padding: 10,
       borderRadius: 12,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       outline: "none",
@@ -892,7 +893,7 @@ export default function AdminSupport() {
     select: {
       padding: "10px 10px",
       borderRadius: 12,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       outline: "none",
@@ -961,7 +962,7 @@ export default function AdminSupport() {
       padding: "8px 10px",
       borderRadius: 10,
       border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(168,85,247,0.14)",
       color: "rgba(255,255,255,0.92)",
       cursor: "pointer",
     },
@@ -978,7 +979,7 @@ export default function AdminSupport() {
       padding: "8px 10px",
       borderRadius: 10,
       border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(168,85,247,0.14)",
       color: "rgba(255,255,255,0.92)",
       cursor: "pointer",
       textDecoration: "none",
@@ -986,6 +987,10 @@ export default function AdminSupport() {
       alignItems: "center",
       gap: 8,
     },
+  
+    // ✅ 19/08: tema único dos 3 inboxes — espalhado POR ÚLTIMO, então
+    // vence nas chaves comuns; as chaves específicas acima continuam locais.
+    ...INBOX_BASE,
   };
 
   const canSendMedia = !!selected && !sending && (!!mediaFile || !!mediaUrl.trim());
@@ -1086,7 +1091,7 @@ export default function AdminSupport() {
       style={{
         ...S.column,
         width: isMobile ? "100%" : 360,
-        borderRight: isMobile ? "none" : "1px solid #2a2a2a",
+        borderRight: isMobile ? "none" : "1px solid #26263a",
       }}
     >
       <div style={S.panelHeader}>

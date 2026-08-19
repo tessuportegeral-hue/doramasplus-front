@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminTabs from "@/components/AdminTabs";
+import { INBOX_BASE, INBOX_COLORS } from "@/lib/adminInboxTheme";
 
 const POLL_MS = 15000; // polling de segurança (caso o realtime caia)
 const PREVIEW_LIMIT = 3000; // linhas recentes carregadas pra montar a lista de conversas
@@ -447,23 +448,23 @@ export default function AdminDora() {
 
   // ===== Estilos (mesmo padrão visual do AdminBotVendas) =====
   const S = {
-    page: { display: "flex", flex: 1, minHeight: 0, background: "#0b0b0b", color: "rgba(255,255,255,0.92)", position: "relative" },
+    page: { display: "flex", flex: 1, minHeight: 0, background: "#0e0e16", color: "rgba(255,255,255,0.92)", position: "relative" },
     column: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%" },
-    panelHeader: { padding: 12, borderBottom: "1px solid #2a2a2a", background: "rgba(255,255,255,0.02)" },
+    panelHeader: { padding: 12, borderBottom: "1px solid #26263a", background: "rgba(255,255,255,0.02)" },
     headerTitleRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 },
     title: { fontWeight: 800 },
     subtitle: { fontSize: 12, opacity: 0.7, marginTop: 2 },
     actionsRow: { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" },
-    btn: { padding: "8px 10px", borderRadius: 10, border: "1px solid #2a2a2a", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.92)", cursor: "pointer" },
+    btn: { padding: "8px 10px", borderRadius: 10, border: "1px solid #26263a", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.92)", cursor: "pointer" },
     error: { marginTop: 10, fontSize: 12, color: "#ff6b6b" },
     listWrap: { overflowY: "auto", flex: 1 },
     listItem: (active, hasUnread, needsHuman) => ({
       padding: 12,
       paddingLeft: (hasUnread || needsHuman) && !active ? 10 : 12,
-      borderBottom: "1px solid #1f1f1f",
+      borderBottom: "1px solid #1d1d2c",
       borderLeft: needsHuman && !active ? "3px solid #ff9f43" : hasUnread && !active ? "3px solid #2ecc71" : "3px solid transparent",
       cursor: "pointer",
-      background: active ? "rgba(255,255,255,0.06)" : needsHuman ? "rgba(255,159,67,0.08)" : hasUnread ? "rgba(46,204,113,0.05)" : "transparent",
+      background: active ? "rgba(168,85,247,0.14)" : needsHuman ? "rgba(255,159,67,0.08)" : hasUnread ? "rgba(46,204,113,0.05)" : "transparent",
       display: "flex",
       flexDirection: "column",
       gap: 8,
@@ -473,8 +474,8 @@ export default function AdminDora() {
     name: { fontWeight: 800, letterSpacing: 0.2 },
     unreadBadge: { minWidth: 18, height: 18, borderRadius: 999, background: "#2ecc71", color: "#08260f", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 },
     meta: { fontSize: 12, opacity: 0.75 },
-    avatar: { width: 34, height: 34, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)", fontSize: 16, fontWeight: 800, flex: "0 0 auto" },
-    input: { flex: 1, padding: 10, borderRadius: 12, border: "1px solid #2a2a2a", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.92)", outline: "none", minWidth: 0 },
+    avatar: { width: 34, height: 34, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(168,85,247,0.14)", fontSize: 16, fontWeight: 800, flex: "0 0 auto" },
+    input: { flex: 1, padding: 10, borderRadius: 12, border: "1px solid #26263a", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.92)", outline: "none", minWidth: 0 },
     chatBody: { flex: 1, overflowY: "auto", padding: 12 },
     daySep: { display: "flex", justifyContent: "center", margin: "12px 0" },
     dayChip: { fontSize: 12, opacity: 0.85, padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" },
@@ -491,9 +492,13 @@ export default function AdminDora() {
     }),
     msgMetaRow: { display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6, alignItems: "center" },
     msgMeta: { fontSize: 11, opacity: 0.65 },
-    composer: { padding: 12, borderTop: "1px solid #2a2a2a", display: "flex", gap: 8, background: "rgba(0,0,0,0.35)", alignItems: "center" },
+    composer: { padding: 12, borderTop: "1px solid #26263a", display: "flex", gap: 8, background: "rgba(0,0,0,0.35)", alignItems: "center" },
     btnPrimary: { padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(46,204,113,0.18)", color: "rgba(255,255,255,0.95)", cursor: "pointer", whiteSpace: "nowrap" },
     btnDisabled: { opacity: 0.55, cursor: "not-allowed" },
+  
+    // ✅ 19/08: tema único dos 3 inboxes — espalhado POR ÚLTIMO, então
+    // vence nas chaves comuns; as chaves específicas acima continuam locais.
+    ...INBOX_BASE,
   };
 
   function roleLabel(role) {
@@ -503,7 +508,7 @@ export default function AdminDora() {
   }
 
   const ListPanel = (
-    <div style={{ ...S.column, width: isMobile ? "100%" : 360, borderRight: isMobile ? "none" : "1px solid #2a2a2a" }}>
+    <div style={{ ...S.column, width: isMobile ? "100%" : 360, borderRight: isMobile ? "none" : "1px solid #26263a" }}>
       <div style={S.panelHeader}>
         <div style={S.headerTitleRow}>
           <div>

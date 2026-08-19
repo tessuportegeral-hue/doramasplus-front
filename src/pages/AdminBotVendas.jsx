@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminTabs from "@/components/AdminTabs";
+import { INBOX_BASE, INBOX_COLORS } from "@/lib/adminInboxTheme";
 
 // ===== Steps possíveis e seus badges =====
 // 🟢 Verde = access_sent
@@ -594,14 +595,14 @@ export default function AdminBotVendas() {
       display: "flex",
       flex: 1,
       minHeight: 0,
-      background: "#0b0b0b",
+      background: "#0e0e16",
       color: "rgba(255,255,255,0.92)",
       position: "relative",
     },
     column: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%" },
     panelHeader: {
       padding: 12,
-      borderBottom: "1px solid #2a2a2a",
+      borderBottom: "1px solid #26263a",
       background: "rgba(255,255,255,0.02)",
     },
     headerTitleRow: {
@@ -616,7 +617,7 @@ export default function AdminBotVendas() {
     btn: {
       padding: "8px 10px",
       borderRadius: 10,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       cursor: "pointer",
@@ -627,11 +628,11 @@ export default function AdminBotVendas() {
     listItem: (active, hasUnread) => ({
       padding: 12,
       paddingLeft: hasUnread && !active ? 10 : 12,
-      borderBottom: "1px solid #1f1f1f",
+      borderBottom: "1px solid #1d1d2c",
       borderLeft: hasUnread && !active ? "3px solid #ef4444" : "3px solid transparent",
       cursor: "pointer",
       background: active
-        ? "rgba(255,255,255,0.06)"
+        ? "rgba(168,85,247,0.14)"
         : hasUnread
         ? "rgba(239,68,68,0.05)"
         : "transparent",
@@ -678,7 +679,7 @@ export default function AdminBotVendas() {
     filterTab: (active) => ({
       padding: "5px 12px",
       borderRadius: 999,
-      border: active ? "1px solid rgba(255,255,255,0.28)" : "1px solid #2a2a2a",
+      border: active ? "1px solid rgba(255,255,255,0.28)" : "1px solid #26263a",
       background: active ? "rgba(255,255,255,0.10)" : "transparent",
       color: active ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.6)",
       cursor: "pointer",
@@ -690,7 +691,7 @@ export default function AdminBotVendas() {
       flex: 1,
       padding: "8px 10px",
       borderRadius: 10,
-      border: active ? "1px solid rgba(34,197,94,0.5)" : "1px solid #2a2a2a",
+      border: active ? "1px solid rgba(34,197,94,0.5)" : "1px solid #26263a",
       background: active ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
       color: active ? "#86efac" : "rgba(255,255,255,0.65)",
       cursor: "pointer",
@@ -706,7 +707,7 @@ export default function AdminBotVendas() {
       alignItems: "center",
       justifyContent: "center",
       border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
+      background: "rgba(168,85,247,0.14)",
       fontSize: 12,
       fontWeight: 800,
       flex: "0 0 auto",
@@ -758,7 +759,7 @@ export default function AdminBotVendas() {
       flex: 1,
       padding: 10,
       borderRadius: 12,
-      border: "1px solid #2a2a2a",
+      border: "1px solid #26263a",
       background: "rgba(255,255,255,0.04)",
       color: "rgba(255,255,255,0.92)",
       outline: "none",
@@ -768,7 +769,7 @@ export default function AdminBotVendas() {
     link: { color: "#93c5fd", wordBreak: "break-all" },
     composer: {
       padding: 12,
-      borderTop: "1px solid #2a2a2a",
+      borderTop: "1px solid #26263a",
       display: "flex",
       gap: 8,
       background: "rgba(0,0,0,0.35)",
@@ -784,6 +785,10 @@ export default function AdminBotVendas() {
       whiteSpace: "nowrap",
     },
     btnDisabled: { opacity: 0.55, cursor: "not-allowed" },
+  
+    // ✅ 19/08: tema único dos 3 inboxes — espalhado POR ÚLTIMO, então
+    // vence nas chaves comuns; as chaves específicas acima continuam locais.
+    ...INBOX_BASE,
   };
 
   // ---------- derivações ----------
@@ -857,7 +862,7 @@ export default function AdminBotVendas() {
       style={{
         ...S.column,
         width: isMobile ? "100%" : 360,
-        borderRight: isMobile ? "none" : "1px solid #2a2a2a",
+        borderRight: isMobile ? "none" : "1px solid #26263a",
       }}
     >
       <div style={S.panelHeader}>
