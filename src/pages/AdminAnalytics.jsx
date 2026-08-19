@@ -168,6 +168,19 @@ export default function AdminAnalytics() {
     site: { total: 0, mensal: 0, trimestral: 0, revenue_estimated: 0 },
   });
 
+  // ✅ 18/08: cadastros novos + conversão (mesma conta do relatório diário
+  // por e-mail). Vem da edge function admin-analytics: período do filtro,
+  // período de comparação, e sempre hoje/ontem/este mês/mês passado (BRT).
+  const emptySignup = { signups: 0, paid: 0, conversion_rate: 0 };
+  const [signups, setSignups] = useState({
+    period: emptySignup,
+    compare: emptySignup,
+    today: emptySignup,
+    yesterday: emptySignup,
+    this_month: emptySignup,
+    last_month: emptySignup,
+  });
+
   // "Assinantes fiéis" (estimativa) — sempre "agora", independe do filtro de período
   const [loyal, setLoyal] = useState({
     active_total: 0,
@@ -487,6 +500,21 @@ export default function AdminAnalytics() {
         ja_assinaram: safeNum(avConv.ja_assinaram),
         assinaram_depois: safeNum(avConv.assinaram_depois),
         ativos_agora: safeNum(avConv.ativos_agora),
+      });
+
+      const sg = pix.signups || {};
+      const normSignup = (o) => ({
+        signups: safeNum(o?.signups),
+        paid: safeNum(o?.paid),
+        conversion_rate: safeNum(o?.conversion_rate),
+      });
+      setSignups({
+        period: normSignup(sg.period),
+        compare: normSignup(sg.compare),
+        today: normSignup(sg.today),
+        yesterday: normSignup(sg.yesterday),
+        this_month: normSignup(sg.this_month),
+        last_month: normSignup(sg.last_month),
       });
 
       const loyalData = pix.loyal || {};
@@ -913,6 +941,59 @@ export default function AdminAnalytics() {
                   "default",
                   "Quanto essa base de assinantes vale por mês, tipo 'piloto automático'. Se ninguém entrasse nem saísse, é esse valor que cairia todo mês."
                 )}
+              </div>
+            </div>
+
+            {/* ✅ 18/08: Cadastros novos + conversão — MESMA conta do relatório
+                diário por e-mail (cadastro = conta criada; "pagaram" = desses,
+                quem já tem alguma assinatura registrada, mesmo que tenha pago
+                depois do período; conversão = pagaram ÷ cadastros). */}
+            <div className="mt-3">
+              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                Cadastros e conversão
+                <InfoTooltip text='Mesmos números do relatório diário que chega por e-mail. "Cadastros" = contas criadas na janela. "Pagaram" = dessas contas, quantas já têm alguma assinatura registrada (mesmo que tenham pago depois da janela fechar — por isso o número de um dia recente ainda pode subir nos dias seguintes). Conversão = pagaram ÷ cadastros. Hoje/ontem/mês são em horário de Brasília e não dependem do filtro lá em cima.' />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Cadastros hoje",
+                    `${signups.today.signups}`,
+                    <Users className="w-5 h-5 text-cyan-300" />,
+                    `Pagaram: ${signups.today.paid} (${signups.today.conversion_rate}%) • Ontem: ${signups.yesterday.signups} → ${signups.yesterday.paid} (${signups.yesterday.conversion_rate}%)`,
+                    "default",
+                    "Contas criadas hoje (desde 00:00 em Brasília) e quantas delas já pagaram. Ontem aparece do lado pra comparar."
+                  )}
+                </div>
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Cadastros este mês",
+                    `${signups.this_month.signups}`,
+                    <Users className="w-5 h-5 text-cyan-300" />,
+                    `Pagaram: ${signups.this_month.paid} (${signups.this_month.conversion_rate}%) • Mês passado: ${signups.last_month.signups} → ${signups.last_month.paid} (${signups.last_month.conversion_rate}%)`,
+                    "default",
+                    "Contas criadas do dia 1 até agora e quantas já pagaram. Mês passado inteiro aparece do lado pra comparar."
+                  )}
+                </div>
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Conversão (período)",
+                    `${signups.period.conversion_rate}%`,
+                    <BarChart3 className="w-5 h-5 text-cyan-300" />,
+                    `${signups.period.paid} pagaram de ${signups.period.signups} cadastros no período do filtro`,
+                    signups.period.conversion_rate >= 15 ? "ok" : signups.period.conversion_rate >= 10 ? "warn" : "default",
+                    "Conversão de quem se cadastrou DENTRO do período escolhido no filtro lá em cima. É o mesmo número que aparece como '% Desses, pagaram' no e-mail diário quando o período é o dia."
+                  )}
+                </div>
+                <div className="md:col-span-3">
+                  {renderCard(
+                    "Conversão (comparação)",
+                    `${signups.compare.conversion_rate}%`,
+                    <BarChart3 className="w-5 h-5 text-cyan-300" />,
+                    `${signups.compare.paid} pagaram de ${signups.compare.signups} cadastros no período de comparação`,
+                    "default",
+                    "Mesma conta, só que no período de comparação (por padrão, a mesma quantidade de dias um mês antes). Serve pra ver se a conversão tá subindo ou caindo."
+                  )}
+                </div>
               </div>
             </div>
 

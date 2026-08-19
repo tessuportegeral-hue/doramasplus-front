@@ -564,6 +564,52 @@ Deno.serve(async (req) => {
       ativos_agora: Number(avConvRow.ativos_agora || 0),
     };
 
+    // ✅ 18/08 (pedido do Stefano): cadastros novos + conversão, com a MESMA
+    // conta do relatório diário por e-mail (business-metrics-report →
+    // computeCustomMetrics): cadastro = profiles.created_at no período;
+    // "pagaram" = desses, quem tem QUALQUER linha em subscriptions (já pagou
+    // alguma vez, mesmo que depois do período); conversão = pagaram/cadastros.
+    // Além do período selecionado (e do de comparação), devolve sempre HOJE
+    // e ESTE MÊS em horário de Brasília, pra bater com o e-mail sem depender
+    // do filtro escolhido no painel.
+    const signupsQuery = `
+      with janelas as (
+        select 'period' as k, '${periodStart}'::timestamptz as s, '${periodEnd}'::timestamptz as e
+        union all select 'compare', '${comparePeriodStart}'::timestamptz, '${comparePeriodEnd}'::timestamptz
+        union all select 'today', (date_trunc('day', now() at time zone 'America/Sao_Paulo')) at time zone 'America/Sao_Paulo', now()
+        union all select 'this_month', (date_trunc('month', now() at time zone 'America/Sao_Paulo')) at time zone 'America/Sao_Paulo', now()
+        union all select 'yesterday', (date_trunc('day', now() at time zone 'America/Sao_Paulo') - interval '1 day') at time zone 'America/Sao_Paulo', (date_trunc('day', now() at time zone 'America/Sao_Paulo')) at time zone 'America/Sao_Paulo'
+        union all select 'last_month', (date_trunc('month', now() at time zone 'America/Sao_Paulo') - interval '1 month') at time zone 'America/Sao_Paulo', (date_trunc('month', now() at time zone 'America/Sao_Paulo')) at time zone 'America/Sao_Paulo'
+      )
+      select j.k,
+        count(p.id) as signups,
+        count(p.id) filter (where exists (select 1 from subscriptions sub where sub.user_id = p.id)) as paid
+      from janelas j
+      left join profiles p on p.created_at >= j.s and p.created_at < j.e
+      group by j.k
+    `;
+    const { data: signupRows, error: signupErr } = await admin.rpc('exec_sql', { q: signupsQuery });
+    if (signupErr) console.error('[admin-analytics] signups_query_failed:', signupErr);
+    const signupsByKey: Record<string, { signups: number; paid: number; conversion_rate: number }> = {};
+    for (const r of signupRows || []) {
+      const s = Number(r.signups || 0);
+      const paid = Number(r.paid || 0);
+      signupsByKey[String(r.k)] = {
+        signups: s,
+        paid,
+        conversion_rate: s > 0 ? Math.round((paid / s) * 10000) / 100 : 0,
+      };
+    }
+    const emptySignups = { signups: 0, paid: 0, conversion_rate: 0 };
+    const signups = {
+      period: signupsByKey.period || emptySignups,
+      compare: signupsByKey.compare || emptySignups,
+      today: signupsByKey.today || emptySignups,
+      yesterday: signupsByKey.yesterday || emptySignups,
+      this_month: signupsByKey.this_month || emptySignups,
+      last_month: signupsByKey.last_month || emptySignups,
+    };
+
     const churnACohort = Number(rev.churn_a_cohort || 0);
     const churnARetained = Number(rev.churn_a_retained || 0);
     const churnBCohort = Number(rev.churn_b_cohort || 0);
@@ -611,6 +657,7 @@ Deno.serve(async (req) => {
       // ✅ 05/08: quantos de quem comprou avulso viraram assinante depois
       // (ver limitação de matching por telefone no comentário acima).
       avulso_conversion: avulsoConversion,
+      signups,
       active_now: Number(rev.ativos_total || 0),
       active_now_monthly: Number(rev.ativos_mensal || 0),
       active_now_quarterly: Number(rev.ativos_trimestral || 0),
