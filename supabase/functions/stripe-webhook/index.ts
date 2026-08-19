@@ -38,6 +38,8 @@ async function sendMetaPurchase(opts: {
   currency: "BRL";
   contentName: string;
   userEmail?: string | null;
+  userPhone?: string | null;
+  userId?: string | null;
 }): Promise<boolean> {
   try {
     const {
@@ -52,11 +54,23 @@ async function sendMetaPurchase(opts: {
       userEmail,
     } = opts;
 
-    let em: string[] | undefined = undefined;
+    // ✅ 19/08 (upgrade de MATCH): além do em, manda ph (telefone com hash,
+    // variantes com/sem 55) e external_id (hash do user_id) — e-mail sozinho
+    // casa fraco; e-mail fake @doramasplus.com é pulado. Só adição.
+    const userData: Record<string, unknown> = {};
     if (userEmail) {
       const normalized = userEmail.trim().toLowerCase();
-      if (normalized) em = [await sha256Hex(normalized)];
+      if (normalized && !normalized.endsWith("@doramasplus.com")) {
+        userData.em = [await sha256Hex(normalized)];
+      }
     }
+    const phoneDigits = String(opts.userPhone || "").replace(/\D/g, "");
+    if (phoneDigits.length >= 10) {
+      const with55 = phoneDigits.startsWith("55") ? phoneDigits : "55" + phoneDigits;
+      const without55 = phoneDigits.startsWith("55") ? phoneDigits.slice(2) : phoneDigits;
+      userData.ph = [await sha256Hex(with55), await sha256Hex(without55)];
+    }
+    if (opts.userId) userData.external_id = [await sha256Hex(opts.userId)];
 
     const payload: any = {
       data: [
@@ -65,7 +79,7 @@ async function sendMetaPurchase(opts: {
           event_time: eventTimeUnix,
           event_id: eventId,
           action_source: "website",
-          user_data: em ? { em } : {},
+          user_data: userData,
           custom_data: {
             currency,
             value,
@@ -297,13 +311,14 @@ serve(async (req) => {
     async function resolveUserIdAndEmailFromCustomer(customerId: string) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id,email,meta_purchase_sent")
+        .select("id,email,phone,meta_purchase_sent")
         .eq("stripe_customer_id", customerId)
         .maybeSingle();
 
       return {
         userId: profile?.id ?? null,
         email: profile?.email ?? null,
+        phone: (profile as any)?.phone ?? null,
         meta_purchase_sent: (profile as any)?.meta_purchase_sent ?? false,
       };
     }
@@ -347,7 +362,7 @@ serve(async (req) => {
         }
 
         // 4) Puxa userId/email + trava do banco
-        const { userId, email, meta_purchase_sent } =
+        const { userId, email, phone, meta_purchase_sent } =
           await resolveUserIdAndEmailFromCustomer(customerId);
 
         if (!userId) {
@@ -402,6 +417,8 @@ serve(async (req) => {
             currency: "BRL",
             contentName: planName,
             userEmail: email,
+            userPhone: phone,
+            userId,
           });
 
           if (ok) {

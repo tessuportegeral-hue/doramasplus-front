@@ -189,8 +189,17 @@ async function dispararPixel(phone: string, email: string | null, value: number,
 // (capturados no checkout, ver SubscriptionPlans.jsx) pra melhorar o match.
 // META_ACCESS_TOKEN tem uma variante com typo já vista em outra função
 // (META_ACESS_TOKEN, 1 C) — lê os dois nomes por segurança.
+// ✅ 19/08 (upgrade de MATCH, pedido do Stefano pra "Meta saber quem é"):
+// o evento do site só mandava em (hash do e-mail) — e-mail casa fraco no BR
+// e parte das contas tem e-mail FAKE @doramasplus.com (criadas pelo bot),
+// que não casa com nada. Agora manda também ph (telefone com hash, nas duas
+// variantes com/sem 55) e external_id (hash do user_id, estável entre
+// compras). E-mail fake é PULADO do em. Só adição — nada da lógica de
+// liberar acesso muda.
 async function dispararPixelSite(opts: {
   email: string | null;
+  phone?: string | null;
+  userId?: string | null;
   value: number;
   plan: string;
   eventId: string;
@@ -209,10 +218,23 @@ async function dispararPixelSite(opts: {
     return false;
   }
   try {
-    const emailHash = opts.email ? await sha256hex(opts.email) : null;
+    const isFakeEmail = !!opts.email && opts.email.toLowerCase().endsWith("@doramasplus.com");
+    const emailHash = opts.email && !isFakeEmail ? await sha256hex(opts.email) : null;
     const contentName = opts.plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Mensal";
     const userData: Record<string, any> = {};
     if (emailHash) userData.em = [emailHash];
+    // telefone: manda as 2 variantes (com/sem DDI 55) — profiles.phone é salvo
+    // sem 55, mas o WhatsApp/Meta conhece o número com 55; hash das duas
+    // maximiza a chance de casar (mesma tática do fluxo do bot).
+    if (opts.phone) {
+      const digits = String(opts.phone).replace(/\D/g, "");
+      if (digits.length >= 10) {
+        const with55 = digits.startsWith("55") ? digits : "55" + digits;
+        const without55 = digits.startsWith("55") ? digits.slice(2) : digits;
+        userData.ph = [await sha256hex(with55), await sha256hex(without55)];
+      }
+    }
+    if (opts.userId) userData.external_id = [await sha256hex(opts.userId)];
     if (opts.fbp) userData.fbp = opts.fbp;
     if (opts.fbclid) userData.fbc = `fb.1.${Date.now()}.${opts.fbclid}`;
 
@@ -383,7 +405,7 @@ Deno.serve(async (req) => {
         provider: "asaas",
         provider_ref: asaasPaymentId,
         order_nsu: externalReference,
-        price_id: plan === "quarterly" ? "asaas_pix_4790" : "asaas_pix_1690",
+        price_id: plan === "quarterly" ? "asaas_pix_4990" : "asaas_pix_1690",
         is_manual: false,
         notes: `PIX Asaas (site) - ${planNameSite}`,
         last_renewed_at: nowSite.toISOString(),
@@ -401,6 +423,8 @@ Deno.serve(async (req) => {
       if (!existingSitePay?.meta_sent) {
         await dispararPixelSite({
           email: profSite?.email || null,
+          phone: profSite?.phone || null,
+          userId,
           value: amountCentsSite / 100,
           plan,
           eventId: existingSitePay?.event_id || externalReference,
@@ -470,9 +494,6 @@ Deno.serve(async (req) => {
 
       await dispararPixel(userPhone, null, value, plan, eventId, ins?.id, savedCtwaClid, receivingPhoneNumberId);
 
-      // ✅ 29/07: tenta achar nome/email já cadastrados pelo telefone (mesmo
-      // padrão de match de dois formatos usado no resto do arquivo) — série
-      // é compra rápida, pode não ter perfil ainda, fica "—" nesse caso.
       let seriesName: string | null = null;
       let seriesEmail: string | null = null;
       try {
@@ -552,7 +573,7 @@ Deno.serve(async (req) => {
       provider: "asaas",
       provider_ref: asaasPaymentId,
       order_nsu: externalReference,
-      price_id: plan === "quarterly" ? "asaas_pix_4790" : "asaas_pix_1690",
+      price_id: plan === "quarterly" ? "asaas_pix_4990" : "asaas_pix_1690",
       is_manual: false,
       notes: `PIX Asaas - ${planName}`,
       last_renewed_at: now.toISOString(),
