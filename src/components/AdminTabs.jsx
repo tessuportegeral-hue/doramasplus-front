@@ -55,6 +55,25 @@ export default function AdminTabs() {
   const navigate = useNavigate();
   const location = useLocation();
   const [doraPendentes, setDoraPendentes] = useState(0);
+  // ✅ 19/08 (celular): com 9 itens + rótulos a barra ficava com quilômetros
+  // de scroll lateral no telefone. Abaixo de 640px vira SÓ ÍCONE (rótulo
+  // some, badge fica) — cabe quase tudo na tela sem rolar.
+  const [compact, setCompact] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setCompact(mq.matches);
+    onChange();
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -83,8 +102,8 @@ export default function AdminTabs() {
     bar: {
       display: "flex",
       alignItems: "center",
-      gap: 4,
-      padding: "8px 14px",
+      gap: compact ? 2 : 4,
+      padding: compact ? "8px 8px" : "8px 14px",
       background: "#0e0e16",
       borderBottom: "1px solid #26263a",
       overflowX: "auto",
@@ -95,7 +114,7 @@ export default function AdminTabs() {
       display: "flex",
       alignItems: "center",
       gap: 8,
-      paddingRight: 14,
+      paddingRight: compact ? 6 : 14,
       color: "#e9e6f7",
       fontWeight: 800,
       fontSize: 14,
@@ -116,7 +135,7 @@ export default function AdminTabs() {
       width: 1,
       height: 22,
       background: "#26263a",
-      margin: "0 8px",
+      margin: compact ? "0 3px" : "0 8px",
       flexShrink: 0,
     },
     item: (active) => ({
@@ -124,7 +143,7 @@ export default function AdminTabs() {
       display: "inline-flex",
       alignItems: "center",
       gap: 7,
-      padding: "7px 12px",
+      padding: compact ? "8px 9px" : "7px 12px",
       borderRadius: 9,
       border: "1px solid transparent",
       background: active ? "rgba(168,85,247,0.16)" : "transparent",
@@ -156,7 +175,7 @@ export default function AdminTabs() {
     <div style={S.bar}>
       <button style={S.brand} onClick={() => navigate("/admin")} title="Início do admin">
         <span style={S.brandDot} />
-        Admin
+        {compact ? null : "Admin"}
       </button>
       {GROUPS.map((g, gi) => (
         <div key={gi} style={{ display: "contents" }}>
@@ -168,9 +187,9 @@ export default function AdminTabs() {
             const Icon = t.icon;
             const badgeN = t.badge === "dora" ? doraPendentes : 0;
             return (
-              <button key={t.path} onClick={() => navigate(t.path)} style={S.item(active)}>
-                <Icon size={15} strokeWidth={2.2} />
-                {t.label}
+              <button key={t.path} onClick={() => navigate(t.path)} style={S.item(active)} title={t.label}>
+                <Icon size={compact ? 17 : 15} strokeWidth={2.2} />
+                {compact ? null : t.label}
                 {badgeN > 0 ? <span style={S.badge}>{badgeN > 99 ? "99+" : badgeN}</span> : null}
               </button>
             );

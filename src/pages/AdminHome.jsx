@@ -33,6 +33,23 @@ export default function AdminHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [d, setD] = useState(null);
+  // ✅ 19/08 (celular): espaçamentos e números menores em tela estreita
+  const [compact, setCompact] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setCompact(mq.matches);
+    onChange();
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,8 +105,8 @@ export default function AdminHome() {
       display: "flex",
       flexDirection: "column",
     },
-    wrap: { maxWidth: 1060, width: "100%", margin: "0 auto", padding: "28px 20px 60px" },
-    h1: { fontSize: 24, fontWeight: 800, margin: 0 },
+    wrap: { maxWidth: 1060, width: "100%", margin: "0 auto", padding: compact ? "18px 14px 48px" : "28px 20px 60px" },
+    h1: { fontSize: compact ? 20 : 24, fontWeight: 800, margin: 0 },
     sub: { color: "rgba(233,230,247,0.55)", fontSize: 14, margin: "4px 0 24px" },
     sec: {
       fontSize: 12.5,
@@ -99,7 +116,7 @@ export default function AdminHome() {
       color: "rgba(233,230,247,0.45)",
       margin: "28px 0 12px",
     },
-    grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
+    grid: { display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))", gap: compact ? 10 : 12 },
     card: {
       background: "#15151f",
       border: "1px solid #26263a",
@@ -116,7 +133,7 @@ export default function AdminHome() {
       alignItems: "center",
       gap: 8,
     },
-    num: { fontSize: 28, fontWeight: 800, margin: "6px 0 2px", fontVariantNumeric: "tabular-nums" },
+    num: { fontSize: compact ? 24 : 28, fontWeight: 800, margin: "6px 0 2px", fontVariantNumeric: "tabular-nums" },
     det: { fontSize: 13, color: "rgba(233,230,247,0.55)" },
     alert: {
       display: "flex",
