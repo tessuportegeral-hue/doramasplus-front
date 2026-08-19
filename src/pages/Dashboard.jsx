@@ -1489,9 +1489,15 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             busca) só pra trocar um slide — um toque que caísse nessa janela
             pagava esse commit (LoAF: `V` de ~300ms sem alvo). Agora o timer e
             o índice vivem dentro do HomeBannerRotator (memo). */}
-        {!normalizedQuery && (
-          <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} />
-        )}
+        {/* ✅ 19/08 (INP round 43) — hero + banners também NÃO desmontam mais
+            na busca (mesmo padrão da round 25, que já salvou as 10 fileiras):
+            o 1º commit do debounce desmontava HomeBannerRotator + HeroSection
+            (65svh de imagem) + banners promo, e limpar a busca remontava tudo
+            — commit síncrono gigante que caía entre a tecla e o paint
+            (teclado na busca: p75 272ms, presentation 174). Com `hidden`, a
+            árvore sobrevive e o liga/desliga da busca vira mudança de CSS. */}
+        <div hidden={!!normalizedQuery}>
+        <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} />
 
         {/* ✅ 12/08 (blindagem CLS) — SLOT de altura fixa pro hero, presente
             desde o 1º frame em qualquer estado (carregando/vazio/pronto).
@@ -1499,19 +1505,17 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             pra baixo aos ~2,4s do load puro: alguma transição de estado do
             hero muda o tamanho dele. Com o slot fixo por fora, o que
             acontece DENTRO nunca mais empurra o resto da página. */}
-        {!normalizedQuery && (
-          <div className="h-[65svh] md:h-[70svh] mb-6 md:mb-8 overflow-hidden">
-            <HeroSection
-              featuredDoramas={doramas.featured}
-              loading={loading.featured}
-            />
-          </div>
-        )}
+        <div className="h-[65svh] md:h-[70svh] mb-6 md:mb-8 overflow-hidden">
+          <HeroSection
+            featuredDoramas={doramas.featured}
+            loading={loading.featured}
+          />
+        </div>
 
         {/* ✅ 11/08 — "Assine agora" (logado que nunca assinou) movido pra CÁ,
             logo abaixo do hero. Aparece tarde (após checkEverSubscribed), então
             fica abaixo da dobra e não empurra o hero/topo = quase zero CLS. */}
-        {!normalizedQuery && user && neverSubscribed && !checkingEverSubscribed && (
+        {user && neverSubscribed && !checkingEverSubscribed && (
           <div className="mb-4 md:mb-6">
             <div className="w-full rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 md:px-5 md:py-4">
               <div className="flex items-center justify-between gap-3">
@@ -1544,7 +1548,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             cooldown via localStorage), presente desde o 1º frame; só o caso
             raro "já tem o app" esconde depois (checagem async ~ms).
             Fechou? Volta em 24h (pedido do Stefano: insistir até instalar). */}
-        {!normalizedQuery && user && showAppInvite && (
+        {user && showAppInvite && (
           <div className="mb-4 md:mb-6">
             <div className="w-full rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 md:px-5 md:py-4">
               <div className="flex items-center justify-between gap-3">
@@ -1581,6 +1585,8 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             </div>
           </div>
         )}
+
+        </div>
 
         {/* ✅ BUSCA (agora é do BANCO, não das categorias) */}
         {normalizedQuery && (
@@ -1656,8 +1662,9 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
         {/* CONTINUAR ASSISTINDO — pro tesagencia isso virou a aba Histórico */}
         {/* ✅ 12/08 (noite) — mesma regra do 1º frame da caixa de busca:
             visitante vê desde o início, logado nunca vê piscar. */}
-        {!normalizedQuery && showVisitorBlocks && (
-          <section className="py-4 md:py-6 relative w-full">
+        {/* ✅ 19/08 (INP round 43) — idem: não desmonta mais na busca */}
+        {showVisitorBlocks && (
+          <section hidden={!!normalizedQuery} className="py-4 md:py-6 relative w-full">
             <div className="flex items-center gap-2 mb-3">
               <Play className="w-5 h-5 text-purple-400" />
               <h2 className="text-xl md:text-2xl font-bold">
