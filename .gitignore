@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vercel/
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Claude Code (settings.json contém PAT do Supabase — NUNCA versionar;
+# as skills em .claude/skills/ são só markdown de receita e VÃO pro git)
+.claude/*
+!.claude/skills/
+.mcp.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
