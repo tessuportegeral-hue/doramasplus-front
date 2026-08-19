@@ -841,6 +841,27 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
     () => searchResults.map((d) => d.id).join("|"),
     [searchResults]
   );
+  // ✅ 18/08 (INP round 36) — grid de resultados em DUAS levas. O LoAF do
+  // carimbo 43c98575 (teclado na busca, p75 488ms, inputDelay 212ms) mostrou
+  // o commit do scheduler ("V" via MessagePort) de 464ms a 1,6s entre uma
+  // tecla e outra: são os 24 cards remontados de uma vez (o `key` acima é o
+  // que segura o CLS, então não sai). Agora a resposta nova monta só os 8
+  // primeiros (1 tela de celular); os outros 16 entram no idle seguinte,
+  // como nós NOVOS embaixo (não movem nada = zero CLS). Chaveado pelo
+  // conjunto: resposta nova volta pra 1ª leva sozinha.
+  const SEARCH_FIRST_WAVE = 8;
+  const [searchFullWaveKey, setSearchFullWaveKey] = useState("");
+  const searchFullWave = searchFullWaveKey === searchGridKey;
+  useEffect(() => {
+    if (!searchGridKey || searchResults.length <= SEARCH_FIRST_WAVE) return;
+    const fire = () => startTransition(() => setSearchFullWaveKey(searchGridKey));
+    if ("requestIdleCallback" in window) {
+      const id = requestIdleCallback(fire, { timeout: 700 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(fire, 250);
+    return () => clearTimeout(t);
+  }, [searchGridKey, searchResults.length]);
 
   // (17/08) O índice local do Fuse pra typo saiu daqui — fallback de typo
   // agora é a RPC search_doramas_typo no banco. Ver efeito da busca abaixo.
@@ -1113,9 +1134,12 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
     const q = (searchQuery || "").trim();
 
     if (!q) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      setSearchError(false);
+      // Limpar a busca devolve as fileiras da home (render grande) — transição.
+      startTransition(() => {
+        setSearchResults([]);
+        setSearchLoading(false);
+        setSearchError(false);
+      });
       return;
     }
 
@@ -1141,8 +1165,10 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
 
         if (err) {
           console.error("[search] erro:", err);
-          setSearchError(true);
-          setSearchResults([]);
+          startTransition(() => {
+            setSearchError(true);
+            setSearchResults([]);
+          });
           return;
         }
 
@@ -1173,10 +1199,15 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
       } catch (e) {
         if (isCancelled) return;
         console.error("[search] exception:", e);
-        setSearchError(true);
-        setSearchResults([]);
+        startTransition(() => {
+          setSearchError(true);
+          setSearchResults([]);
+        });
       } finally {
-        if (!isCancelled) setSearchLoading(false);
+        // ✅ 18/08 (INP round 36) — era o ÚNICO setState urgente que sobrava
+        // por busca: re-render urgente do Dashboard inteiro por resposta,
+        // competindo com a tecla seguinte. É só indicador visual → transição.
+        if (!isCancelled) startTransition(() => setSearchLoading(false));
       }
     }, 300);
 
@@ -1598,12 +1629,15 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
                 <div key={searchGridKey} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {(searchShowAll
                     ? searchResults
-                    : searchResults.slice(0, SEARCH_RENDER_CAP)
+                    : searchResults.slice(
+                        0,
+                        searchFullWave ? SEARCH_RENDER_CAP : SEARCH_FIRST_WAVE
+                      )
                   ).map((dorama, index) => (
                     <DoramaCard key={dorama.id} dorama={dorama} index={index} hideYear />
                   ))}
                 </div>
-                {!searchShowAll && searchResults.length > SEARCH_RENDER_CAP && (
+                {!searchShowAll && searchFullWave && searchResults.length > SEARCH_RENDER_CAP && (
                   <div className="flex justify-center mt-6">
                     <button
                       onClick={() => startTransition(() => setSearchShowAll(true))}
