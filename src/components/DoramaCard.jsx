@@ -105,7 +105,20 @@ const DoramaCard = ({ dorama, index, hideYear = false, hideDubladoBadge = false 
     // compositor anima sozinho e não segura toque. Stagger limitado a 8
     // cards (800ms) — depois disso ninguém percebe e economiza timeline.
     <div
-      style={{ animationDelay: `${Math.min(index || 0, 8) * 0.1}s` }}
+      // ✅ 19/08 (INP round 40, pesquisa web.dev/corewebvitals.io): as SEÇÕES
+      // da home já pulam render fora da tela (13/08), mas DENTRO de cada
+      // fileira horizontal todos os 10-30 cards renderizavam mesmo com só
+      // ~2,5 visíveis no celular — ~90% do DOM de card era custo invisível
+      // que TODA interação paga em style/layout (presentation ~42% do INP,
+      // e o recálculo escala com o tamanho do DOM). content-visibility:auto
+      // no card deixa o navegador pular render dos que estão fora da janela
+      // do scroller horizontal também. contain-intrinsic-size reserva o
+      // espaço (largura vem do pai; altura ~ capa 2:3 + texto) = zero CLS.
+      style={{
+        animationDelay: `${Math.min(index || 0, 8) * 0.1}s`,
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 300px",
+      }}
       // ✅ 16/08 (INP) — navigate dentro de startTransition: o toque no card
       // era um onclick síncrono (LoAF `yS` 130-325ms + presentation 400-600ms
       // no mobile) — o React montava a rota nova antes de pintar o feedback do
