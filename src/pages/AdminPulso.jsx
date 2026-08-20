@@ -299,34 +299,75 @@ export default function AdminPulso() {
   const ticketDefault = Number(kpis.arpu) || 17.9;
 
   const [pNovos, setPNovos] = useState(null);
-  const [pRet, setPRet] = useState(null);
+  const [pRet, setPRet] = useState(null); // ajuste em pontos % sobre TODOS os degraus do funil
   const [pTicket, setPTicket] = useState(null);
   const novos = pNovos ?? novosDefault;
-  const ret = pRet ?? Math.round(retGeral * 100);
+  const adj = pRet ?? 0;
   const ticket = pTicket ?? Math.round(ticketDefault * 10) / 10;
 
-  const proj = useMemo(() => {
-    // mês 0 = HOJE (base real), pro gráfico mostrar de onde a curva parte —
-    // subindo OU caindo — em vez de já começar convergida.
-    const base0 = Number(kpis.active_now) || 0;
-    const meses = [{ m: 0, base: base0, receita: Math.round(base0 * ticket) }];
-    let base = base0;
-    const r = ret / 100;
-    for (let m = 1; m <= 12; m++) {
-      base = base * r + novos;
-      meses.push({ m, base: Math.round(base), receita: Math.round(base * ticket) });
+  // ✅ 20/08 — MODELO POR COORTES (objeção do Stefano: "a base amadurece e
+  // fica mais propensa a renovar — média fixa tá errada"). Agora cada leva
+  // desce o funil REAL degrau a degrau (22% no 1º ciclo → 49% → 58% → 82%
+  // nos veteranos): quem sobrevive retém mais SOZINHO dentro da conta, e a
+  // simulação parte da composição ATUAL da base (funil de hoje), não de um
+  // bolo homogêneo. O slider de retenção virou ajuste em pontos % aplicado
+  // a todos os degraus.
+  const tierRates = useMemo(() => {
+    const map = {};
+    for (const r of funnelRet) {
+      if (Number(r.cohort) >= 8) map[Number(r.faixa)] = Number(r.retidos) / Number(r.cohort);
     }
-    const equilibrio = r < 1 ? Math.round(novos / (1 - r)) : Infinity;
+    return map;
+  }, [funnelRet]);
+
+  const rateFor = (k, adjPp) => {
+    let base = tierRates[k];
+    if (base == null) {
+      for (let j = k; j >= 0; j--) if (tierRates[j] != null) { base = tierRates[j]; break; }
+      if (base == null) base = 0.5;
+      if (k >= 4) base = Math.max(base, 0.7); // veterano sem amostra: assume fiel
+    }
+    return Math.min(0.97, Math.max(0.02, base + adjPp / 100));
+  };
+
+  const simulate = (months, nNovos, adjPp) => {
+    const K = 12; // último bucket acumula os 12x+
+    let state = new Array(K + 1).fill(0);
+    for (const row of funnel) {
+      const f = Math.min(K, Number(row.faixa) || 0);
+      state[f] += Number(row.qtd) || 0;
+    }
+    const soma = (arr) => arr.reduce((a, b) => a + b, 0);
+    const out = [soma(state)];
+    for (let m = 1; m <= months; m++) {
+      const next = new Array(K + 1).fill(0);
+      next[0] = nNovos;
+      for (let k = 0; k <= K; k++) {
+        const surv = state[k] * rateFor(k, adjPp);
+        if (k === K) next[K] += surv;
+        else next[k + 1] += surv;
+      }
+      state = next;
+      out.push(soma(state));
+    }
+    return out;
+  };
+
+  const proj = useMemo(() => {
+    // mês 0 = HOJE (composição real do funil); 12 meses por coortes.
+    const bases = simulate(12, novos, adj);
+    const meses = bases.map((b, i) => ({ m: i, base: Math.round(b), receita: Math.round(b * ticket) }));
+    // teto = onde a entrada empata com as saídas do funil (simulado 60 meses)
+    const longo = simulate(60, novos, adj);
+    const equilibrio = Math.round(longo[longo.length - 1]);
     const acumulado = meses.slice(1).reduce((a, x) => a + x.receita, 0);
     return { meses, equilibrio, acumulado };
-  }, [kpis.active_now, novos, ret, ticket]);
+  }, [funnel, tierRates, novos, adj, ticket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCenario = (tipo) => {
     if (tipo === "atual") { setPNovos(null); setPRet(null); setPTicket(null); }
-    // ✅ 20/08 fix: o piso era 40 e o ritmo real (36%) ficava ABAIXO do
-    // "pessimista" — piso agora é o mínimo do slider (20).
-    if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(Math.max(20, Math.round(retGeral * 100) - 5)); setPTicket(Math.round(ticketDefault * 10) / 10); }
-    if (tipo === "otimista") { setPNovos(Math.round(novosDefault * 1.5)); setPRet(Math.min(95, Math.round(retGeral * 100) + 7)); setPTicket(Math.round(ticketDefault * 10) / 10); }
+    if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(-5); setPTicket(Math.round(ticketDefault * 10) / 10); }
+    if (tipo === "otimista") { setPNovos(Math.round(novosDefault * 1.5)); setPRet(7); setPTicket(Math.round(ticketDefault * 10) / 10); }
   };
 
   if (!checked) {
@@ -483,7 +524,7 @@ export default function AdminPulso() {
                 </div>
               </div>
               <p className="text-xs text-white/45 mb-4">
-                Modelo: todo mês a base retém {ret}% e ganha {fmtInt(novos)} novos; receita = base × ticket. Os valores iniciais vêm dos seus números reais — mexe nos controles e vê o futuro mudar.
+                Modelo por COORTES: parte da composição real da base de hoje e cada leva desce o teu funil degrau a degrau ({(rateFor(0, adj) * 100).toFixed(0)}% no 1º ciclo, subindo até {(rateFor(4, adj) * 100).toFixed(0)}% nos veteranos) — a maturidade de quem fica já está dentro da conta. Entram {fmtInt(novos)} novos/mês; receita = base × ticket.
               </p>
 
               <div className="grid md:grid-cols-3 gap-4 mb-4">
@@ -492,8 +533,8 @@ export default function AdminPulso() {
                   <input type="range" min="100" max="3000" step="25" value={novos} onChange={(e) => setPNovos(Number(e.target.value))} className="w-full accent-sky-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
-                  Retenção mensal: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ret}%</span>
-                  <input type="range" min="20" max="95" step="1" value={ret} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
+                  Retenção (ajuste em todos os degraus): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{adj > 0 ? "+" : ""}{adj}pp</span>
+                  <input type="range" min="-15" max="25" step="1" value={adj} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
                   Ticket médio (R$/mês): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.toFixed(2).replace(".", ",")}</span>
@@ -542,7 +583,7 @@ export default function AdminPulso() {
               </div>
 
               <p className="text-xs text-white/40 mt-3">
-                💡 "Teto da base" é onde esses números convergem se nada mudar: novos ÷ (1 − retenção). Pra crescer o teto só tem dois botões de verdade — trazer mais gente por mês ou segurar mais quem já paga.
+                💡 "Teto da base" é onde a curva estaciona se nada mudar: o ponto em que os novos que entram empatam com o que o funil deixa escapar (simulado 60 meses à frente, coorte por coorte). Pra crescer o teto só tem dois botões de verdade — trazer mais gente por mês ou apertar os degraus do funil (o 1º ciclo é onde cada ponto vale mais).
               </p>
             </div>
 
