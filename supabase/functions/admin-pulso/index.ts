@@ -187,7 +187,10 @@ Deno.serve(async (req) => {
           where (d.end_at is null and d.provider is null) or d.end_at > a.t
         )
         select (select count(*) from cohort) as cohort,
-               (select count(*) from cohort co where exists (select 1 from agora ag where ag.user_id = co.user_id)) as retidos
+               (select count(*) from cohort co where exists (select 1 from agora ag where ag.user_id = co.user_id)) as retidos,
+               -- ✅ 20/08 v6: entradas da mesma janela (pro grafico Entrada x Saida)
+               (select count(distinct sr.user_id) from subscription_renewals sr
+                 where sr.is_renewal = false and sr.renewed_at > a.t - interval '30 days' and sr.renewed_at <= a.t) as novos
       ) stats
       order by a.t
     `;

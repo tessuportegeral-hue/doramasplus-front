@@ -981,6 +981,47 @@ export default function AdminPulso() {
                 })()}
               </div>
 
+              {/* ✅ 20/08 v6 — RETROVISOR do equilíbrio (pedido do Stefano:
+                  "olhar pro passado pra saber se está melhorando") */}
+              {retSeries.length > 1 && (() => {
+                const pts = retSeries.map((r) => ({
+                  label: diaCurto(r.data),
+                  entraram: Number(r.novos) || 0,
+                  sairam: Math.max(0, (Number(r.cohort) || 0) - (Number(r.retidos) || 0)),
+                }));
+                const atual = pts[pts.length - 1];
+                const anterior = pts[pts.length - 2];
+                const saldoAtual = atual.entraram - atual.sairam;
+                const saldoAnt = anterior.entraram - anterior.sairam;
+                const melhorou = saldoAtual >= saldoAnt;
+                return (
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-3 mb-4">
+                    <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                      <div className="text-xs font-semibold text-white/80 flex items-center gap-1">
+                        ⏪ Retrovisor: entrada × saída ao longo do tempo
+                        <InfoTooltip text="O mesmo placar do ponto de equilíbrio, medido a cada 15 dias desde abril: quantos ENTRARAM (1º pagamento) e quantos SAÍRAM (estavam em dia 30 dias antes e deixaram de estar) na janela de 30 dias de cada data. Quando a linha azul cruzar a vermelha, a base parou de encolher — é o gráfico que diz se as ofensivas estão funcionando." />
+                      </div>
+                      <div className="text-xs" style={{ fontVariantNumeric: "tabular-nums" }}>
+                        <span className="text-white/60">saldo agora: </span>
+                        <b className={saldoAtual >= 0 ? "text-emerald-300" : "text-rose-300"}>{saldoAtual >= 0 ? "+" : ""}{fmtInt(saldoAtual)}/30d</b>
+                        <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[11px] font-semibold ${melhorou ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                          {melhorou ? "▲ melhorando" : "▼ piorando"} vs quinzena anterior ({saldoAnt >= 0 ? "+" : ""}{fmtInt(saldoAnt)})
+                        </span>
+                      </div>
+                    </div>
+                    <AreaChart
+                      height={170}
+                      labels={pts.map((x) => x.label)}
+                      valueFmt={fmtInt}
+                      series={[
+                        { label: "Entraram (30d)", data: pts.map((x) => x.entraram), color: "#38bdf8" },
+                        { label: "Saíram (30d)", data: pts.map((x) => x.sairam), color: "#fb7185" },
+                      ]}
+                    />
+                  </div>
+                );
+              })()}
+
               <div className="grid lg:grid-cols-2 gap-4">
                 <div>
                   <h3 className="text-xs font-semibold text-white/70 mb-1.5">Base de assinantes projetada</h3>
