@@ -140,7 +140,7 @@ const runQueryWithFallback = async (buildQueryFn) => {
 };
 
 // ---------------- HERO SECTION (BANNER) ----------------
-const HeroSection = ({ featuredDoramas, loading }) => {
+const HeroSection = ({ featuredDoramas, loading, paused = false }) => {
   const { isAuthenticated } = useAuth(); // mantido (não removi nada)
   const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -158,11 +158,15 @@ const HeroSection = ({ featuredDoramas, loading }) => {
   };
 
   useEffect(() => {
-    if (featuredDoramas.length > 1) {
+    // ✅ 20/08 (INP round 44) — `paused` durante a busca: com o hero MONTADO
+    // e escondido (round 43), o auto-rotate de 7s continuava re-renderizando
+    // o carrossel invisível enquanto a pessoa digita — inputDelay do teclado
+    // no p75 dobrou (67→130ms). Escondido não roda timer.
+    if (!paused && featuredDoramas.length > 1) {
       const timer = setInterval(handleNext, 7000);
       return () => clearInterval(timer);
     }
-  }, [featuredDoramas.length, handleNext]);
+  }, [featuredDoramas.length, handleNext, paused]);
 
   // ✅ 13/08 (sonda v6) — diário de branch do hero (mesma ideia das seções):
   // registra loading/null/ready e o desmonte (modo busca) com timestamp.
@@ -654,16 +658,18 @@ const DoramaSection = React.memo(({
 // ✅ 16/08 (INP) — isolado do Dashboard: o setInterval de 10s re-renderiza
 // SÓ este componente. `banners` vem memoizado do pai (useMemo), então o
 // React.memo segura re-renders vindos de cima também.
-const HomeBannerRotator = React.memo(function HomeBannerRotator({ banners, showBottomNav }) {
+const HomeBannerRotator = React.memo(function HomeBannerRotator({ banners, showBottomNav, paused = false }) {
   const [bannerIndex, setBannerIndex] = useState(0);
 
   useEffect(() => {
-    if (!banners || banners.length < 2) return;
+    // ✅ 20/08 (INP round 44) — pausa o rotate enquanto está escondido pela
+    // busca (round 43): timer de slide invisível competindo com a digitação.
+    if (paused || !banners || banners.length < 2) return;
     const id = setInterval(() => {
       setBannerIndex((i) => (i + 1) % banners.length);
     }, 10000);
     return () => clearInterval(id);
-  }, [banners]);
+  }, [banners, paused]);
 
   if (!banners || banners.length === 0) return null;
   const banner = banners[bannerIndex % banners.length];
@@ -1497,7 +1503,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             (teclado na busca: p75 272ms, presentation 174). Com `hidden`, a
             árvore sobrevive e o liga/desliga da busca vira mudança de CSS. */}
         <div hidden={!!normalizedQuery}>
-        <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} />
+        <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} paused={!!normalizedQuery} />
 
         {/* ✅ 12/08 (blindagem CLS) — SLOT de altura fixa pro hero, presente
             desde o 1º frame em qualquer estado (carregando/vazio/pronto).
@@ -1509,6 +1515,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
           <HeroSection
             featuredDoramas={doramas.featured}
             loading={loading.featured}
+            paused={!!normalizedQuery}
           />
         </div>
 
