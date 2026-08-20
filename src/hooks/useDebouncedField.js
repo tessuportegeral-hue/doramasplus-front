@@ -6,7 +6,9 @@ import { startTransition, useEffect, useRef, useState } from "react";
 // Este hook mantém o valor digitado em estado LOCAL (só o input re-renderiza
 // a cada tecla) e propaga pro estado global depois de uma pausa curta.
 // Ver [[project-web-vitals-rum-instrumentation]].
-export default function useDebouncedField(value, onCommit, delay = 250) {
+// ✅ 20/08 (INP round 45): 250 -> 400ms — menos commits de render da busca
+// competindo com as teclas (inputDelay ~100ms persistia no teclado).
+export default function useDebouncedField(value, onCommit, delay = 400) {
   const [local, setLocal] = useState(value ?? "");
   const timer = useRef(null);
   const lastCommitted = useRef(value ?? "");

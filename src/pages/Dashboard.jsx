@@ -1139,7 +1139,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
   useEffect(() => {
     const q = (searchQuery || "").trim();
 
-    if (!q) {
+    if (q.length < 2) {
       // Limpar a busca devolve as fileiras da home (render grande) — transição.
       startTransition(() => {
         setSearchResults([]);
@@ -1294,7 +1294,11 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
     loadHistory();
   }, [authLoading, user]);
 
-  const normalizedQuery = (searchQuery || "").trim().toLowerCase();
+  // ✅ 20/08 (INP round 45): busca só com 2+ caracteres — a 1ª letra
+  // disparava RPC + troca home<->resultados pra nada (padrão da indústria:
+  // min 2 chars). Com 1 letra a home fica intacta e ZERO trabalho roda.
+  const _nq = (searchQuery || "").trim().toLowerCase();
+  const normalizedQuery = _nq.length >= 2 ? _nq : "";
 
   // ✅ 13/08 (sonda v6) — a busca ativa desmonta banner+hero+seções (os
   // `!normalizedQuery &&` abaixo). Registra o liga/desliga com timestamp pra
