@@ -350,18 +350,28 @@ export default function AdminPulso() {
       state = next;
       out.push(soma(state));
     }
-    return out;
+    // estado final junto, pra dar pra mostrar a MISTURA da base projetada
+    // (fatia de 1º ciclo e retenção média implícita) — resposta à discussão
+    // "a base vai amadurecendo": depende da torneira, e agora dá pra VER.
+    return { out, state };
   };
 
   const proj = useMemo(() => {
     // mês 0 = HOJE (composição real do funil); 12 meses por coortes.
-    const bases = simulate(12, novos, adj);
-    const meses = bases.map((b, i) => ({ m: i, base: Math.round(b), receita: Math.round(b * ticket) }));
+    const sim = simulate(12, novos, adj);
+    const meses = sim.out.map((b, i) => ({ m: i, base: Math.round(b), receita: Math.round(b * ticket) }));
     // teto = onde a entrada empata com as saídas do funil (simulado 60 meses)
     const longo = simulate(60, novos, adj);
-    const equilibrio = Math.round(longo[longo.length - 1]);
+    const equilibrio = Math.round(longo.out[longo.out.length - 1]);
     const acumulado = meses.slice(1).reduce((a, x) => a + x.receita, 0);
-    return { meses, equilibrio, acumulado };
+    // mistura da base em +12m: fatia no 1º ciclo e retenção média implícita
+    const st = sim.state;
+    const totalFim = st.reduce((a, b) => a + b, 0);
+    const pctNovataFim = totalFim > 0 ? (st[0] / totalFim) * 100 : 0;
+    const retMediaFim = totalFim > 0
+      ? (st.reduce((a, v, k) => a + v * rateFor(k, adj), 0) / totalFim) * 100
+      : 0;
+    return { meses, equilibrio, acumulado, pctNovataFim, retMediaFim };
   }, [funnel, tierRates, novos, adj, ticket]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCenario = (tipo) => {
@@ -582,7 +592,10 @@ export default function AdminPulso() {
                 </div>
               </div>
 
-              <p className="text-xs text-white/40 mt-3">
+              <p className="text-xs text-white/40 mt-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                🧬 Mistura da base — hoje: {totalFunil > 0 ? ((Number(funnel[0]?.qtd || 0) / totalFunil) * 100).toFixed(0) : 0}% no 1º ciclo, retenção média {(retGeral * 100).toFixed(0)}% → em +12m nesse cenário: {proj.pctNovataFim.toFixed(0)}% no 1º ciclo, retenção média {proj.retMediaFim.toFixed(0)}%. A base só "amadurece" de verdade quando a fatia de veteranos cresce — e quem alimenta os degraus de cima é a torneira de novos passando pelo gargalo do 1º ciclo.
+              </p>
+              <p className="text-xs text-white/40 mt-2">
                 💡 "Teto da base" é onde a curva estaciona se nada mudar: o ponto em que os novos que entram empatam com o que o funil deixa escapar (simulado 60 meses à frente, coorte por coorte). Pra crescer o teto só tem dois botões de verdade — trazer mais gente por mês ou apertar os degraus do funil (o 1º ciclo é onde cada ponto vale mais).
               </p>
             </div>
