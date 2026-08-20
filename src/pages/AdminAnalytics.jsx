@@ -1307,7 +1307,9 @@ export default function AdminAnalytics() {
               </div>
 
               <div className="mt-2 text-xs text-white/45">
-                Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
+                Cada faixa = em quantos MESES diferentes a pessoa renovou (reprocessamento de pagamento,
+                troca de provedor e cobrança duplicada no mesmo mês contam uma vez só — antes inflavam a escada
+                e criavam faixas impossíveis tipo 8x). Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
                 disso a tabela de assinaturas era sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa
                 já tinha renovado. Quem já assinava antes dessa data pode aparecer numa faixa mais baixa do que
                 realmente é. As faixas abrem sozinhas conforme mais gente for acumulando renovações com o tempo.

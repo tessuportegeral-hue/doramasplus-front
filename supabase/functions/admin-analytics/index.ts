@@ -428,7 +428,10 @@ Deno.serve(async (req) => {
       flagged as (
         select a.user_id,
           exists(select 1 from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as renewed_once,
-          (select count(*) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) >= 2 as renewed_twice
+          -- ✅ 20/08: MESES DISTINTOS, não linhas — retry de webhook, remigração
+          -- (12-14/07) e pagamento Stripe+Asaas duplicado geravam várias linhas
+          -- pro MESMO ciclo e inflavam a contagem (faixa 6+ impossível)
+          (select count(distinct date_trunc('month', sr.renewed_at)) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) >= 2 as renewed_twice
         from ativos a
       )
       select
@@ -460,7 +463,9 @@ Deno.serve(async (req) => {
       ),
       contagem as (
         select a.user_id,
-          (select count(*) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as qtd_renovacoes
+          -- ✅ 20/08: meses distintos (retry/remigração/provider duplicado
+          -- criavam faixa 6+ impossível — histórico só existe desde 18/03)
+          (select count(distinct date_trunc('month', sr.renewed_at)) from subscription_renewals sr where sr.user_id = a.user_id and sr.is_renewal = true) as qtd_renovacoes
         from ativos a
       )
       select qtd_renovacoes as faixa, count(*) as qtd
@@ -497,7 +502,7 @@ Deno.serve(async (req) => {
       ),
       tiered as (
         select ca.user_id,
-          (select count(*) from subscription_renewals sr, period where sr.user_id = ca.user_id and sr.is_renewal = true and sr.renewed_at <= period.p_start) as faixa
+          (select count(distinct date_trunc('month', sr.renewed_at)) from subscription_renewals sr, period where sr.user_id = ca.user_id and sr.is_renewal = true and sr.renewed_at <= period.p_start) as faixa
         from cohort_a_active ca, period
       ),
       retained as (
