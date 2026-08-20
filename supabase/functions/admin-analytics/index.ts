@@ -475,13 +475,15 @@ Deno.serve(async (req) => {
       qtd: Number(r.qtd || 0),
     }));
 
-    // % de renovação de cada faixa, usando o último mês FECHADO como
-    // referência (não dá pra medir isso "agora" — precisa de um período
-    // fechado inteiro pra comparar início x fim). Mesma lógica sem limite
-    // fixo de faixa.
+    // % de renovação de cada faixa — JANELA MÓVEL dos últimos 30 dias
+    // (✅ 20/08, pedido do Stefano: era o último mês FECHADO e o número
+    // ficava parado o mês inteiro, parecendo funil congelado; com a janela
+    // móvel, cohort = quem estava coberto 30 dias atrás, retido = quem ainda
+    // está coberto AGORA — atualiza a cada carregamento). Mesma lógica sem
+    // limite fixo de faixa.
     const tierRetentionQuery = `
       with period as (
-        select date_trunc('month', now()) - interval '1 month' as p_start, date_trunc('month', now()) as p_end
+        select now() - interval '30 days' as p_start, now() as p_end
       ),
       cohort_a as (
         select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider

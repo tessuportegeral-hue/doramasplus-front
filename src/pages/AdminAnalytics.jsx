@@ -128,7 +128,7 @@ export default function AdminAnalytics() {
   }, []);
 
   // Filtro de período
-  const [quickPeriod, setQuickPeriod] = useState("this_month"); // ✅ 19/08: padrão era "today" (deixava retenção 0% com aviso assustador); mês em andamento é a visão mais útil. today | this_month | last_month | custom
+  const [quickPeriod, setQuickPeriod] = useState("today"); // ✅ 20/08 (pedido do Stefano): abre no faturamento DIÁRIO; quer o mês, troca no filtro. today | this_month | last_month | custom
   const [startDateStr, setStartDateStr] = useState("");
   const [endDateStr, setEndDateStr] = useState("");
 
@@ -1279,8 +1279,8 @@ export default function AdminAnalytics() {
                       <th className="px-4 py-2 font-medium text-right">% da base</th>
                       <th className="px-4 py-2 font-medium text-right">
                         <span className="inline-flex items-center gap-1">
-                          Renovação estimada
-                          <InfoTooltip text="Não dá pra medir 'agora' — precisa de um período fechado inteiro pra comparar quem tinha no início com quem sobrou no fim. Por isso essa coluna usa o ÚLTIMO MÊS FECHADO como referência, não o momento atual." />
+                          Renovação (últimos 30 dias)
+                          <InfoTooltip text="Janela móvel: compara quem estava com assinatura em dia 30 dias atrás com quem continua em dia AGORA, faixa por faixa. Atualiza a cada carregamento da página — conforme renovações e vencimentos acontecem, o número se mexe todo dia." />
                         </span>
                       </th>
                     </tr>
