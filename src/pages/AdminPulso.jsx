@@ -401,6 +401,28 @@ export default function AdminPulso() {
     };
   }, [funnel, tierRates, adj, kpis.active_now]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ✅ 20/08 (pedido do Stefano): qual retenção SEGURARIA a base se a entrada
+  // continuar na média atual? Busca o menor ajuste (pp em todos os degraus)
+  // em que teto(entrada atual, adj) >= base de hoje — e desenha essa curva
+  // tracejada no gráfico de 12 meses como alvo.
+  const holdTarget = useMemo(() => {
+    const pace = Number(kpis.novos_30d) || 0;
+    const baseNow = Number(kpis.active_now) || 0;
+    if (!pace || !baseNow) return null;
+    for (let a = 0; a <= 45; a += 0.5) {
+      let mult = 1, s = 1;
+      for (let k = 0; k < 60; k++) {
+        s *= rateFor(Math.min(12, k), a);
+        mult += s;
+        if (s < 0.0001) break;
+      }
+      if (pace * mult >= baseNow) {
+        return { adj: a, primeiroCiclo: rateFor(0, a) * 100, curva: simulate(12, pace, a).out };
+      }
+    }
+    return null; // nem +45pp em todos os degraus segura — só aumentando entrada
+  }, [tierRates, funnel, kpis.novos_30d, kpis.active_now]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setCenario = (tipo) => {
     if (tipo === "atual") { setPNovos(null); setPRet(null); setPTicket(null); }
     if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(-5); setPTicket(Math.round(ticketDefault * 10) / 10); }
@@ -649,7 +671,21 @@ export default function AdminPulso() {
                   <AreaChart height={180}
                     labels={proj.meses.map((x) => (x.m === 0 ? "hoje" : `+${x.m}m`))}
                     valueFmt={fmtInt}
-                    series={[{ label: "Base", data: proj.meses.map((x) => x.base), color: "#a855f7" }]} />
+                    series={[
+                      { label: "Base (cenário dos sliders)", data: proj.meses.map((x) => x.base), color: "#a855f7" },
+                      ...(holdTarget
+                        ? [{ label: `Manter a base (retenção +${holdTarget.adj.toFixed(0)}pp)`, data: holdTarget.curva.map((v) => Math.round(v)), color: "#f59e0b", dashed: true }]
+                        : []),
+                    ]} />
+                  {holdTarget ? (
+                    <p className="text-[11px] text-amber-200/80 mt-1.5" style={{ fontVariantNumeric: "tabular-nums" }}>
+                      ─ ─ Pra MANTER a base com a entrada atual ({fmtInt(Number(kpis.novos_30d) || 0)}/mês), a retenção teria que subir <b>+{holdTarget.adj.toFixed(0)}pp em todos os degraus</b> — 1º ciclo de {(rateFor(0, 0) * 100).toFixed(0)}% pra {holdTarget.primeiroCiclo.toFixed(0)}%.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-amber-200/80 mt-1.5">
+                      ─ ─ Com a entrada atual, nem retenção altíssima segura a base — o caminho é aumentar a entrada.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <h3 className="text-xs font-semibold text-white/70 mb-1.5">Receita mensal projetada</h3>
