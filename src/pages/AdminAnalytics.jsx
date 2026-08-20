@@ -694,6 +694,14 @@ export default function AdminAnalytics() {
               Analytics
             </button>
 
+            {/* ✅ 20/08 — atalho pro PULSO (dashboard com gráficos/projeção) */}
+            <button
+              onClick={() => goTab("/admin/pulso")}
+              className="px-3 py-2 rounded-lg text-sm border bg-gradient-to-r from-purple-500/25 to-fuchsia-500/20 border-purple-400/40 font-semibold"
+            >
+              📈 Pulso
+            </button>
+
             <button
               onClick={() => goTab("/admin/doramas")}
               className={`px-3 py-2 rounded-lg text-sm border ${

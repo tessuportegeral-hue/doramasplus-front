@@ -13,6 +13,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Home,
   BarChart3,
+  Activity,
   Users,
   Clapperboard,
   MessageCircle,
@@ -28,6 +29,7 @@ const GROUPS = [
     items: [
       { path: "/admin", label: "Início", icon: Home, exact: true },
       { path: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+      { path: "/admin/pulso", label: "Pulso", icon: Activity },
     ],
   },
   {

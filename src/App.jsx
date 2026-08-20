@@ -148,6 +148,7 @@ const Historico = lazy(() => import('@/pages/Historico'));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
 const AdminAnalytics = lazy(() => import('@/pages/AdminAnalytics'));
 const AdminHome = lazy(() => import('@/pages/AdminHome'));
+const AdminPulso = lazy(() => import('@/pages/AdminPulso'));
 const AdminUsers = lazy(() => import('@/pages/AdminUsers'));
 import AdminRoute from '@/components/AdminRoute';
 
@@ -804,6 +805,15 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminAnalytics />
+                    </AdminRoute>
+                  }
+                />
+                {/* ✅ 20/08 — PULSO (dashboard financeiro com gráficos/projeção) */}
+                <Route
+                  path="/admin/pulso"
+                  element={
+                    <AdminRoute>
+                      <AdminPulso />
                     </AdminRoute>
                   }
                 />
