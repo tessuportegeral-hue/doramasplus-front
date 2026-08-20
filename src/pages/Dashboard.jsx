@@ -726,7 +726,7 @@ const HomeBannerRotator = React.memo(function HomeBannerRotator({ banners, showB
 // seções em `hidden` (7e24078b), essa reconciliação em cascata era o `V` de
 // 1-1,7s que sobrou no LoAF. Só o Dashboard usa a busca — o Navbar recebe
 // dele. Assinatura mantida com defaults pra não quebrar quem ainda passar prop.
-const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) => {
+const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet, routeActive = true } = {}) => {
   const [searchQuery, setSearchQuery] = useState("");
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -1507,7 +1507,10 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
             (teclado na busca: p75 272ms, presentation 174). Com `hidden`, a
             árvore sobrevive e o liga/desliga da busca vira mudança de CSS. */}
         <div hidden={!!normalizedQuery}>
-        <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} paused={!!normalizedQuery} />
+        {/* ✅ 20/08 (INP) — paused também quando a rota não é home (keep-alive
+            deixa a home montada+hidden nas outras páginas; rotators rodando
+            invisível = inputDelay pago pelo toque de quem tá em /plans etc). */}
+        <HomeBannerRotator banners={homeBanners} showBottomNav={showBottomNav} paused={!!normalizedQuery || !routeActive} />
 
         {/* ✅ 12/08 (blindagem CLS) — SLOT de altura fixa pro hero, presente
             desde o 1º frame em qualquer estado (carregando/vazio/pronto).
@@ -1519,7 +1522,7 @@ const Dashboard = ({ searchQuery: _unusedQ, setSearchQuery: _unusedSet } = {}) =
           <HeroSection
             featuredDoramas={doramas.featured}
             loading={loading.featured}
-            paused={!!normalizedQuery}
+            paused={!!normalizedQuery || !routeActive}
           />
         </div>
 

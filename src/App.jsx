@@ -545,7 +545,13 @@ function HomeKeepAlive() {
   if (!mounted) return null;
   return (
     <div hidden={!isHome}>
-      <Dashboard />
+      {/* ✅ 20/08 (INP "outros") — routeActive: com o keep-alive, a home fica
+          montada+hidden em /plans, /login, /historico etc — e o hero (7s) e o
+          banner (10s) continuavam re-renderizando a árvore invisível. Toque
+          nessas páginas que caísse em cima desse commit pagava inputDelay
+          (p75 246-305ms no /plans). O Dashboard pausa os rotators quando a
+          rota não é home (mesmo mecanismo do round 44 na busca). */}
+      <Dashboard routeActive={isHome} />
     </div>
   );
 }

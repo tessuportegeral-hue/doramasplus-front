@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchDoramaBySlug, fetchSlugRedirect } from "@/lib/doramaLookup";
+import { optimizeCover } from "@/lib/optimizeCover";
 import { Helmet } from "react-helmet";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Crown, Loader2 } from "lucide-react";
@@ -66,7 +67,11 @@ export default function DoramaWatch() {
 
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
   const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
-  const [liveSeconds, setLiveSeconds] = useState(0); // apenas informativo
+  // ✅ 20/08 (INP) — liveSeconds REMOVIDO: era um useState que nenhum JSX
+  // renderizava, mas o onTime (timeupdate, ~4x/s) fazia setLiveSeconds a cada
+  // segundo = re-render da página INTEIRA do player 1x/s durante toda a
+  // reprodução. Todo toque (play/pause no <video>, inputDelay p75 134ms) pagava
+  // esse commit. O tempo real continua em latestTimeRef (refs, sem render).
 
   // ✅ Anti-regressão (não deixar 40min virar 10s)
   const hasAppliedResumeRef = useRef(false);
@@ -614,7 +619,6 @@ export default function DoramaWatch() {
   useEffect(() => {
     if (!allowContinue) {
       setSavedSeconds(0);
-      setLiveSeconds(0);
       lastSavedRef.current = 0;
       hasAppliedResumeRef.current = false;
       hasAutoPlayedRef.current = false;
@@ -642,7 +646,6 @@ export default function DoramaWatch() {
         const saved = typeof t === "number" ? Math.floor(t) : 0;
 
         setSavedSeconds(saved);
-        setLiveSeconds(0);
 
         lastSavedRef.current = saved;
         hasAppliedResumeRef.current = false;
@@ -652,7 +655,6 @@ export default function DoramaWatch() {
       } catch (err) {
         console.error("watch_history select fatal:", err);
         setSavedSeconds(0);
-        setLiveSeconds(0);
         lastSavedRef.current = 0;
         hasAppliedResumeRef.current = false;
         hasAutoPlayedRef.current = false;
@@ -753,7 +755,6 @@ export default function DoramaWatch() {
 
     const onTime = () => {
       capture();
-      setLiveSeconds(Math.floor(latestTimeRef.current));
 
       const now = Date.now();
       if (now - lastSaveAt < 5_000) return;
@@ -1125,6 +1126,12 @@ export default function DoramaWatch() {
                   playsInline
                   autoPlay
                   preload="auto"
+                  /* ✅ 20/08 (LCP) — poster com a capa: o LCP do /watch só
+                     estourava quando o elemento LCP era o <video> em si (p75
+                     5.324ms = 1º frame do HLS pela rede do cliente). Com
+                     poster, a capa (já no cache HTTP, vinda do detalhe) pinta
+                     imediatamente e vira o candidato a LCP no lugar do frame. */
+                  poster={dorama?.cover_url ? optimizeCover(dorama.cover_url, 828) : undefined}
                   className="absolute inset-0 w-full h-full"
                   src={playerType === "mp4" || playerType === "video" ? videoUrl : undefined}
                 />
