@@ -267,6 +267,7 @@ export default function AdminPulso() {
   const monthly = d?.monthly || [];
   const funnel = d?.funnel || [];
   const funnelRet = d?.funnel_retention || [];
+  const retSeries = d?.retention_series || [];
   const kpis = d?.kpis || {};
 
   const fatArr = daily.map((r) => Number(r.fat) || 0);
@@ -506,6 +507,27 @@ export default function AdminPulso() {
                   compare={{ label: "Renovadores", data: monthly.map((m) => Number(m.renovadores)), color: "#34d399" }} />
               </div>
             </div>
+
+            {/* ✅ 20/08 — evolução da retenção (pergunta: "tô aumentando?") */}
+            {retSeries.length > 1 && (
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-white/80">Retenção 30d — evolução</h2>
+                  <span className="text-xs text-white/45">quem estava em dia 30 dias antes e continuou em dia naquela data</span>
+                </div>
+                <AreaChart
+                  height={170}
+                  labels={retSeries.map((r) => diaCurto(r.data))}
+                  fmt={(v) => `${Math.round(v)}%`}
+                  valueFmt={(v) => `${v.toFixed(1)}%`}
+                  series={[{
+                    label: "Retenção 30d",
+                    data: retSeries.map((r) => (Number(r.cohort) > 0 ? (Number(r.retidos) / Number(r.cohort)) * 100 : 0)),
+                    color: "#a855f7",
+                  }]}
+                />
+              </div>
+            )}
 
             {/* funil */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">

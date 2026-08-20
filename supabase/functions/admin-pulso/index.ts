@@ -160,6 +160,38 @@ Deno.serve(async (req) => {
       from tiered group by faixa order by faixa
     `;
 
+    // ---- Retenção 30d ao longo do tempo (âncoras quinzenais) -------------
+    // ✅ 20/08 v3 (pergunta do Stefano: "tô aumentando a retenção?").
+    // Reconstrói dos renewals: coberto em T-30 e ainda coberto em T.
+    const retSeriesQuery = `
+      with anchors as (
+        select generate_series('2026-04-30'::date, (now() at time zone 'America/Sao_Paulo')::date, interval '15 days')::timestamptz as t
+      )
+      select to_char(a.t, 'YYYY-MM-DD') as data, stats.cohort, stats.retidos
+      from anchors a
+      cross join lateral (
+        with cohort as (
+          select c.user_id from (
+            select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+            from subscription_renewals sr
+            where sr.renewed_at <= a.t - interval '30 days'
+            order by sr.user_id, sr.renewed_at desc) c
+          where (c.end_at is null and c.provider is null) or c.end_at > a.t - interval '30 days'
+        ),
+        agora as (
+          select d.user_id from (
+            select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+            from subscription_renewals sr
+            where sr.renewed_at <= a.t
+            order by sr.user_id, sr.renewed_at desc) d
+          where (d.end_at is null and d.provider is null) or d.end_at > a.t
+        )
+        select (select count(*) from cohort) as cohort,
+               (select count(*) from cohort co where exists (select 1 from agora ag where ag.user_id = co.user_id)) as retidos
+      ) stats
+      order by a.t
+    `;
+
     // ---- KPIs (base ativa com split Stripe pro MRR) ----------------------
     // ✅ 20/08 v2: + novos_30d (1º pagamento, últimos 30 dias) — é o "ritmo
     // atual" DE VERDADE pro simulador. A média dos 2 últimos meses fechados
@@ -178,15 +210,16 @@ Deno.serve(async (req) => {
              or coalesce(s.end_at, s.current_period_end) > now())
     `;
 
-    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes] = await Promise.all([
+    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes] = await Promise.all([
       admin.rpc('exec_sql', { q: dailyQuery }),
       admin.rpc('exec_sql', { q: monthlyQuery }),
       admin.rpc('exec_sql', { q: funnelQuery }),
       admin.rpc('exec_sql', { q: funnelRetQuery }),
       admin.rpc('exec_sql', { q: kpiQuery }),
+      admin.rpc('exec_sql', { q: retSeriesQuery }),
     ]);
 
-    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes]] as const) {
+    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes]] as const) {
       if ((res as any).error) return json({ error: `${name}_query_failed`, details: (res as any).error }, 500);
     }
 
@@ -206,6 +239,7 @@ Deno.serve(async (req) => {
       monthly: monthlyRes.data || [],
       funnel: funnelRes.data || [],
       funnel_retention: funnelRetRes.data || [],
+      retention_series: retSeriesRes.data || [],
       kpis: {
         active_now: total,
         active_monthly: mensal,
