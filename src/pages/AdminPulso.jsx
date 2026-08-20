@@ -298,7 +298,9 @@ export default function AdminPulso() {
 
   const setCenario = (tipo) => {
     if (tipo === "atual") { setPNovos(null); setPRet(null); setPTicket(null); }
-    if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(Math.max(40, Math.round(retGeral * 100) - 5)); setPTicket(Math.round(ticketDefault * 10) / 10); }
+    // ✅ 20/08 fix: o piso era 40 e o ritmo real (36%) ficava ABAIXO do
+    // "pessimista" — piso agora é o mínimo do slider (20).
+    if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(Math.max(20, Math.round(retGeral * 100) - 5)); setPTicket(Math.round(ticketDefault * 10) / 10); }
     if (tipo === "otimista") { setPNovos(Math.round(novosDefault * 1.5)); setPRet(Math.min(95, Math.round(retGeral * 100) + 7)); setPTicket(Math.round(ticketDefault * 10) / 10); }
   };
 
@@ -466,7 +468,7 @@ export default function AdminPulso() {
                 </label>
                 <label className="block text-xs text-white/60">
                   Retenção mensal: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ret}%</span>
-                  <input type="range" min="35" max="95" step="1" value={ret} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
+                  <input type="range" min="20" max="95" step="1" value={ret} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
                   Ticket médio (R$/mês): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.toFixed(2).replace(".", ",")}</span>
