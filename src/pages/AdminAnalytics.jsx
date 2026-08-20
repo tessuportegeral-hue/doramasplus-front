@@ -1234,138 +1234,23 @@ export default function AdminAnalytics() {
             </div>
 
 
-            <SectionTitle title="Base e retenção" hint="coortes de longo prazo — também não dependem do filtro" />
-
-            {/* Assinantes fiéis (estimativa) — sempre "agora", não depende do filtro de período */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Assinantes fiéis (estimativa)</div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-6">
-                  {renderCard(
-                    "Fiéis (já renovaram 1x+)",
-                    `${loyal.renewed_once}`,
-                    <Users className="w-5 h-5 text-green-300" />,
-                    `De ${loyal.active_total} ativos agora`,
-                    "ok",
-                    "De quem está pagando agora, quantos já renovaram pelo menos 1 vez — ou seja, já provaram que voltam a pagar, não estão só no primeiro ciclo. É a melhor estimativa de 'público fiel de verdade' que dá pra tirar do banco (confiança ~75-85%: a lógica é sólida, mas depende do histórico de renovações estar completo desde o início)."
-                  )}
-                </div>
-
-                <div className="md:col-span-6">
-                  {renderCard(
-                    "Fiéis raiz (2x+ renovações)",
-                    `${loyal.renewed_twice_plus}`,
-                    <Users className="w-5 h-5 text-purple-300" />,
-                    `De ${loyal.active_total} ativos agora`,
-                    "default",
-                    "Versão mais dura: só quem já renovou 2 vezes ou mais (ficou pelo menos 3 ciclos de pagamento). É o núcleo mais resistente da base, tende a ser mais estável que o número de cima."
-                  )}
-                </div>
+            {/* ✅ 20/08 — limpeza pós-Pulso (decisão do Stefano): "Assinantes
+                fiéis", "Funil de lealdade" e "Retenção D30" saíram DAQUI —
+                viviam duplicados/competindo com as versões melhores do Pulso
+                (funil visual, retenção 30d com gráfico de evolução, simulador).
+                Analytics = operação do período; Pulso = tendência/estratégia. */}
+            <SectionTitle title="Base e retenção" hint="mudou de casa" />
+            <button
+              type="button"
+              onClick={() => goTab("/admin/pulso")}
+              className="mt-3 w-full text-left rounded-2xl bg-gradient-to-r from-purple-500/15 to-fuchsia-500/10 border border-purple-400/30 p-4 hover:from-purple-500/25 transition-colors"
+            >
+              <div className="text-sm font-semibold text-white/90">📈 Retenção, funil de lealdade e projeções agora moram no Pulso →</div>
+              <div className="text-xs text-white/55 mt-1">
+                Lá tem a retenção 30d com o gráfico de evolução (abril até hoje), o funil visual com a % de renovação
+                por degrau, o ponto de equilíbrio de entrada e o simulador de 12 meses. Clique pra abrir.
               </div>
-
-              <div className="mt-2 text-xs text-white/45">
-                Atualiza sempre que a página recarrega ou o filtro muda (não é um número fixo salvo em algum lugar).
-                Baseado em subscription_renewals (histórico de pagamentos) — não usa nenhum número externo (comunidade, etc.).
-              </div>
-            </div>
-
-
-            {/* Funil de lealdade — composição por número de renovações */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
-                Funil de lealdade (por número de renovações)
-                <InfoTooltip text="Cada vez que a pessoa paga de novo (renova), ela sobe uma casinha nessa escada. Quem nunca pagou de novo tá na casinha 0 — é o mais fácil de sumir (só ~20% desses continuam). Quanto mais casinha a pessoa sobe, mais difícil ela abandonar (a % de quem continua vai subindo). É tipo uma peneira: a cada mês, uma parte cai fora, e quem sobra vai ficando cada vez mais 'grudado'." />
-              </div>
-
-              <div className="rounded-2xl bg-white/5 border border-white/10 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-white/50 text-xs border-b border-white/10">
-                      <th className="px-4 py-2 font-medium">Faixa</th>
-                      <th className="px-4 py-2 font-medium text-right">Ativos agora</th>
-                      <th className="px-4 py-2 font-medium text-right">% da base</th>
-                      <th className="px-4 py-2 font-medium text-right">
-                        <span className="inline-flex items-center gap-1">
-                          Renovação (últimos 30 dias)
-                          <InfoTooltip text="Janela móvel: compara quem estava com assinatura em dia 30 dias atrás com quem continua em dia AGORA, faixa por faixa. Atualiza a cada carregamento da página — conforme renovações e vencimentos acontecem, o número se mexe todo dia." />
-                        </span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tierComposition.map((row) => {
-                      const totalAtivos = tierComposition.reduce((acc, r) => acc + r.qtd, 0);
-                      const pct = totalAtivos > 0 ? ((row.qtd / totalAtivos) * 100).toFixed(1) : "0.0";
-                      const refRow = tierRetention.find((r) => r.faixa === row.faixa);
-                      const label = row.faixa === 0 ? "0 (1º ciclo)" : `${row.faixa}x`;
-                      return (
-                        <tr key={row.faixa} className="border-b border-white/5 last:border-0">
-                          <td className="px-4 py-2 text-white/80">{label}</td>
-                          <td className="px-4 py-2 text-right font-medium">{row.qtd}</td>
-                          <td className="px-4 py-2 text-right text-white/60">{pct}%</td>
-                          <td className="px-4 py-2 text-right text-white/60">
-                            {refRow ? `${refRow.taxa_pct}% (${refRow.retidos}/${refRow.cohort})` : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-2 text-xs text-white/45">
-                Cada faixa = em quantos MESES diferentes a pessoa renovou (reprocessamento de pagamento,
-                troca de provedor e cobrança duplicada no mesmo mês contam uma vez só — antes inflavam a escada
-                e criavam faixas impossíveis tipo 8x). Só conta renovações a partir de 18/03/2026 (quando começamos a guardar esse histórico) — antes
-                disso a tabela de assinaturas era sobrescrita a cada pagamento, sem guardar quantas vezes a pessoa
-                já tinha renovado. Quem já assinava antes dessa data pode aparecer numa faixa mais baixa do que
-                realmente é. As faixas abrem sozinhas conforme mais gente for acumulando renovações com o tempo.
-              </div>
-            </div>
-
-
-            {/* Retenção D30 (VIEW) */}
-            <div className="mt-6">
-              <div className="text-sm font-semibold text-white/80 mb-2">Retenção (30 dias)</div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Base com 30 dias",
-                    `${retD30.base_com_30_dias}`,
-                    <Users className="w-5 h-5 text-white/70" />,
-                    "Pagaram entre 60 e 30 dias atrás",
-                    "default",
-                    "Quantas pessoas pagaram a assinatura há entre 30 e 60 dias. É esse grupo que a gente observa pra ver se voltou a pagar."
-                  )}
-                </div>
-
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Ainda ativos",
-                    `${retD30.ainda_ativos}`,
-                    <CheckIcon />,
-                    "Pagaram novamente nos últimos 30 dias",
-                    "ok",
-                    "Dessa mesma turma de cima, quantos pagaram de novo nos últimos 30 dias — ou seja, continuaram assinando."
-                  )}
-                </div>
-
-                <div className="md:col-span-4">
-                  {renderCard(
-                    "Retenção D30",
-                    formatPct(retD30.retencao_d30),
-                    <TrendingUp className="w-5 h-5 text-green-300" />,
-                    "via edge function admin-analytics",
-                    "ok",
-                    "De quem pagou há 30-60 dias, quantos % continuaram pagando depois. Se fosse 100%, ninguém teria saído."
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-2 text-xs text-white/45">{retentionWindowLabel}</div>
-            </div>
+            </button>
 
 
             <SectionTitle title="Extras" hint="métricas de nicho — abre só quando precisar" />
