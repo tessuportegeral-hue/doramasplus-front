@@ -302,7 +302,26 @@ Deno.serve(async (req) => {
       from base
     `;
 
-    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes, riscoRes, hojeRes, origemRes, coortesRes, vencRes] = await Promise.all([
+
+    // ✅ 20/08 v5 — efeito dos e-mails de resgate: de quem recebeu, quantos
+    // voltaram a ASSISTIR em até 7 dias e quantos PAGARAM em até 14 dias.
+    const emailFxQuery = `
+      select l.kind, count(*) as enviados,
+        count(*) filter (where exists (
+          select 1 from watch_history w
+          where w.user_id = l.user_id and w.updated_at > l.created_at
+            and w.updated_at <= l.created_at + interval '7 days')) as voltaram,
+        count(*) filter (where exists (
+          select 1 from subscription_renewals r
+          where r.user_id = l.user_id and r.renewed_at > l.created_at
+            and r.renewed_at <= l.created_at + interval '14 days')) as pagaram
+      from whatsapp_renewal_logs l
+      where (l.kind like 'reengagement%' or l.kind like 'winback%' or l.kind = 'estreia')
+        and l.created_at > now() - interval '30 days' and l.user_id is not null
+      group by 1 order by 1
+    `;
+
+    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes, riscoRes, hojeRes, origemRes, coortesRes, vencRes, emailFxRes] = await Promise.all([
       admin.rpc('exec_sql', { q: dailyQuery }),
       admin.rpc('exec_sql', { q: monthlyQuery }),
       admin.rpc('exec_sql', { q: funnelQuery }),
@@ -314,9 +333,10 @@ Deno.serve(async (req) => {
       admin.rpc('exec_sql', { q: origemQuery }),
       admin.rpc('exec_sql', { q: coortesQuery }),
       admin.rpc('exec_sql', { q: vencQuery }),
+      admin.rpc('exec_sql', { q: emailFxQuery }),
     ]);
 
-    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes], ['risco', riscoRes], ['hoje', hojeRes], ['origem', origemRes], ['coortes', coortesRes], ['venc', vencRes]] as const) {
+    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes], ['risco', riscoRes], ['hoje', hojeRes], ['origem', origemRes], ['coortes', coortesRes], ['venc', vencRes], ['email_fx', emailFxRes]] as const) {
       if ((res as any).error) return json({ error: `${name}_query_failed`, details: (res as any).error }, 500);
     }
 
@@ -342,6 +362,7 @@ Deno.serve(async (req) => {
       origem_semanal: origemRes.data || [],
       coortes: coortesRes.data || [],
       vencimentos: ((vencRes.data as any[]) || [])[0] || {},
+      emails_efeito: emailFxRes.data || [],
       kpis: {
         active_now: total,
         active_monthly: mensal,

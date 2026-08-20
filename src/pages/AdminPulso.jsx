@@ -382,6 +382,7 @@ export default function AdminPulso() {
   const origemSemanal = d?.origem_semanal || [];
   const coortesRaw = d?.coortes || [];
   const venc = d?.vencimentos || {};
+  const emailsFx = d?.emails_efeito || [];
   const kpis = d?.kpis || {};
 
   const fatArr = daily.map((r) => Number(r.fat) || 0);
@@ -700,6 +701,50 @@ export default function AdminPulso() {
                 </div>
               </div>
             </div>
+
+            {/* ✅ 20/08 v5 — EFEITO DOS E-MAILS DE RESGATE */}
+            {emailsFx.length > 0 && (
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                  📬 E-mails de resgate — quem voltou depois de receber
+                  <InfoTooltip text="Últimos 30 dias de envios. 'Voltou a assistir' = deu play em até 7 dias DEPOIS de receber o e-mail. 'Pagou' = renovou/assinou em até 14 dias depois. Atenção: parte dessas pessoas voltaria de qualquer jeito — leia como termômetro comparativo entre as escadas, não como mérito 100% do e-mail. Envios recentes ainda têm a janela aberta (o número cresce sozinho)." />
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <thead>
+                      <tr className="text-left text-white/50 text-xs border-b border-white/10">
+                        <th className="px-3 py-1.5 font-medium">Escada</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Enviados 30d</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Voltou a assistir (≤7d)</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Pagou (≤14d)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emailsFx.map((r) => {
+                        const nomes = { estreia: 'Estreia (nunca assistiu)', reengagement_7d: 'Sumiu 7d', reengagement_15d: 'Sumiu 15d', reengagement_25d: 'Sumiu 25d', winback_7d: 'Winback 7d (venceu)', winback_21d: 'Winback 21d (venceu)' };
+                        const env = Number(r.enviados) || 0;
+                        const vol = Number(r.voltaram) || 0;
+                        const pag = Number(r.pagaram) || 0;
+                        return (
+                          <tr key={r.kind} className="border-b border-white/5 last:border-0">
+                            <td className="px-3 py-1.5 text-white/80">{nomes[r.kind] || r.kind}</td>
+                            <td className="px-3 py-1.5 text-right">{fmtInt(env)}</td>
+                            <td className="px-3 py-1.5 text-right">
+                              <span className="text-sky-300 font-semibold">{fmtInt(vol)}</span>
+                              <span className="text-white/40"> ({env > 0 ? ((vol / env) * 100).toFixed(0) : 0}%)</span>
+                            </td>
+                            <td className="px-3 py-1.5 text-right">
+                              <span className="text-emerald-300 font-semibold">{fmtInt(pag)}</span>
+                              <span className="text-white/40"> ({env > 0 ? ((pag / env) * 100).toFixed(0) : 0}%)</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* faturamento diário */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
