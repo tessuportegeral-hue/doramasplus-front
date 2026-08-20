@@ -110,7 +110,9 @@ function AreaChart({ labels, series, fmt = fmtAxis, height = 220, valueFmt }) {
       {hover != null && (
         <div
           className="pointer-events-none absolute top-1 -translate-x-1/2 rounded-lg bg-slate-950/95 border border-white/10 px-2.5 py-1.5 text-xs shadow-xl z-10 whitespace-nowrap"
-          style={{ left: `${((padL + (hover / (n - 1)) * (W - padL - padR)) / W) * 100}%` }}
+          // ✅ 20/08 — clamp 12–88%: perto da borda o tooltip vazava do card e
+          // criava rolagem LATERAL da página inteira (flagrado no celular)
+          style={{ left: `${Math.min(88, Math.max(12, ((padL + (hover / (n - 1)) * (W - padL - padR)) / W) * 100))}%` }}
         >
           <div className="text-white/50 mb-0.5">{labels[hover]}</div>
           {series.map((s, si) => (
@@ -176,7 +178,7 @@ function Bars({ labels, data, color, fmt = fmtInt, height = 160, compare }) {
       {hover != null && (
         <div
           className="pointer-events-none absolute top-1 -translate-x-1/2 rounded-lg bg-slate-950/95 border border-white/10 px-2.5 py-1.5 text-xs shadow-xl z-10 whitespace-nowrap"
-          style={{ left: `${((padL + hover * slot + slot / 2) / W) * 100}%`, fontVariantNumeric: "tabular-nums" }}
+          style={{ left: `${Math.min(88, Math.max(12, ((padL + hover * slot + slot / 2) / W) * 100))}%`, fontVariantNumeric: "tabular-nums" }}
         >
           <div className="text-white/50 mb-0.5">{labels[hover]}</div>
           <div className="text-white font-semibold">{fmt(data[hover])}</div>
@@ -339,7 +341,7 @@ export default function AdminPulso() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0f17] text-white [color-scheme:dark]">
+    <div className="min-h-screen bg-[#0b0f17] text-white [color-scheme:dark] overflow-x-hidden">
       <Helmet><title>Pulso | DoramasPlus</title></Helmet>
       <AdminTabs />
 
