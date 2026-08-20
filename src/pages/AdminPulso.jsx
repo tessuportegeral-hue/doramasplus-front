@@ -286,8 +286,12 @@ export default function AdminPulso() {
   const retGeral = retTotais.cohort > 0 ? retTotais.ret / retTotais.cohort : 0.55;
 
   // defaults da projeção vindos dos DADOS
-  const lastFullMonths = monthly.slice(-3, -1); // 2 últimos meses fechados
-  const novosDefault = Math.round(
+  // ✅ 20/08 fix (flagrado pelo Stefano): usava a média dos 2 últimos meses
+  // FECHADOS (1.641) enquanto o ritmo real dos últimos 30 dias era 830 — a
+  // projeção mostrava crescimento com a base caindo. Agora o default é o
+  // ritmo real de 30 dias (kpis.novos_30d).
+  const lastFullMonths = monthly.slice(-3, -1);
+  const novosDefault = Number(kpis.novos_30d) || Math.round(
     lastFullMonths.length ? lastFullMonths.reduce((a, m) => a + Number(m.novos), 0) / lastFullMonths.length : 800
   );
   const ticketDefault = Number(kpis.arpu) || 17.9;
@@ -300,15 +304,18 @@ export default function AdminPulso() {
   const ticket = pTicket ?? Math.round(ticketDefault * 10) / 10;
 
   const proj = useMemo(() => {
-    const meses = [];
-    let base = Number(kpis.active_now) || 0;
+    // mês 0 = HOJE (base real), pro gráfico mostrar de onde a curva parte —
+    // subindo OU caindo — em vez de já começar convergida.
+    const base0 = Number(kpis.active_now) || 0;
+    const meses = [{ m: 0, base: base0, receita: Math.round(base0 * ticket) }];
+    let base = base0;
     const r = ret / 100;
     for (let m = 1; m <= 12; m++) {
       base = base * r + novos;
       meses.push({ m, base: Math.round(base), receita: Math.round(base * ticket) });
     }
     const equilibrio = r < 1 ? Math.round(novos / (1 - r)) : Infinity;
-    const acumulado = meses.reduce((a, x) => a + x.receita, 0);
+    const acumulado = meses.slice(1).reduce((a, x) => a + x.receita, 0);
     return { meses, equilibrio, acumulado };
   }, [kpis.active_now, novos, ret, ticket]);
 
@@ -496,14 +503,14 @@ export default function AdminPulso() {
                 <div>
                   <h3 className="text-xs font-semibold text-white/70 mb-1.5">Base de assinantes projetada</h3>
                   <AreaChart height={180}
-                    labels={proj.meses.map((x) => `+${x.m}m`)}
+                    labels={proj.meses.map((x) => (x.m === 0 ? "hoje" : `+${x.m}m`))}
                     valueFmt={fmtInt}
                     series={[{ label: "Base", data: proj.meses.map((x) => x.base), color: "#a855f7" }]} />
                 </div>
                 <div>
                   <h3 className="text-xs font-semibold text-white/70 mb-1.5">Receita mensal projetada</h3>
                   <AreaChart height={180}
-                    labels={proj.meses.map((x) => `+${x.m}m`)}
+                    labels={proj.meses.map((x) => (x.m === 0 ? "hoje" : `+${x.m}m`))}
                     valueFmt={fmtBRL}
                     series={[{ label: "Receita", data: proj.meses.map((x) => x.receita), color: "#34d399" }]} />
                 </div>
@@ -512,18 +519,18 @@ export default function AdminPulso() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4" style={{ fontVariantNumeric: "tabular-nums" }}>
                 <div className="rounded-xl bg-white/5 border border-white/10 p-3">
                   <div className="text-[11px] text-white/50 uppercase">Em 3 meses</div>
-                  <div className="text-lg font-bold">{fmtInt(proj.meses[2].base)}</div>
-                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[2].receita)}/mês</div>
+                  <div className="text-lg font-bold">{fmtInt(proj.meses[3].base)}</div>
+                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[3].receita)}/mês</div>
                 </div>
                 <div className="rounded-xl bg-white/5 border border-white/10 p-3">
                   <div className="text-[11px] text-white/50 uppercase">Em 6 meses</div>
-                  <div className="text-lg font-bold">{fmtInt(proj.meses[5].base)}</div>
-                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[5].receita)}/mês</div>
+                  <div className="text-lg font-bold">{fmtInt(proj.meses[6].base)}</div>
+                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[6].receita)}/mês</div>
                 </div>
                 <div className="rounded-xl bg-white/5 border border-white/10 p-3">
                   <div className="text-[11px] text-white/50 uppercase">Em 12 meses</div>
-                  <div className="text-lg font-bold">{fmtInt(proj.meses[11].base)}</div>
-                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[11].receita)}/mês</div>
+                  <div className="text-lg font-bold">{fmtInt(proj.meses[12].base)}</div>
+                  <div className="text-xs text-white/50">{fmtBRL(proj.meses[12].receita)}/mês</div>
                 </div>
                 <div className="rounded-xl bg-purple-500/10 border border-purple-400/25 p-3">
                   <div className="text-[11px] text-purple-200/70 uppercase">Receita acumulada 12m</div>

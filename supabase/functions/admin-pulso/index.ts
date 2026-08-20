@@ -161,8 +161,13 @@ Deno.serve(async (req) => {
     `;
 
     // ---- KPIs (base ativa com split Stripe pro MRR) ----------------------
+    // ✅ 20/08 v2: + novos_30d (1º pagamento, últimos 30 dias) — é o "ritmo
+    // atual" DE VERDADE pro simulador. A média dos 2 últimos meses fechados
+    // dava 1.641 enquanto o ritmo real era 830 (metade) e a projeção mostrava
+    // crescimento com a base caindo — flagrado pelo Stefano.
     const kpiQuery = `
       select
+        (select count(distinct user_id) from subscription_renewals where is_renewal = false and renewed_at > now() - interval '30 days') as novos_30d,
         count(*) as total,
         count(*) filter (where coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%') as trimestral,
         count(*) filter (where s.provider is null and not (coalesce(plan_interval,'') = 'quarter' or coalesce(plan_name,'') ilike '%trimestral%')) as stripe_mensal,
@@ -207,6 +212,7 @@ Deno.serve(async (req) => {
         active_quarterly: trimestral,
         mrr,
         arpu: total > 0 ? Math.round((mrr / total) * 100) / 100 : 0,
+        novos_30d: Number(kpi.novos_30d || 0),
       },
     });
   } catch (e) {
