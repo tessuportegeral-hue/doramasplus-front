@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
     // ruído. A média geral esconde degrau piorando — esta série não.
     const funnelRetSeriesQuery = `
       with anchors as (
-        select generate_series('2026-05-30'::date, (now() at time zone 'America/Sao_Paulo')::date, interval '15 days')::timestamptz as t
+        select generate_series('2026-04-15'::date, (now() at time zone 'America/Sao_Paulo')::date, interval '15 days')::timestamptz as t
       )
       select to_char(a.t,'YYYY-MM-DD') as data, stats.faixa, stats.cohort, stats.retidos
       from anchors a
