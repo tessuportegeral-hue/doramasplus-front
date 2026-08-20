@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate } from "react-router-dom";
-import { Activity, Loader2, TrendingUp, Users, Wallet, Target, RefreshCw } from "lucide-react";
+import { Activity, Loader2, TrendingUp, Users, Wallet, Target, RefreshCw, HelpCircle } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import AdminTabs from "@/components/AdminTabs";
 
@@ -189,13 +189,27 @@ function Bars({ labels, data, color, fmt = fmtInt, height = 160, compare }) {
   );
 }
 
+// ---------- tooltip de ajuda (mesmo estilo do Analytics) ---------------------
+function InfoTooltip({ text }) {
+  if (!text) return null;
+  return (
+    <span className="relative inline-flex group align-middle">
+      <HelpCircle className="w-3.5 h-3.5 text-white/40 hover:text-white/70 cursor-help" />
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 rounded-lg bg-black/95 border border-white/15 px-3 py-2 text-xs font-normal normal-case text-white/90 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 // ---------- tile de KPI ------------------------------------------------------
-function Kpi({ icon: Icon, label, value, sub, accent = "#a855f7", delta }) {
+function Kpi({ icon: Icon, label, value, sub, accent = "#a855f7", delta, tip }) {
   return (
     <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
       <div className="flex items-center gap-2 text-xs text-white/55 uppercase tracking-wide">
         <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
         {label}
+        <InfoTooltip text={tip} />
       </div>
       <div className="mt-1.5 text-2xl font-bold" style={{ fontVariantNumeric: "tabular-nums" }}>{value}</div>
       <div className="mt-0.5 text-xs text-white/50 flex items-center gap-2" style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -472,19 +486,23 @@ export default function AdminPulso() {
             {/* KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Kpi icon={Wallet} label="MRR agora" accent="#a855f7" value={fmtBRL(kpis.mrr)}
-                sub={`${fmtInt(kpis.active_monthly)} mensais + ${fmtInt(kpis.active_quarterly)} trimestrais`} />
+                sub={`${fmtInt(kpis.active_monthly)} mensais + ${fmtInt(kpis.active_quarterly)} trimestrais`}
+                tip="Receita mensal recorrente: todo mundo com assinatura em dia AGORA, cada um pelo preço que realmente paga (17,90 mensal, 49,90÷3 trimestral, e os antigos do Stripe pelo preço da época: 15,90/43,90÷3). É a 'mesada garantida' se ninguém cancelar nem entrar." />
               <Kpi icon={TrendingUp} label="Faturamento 30d" accent="#34d399" value={fmtBRL(fat30)} delta={fatDelta}
-                sub={`vs 30d anteriores · ${fmtInt(vendas30)} vendas`} />
+                sub={`vs 30d anteriores · ${fmtInt(vendas30)} vendas`}
+                tip="Dinheiro que ENTROU nos últimos 30 dias: PIX pelo valor real pago (InfinityPay/Asaas, sem venda avulsa de R$10) + Stripe estimado pelo plano. A setinha compara com os 30 dias ANTERIORES a esses." />
               <Kpi icon={Users} label="Base ativa" accent="#38bdf8" value={fmtInt(kpis.active_now)}
-                sub={`retenção 30d: ${(retGeral * 100).toFixed(0)}% · ticket ${fmtBRL(kpis.arpu)}`} />
+                sub={`retenção 30d: ${(retGeral * 100).toFixed(0)}% · ticket ${fmtBRL(kpis.arpu)}`}
+                tip="Quantas pessoas têm acesso premium neste exato momento (mesma regra que libera o play). Retenção 30d = de quem estava em dia 30 dias atrás, % que continua em dia hoje. Ticket = MRR dividido pela base (trimestral já mensalizado)." />
               <Kpi icon={Target} label="Ritmo diário (7d)" accent="#f59e0b" value={fmtBRL(ritmo7)}
-                sub={`≈ ${fmtBRL(ritmo7 * 30)} no mês nesse ritmo`} />
+                sub={`≈ ${fmtBRL(ritmo7 * 30)} no mês nesse ritmo`}
+                tip="Média de faturamento por dia dos últimos 7 dias. O '≈ no mês' é só essa média × 30 — um termômetro de curto prazo pra ver se a semana tá acima ou abaixo do normal." />
             </div>
 
             {/* faturamento diário */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold text-white/80">Faturamento diário — últimos 90 dias</h2>
+                <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">Faturamento diário — últimos 90 dias <InfoTooltip text="Cada ponto = o que entrou naquele dia (PIX real + Stripe estimado). A linha tracejada é a média dos últimos 7 dias — ela tira o zigue-zague de fim de semana e mostra a tendência de verdade. Passa o mouse pra ver o valor exato de cada dia." /></h2>
                 <span className="text-xs text-white/45">linha tracejada = média 7 dias</span>
               </div>
               <AreaChart
@@ -500,11 +518,11 @@ export default function AdminPulso() {
             {/* vendas + cadastros */}
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                <h2 className="text-sm font-semibold text-white/80 mb-2">Vendas por dia</h2>
+                <h2 className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">Vendas por dia <InfoTooltip text="Quantos pagamentos de assinatura entraram por dia (novas + renovações, PIX + Stripe). Venda avulsa de R$10 não conta aqui." /></h2>
                 <Bars labels={dayLabels} data={vendasArr} color="#a855f7" />
               </div>
               <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                <h2 className="text-sm font-semibold text-white/80 mb-2">Cadastros por dia</h2>
+                <h2 className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">Cadastros por dia <InfoTooltip text="Contas novas criadas no site por dia (pagantes ou não). É o topo do funil: sem cadastro não tem assinante — quando essa curva cai, a de vendas cai umas semanas depois." /></h2>
                 <AreaChart labels={dayLabels} valueFmt={fmtInt} height={160}
                   series={[{ label: "Cadastros", data: cadArr, color: "#38bdf8" }]} />
               </div>
@@ -513,13 +531,13 @@ export default function AdminPulso() {
             {/* mês a mês */}
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-                <h2 className="text-sm font-semibold text-white/80 mb-2">Base ativa no fim de cada mês</h2>
+                <h2 className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">Base ativa no fim de cada mês <InfoTooltip text="Reconstrução histórica: quantas pessoas estavam com assinatura em dia no último dia de cada mês (usa o histórico de renovações, não a foto atual). O mês corrente mostra a posição de agora." /></h2>
                 <AreaChart labels={monthly.map((m) => mesCurto(m.mes))} valueFmt={fmtInt} height={190}
                   series={[{ label: "Base ativa", data: monthly.map((m) => Number(m.base_fim)), color: "#a855f7" }]} />
               </div>
               <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-semibold text-white/80">Novos × Renovadores por mês</h2>
+                  <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">Novos × Renovadores por mês <InfoTooltip text="Azul = pessoas que fizeram o PRIMEIRO pagamento no mês. Verde = pessoas que renovaram (pagaram de novo) no mês. Quando o verde passa o azul, é a base madura carregando o negócio — bom sinal de lealdade, mas atenção se o azul despencar." /></h2>
                   <div className="flex items-center gap-3 text-[11px] text-white/50">
                     <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: "#38bdf8" }} />Novos</span>
                     <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: "#34d399" }} />Renovadores</span>
@@ -534,7 +552,7 @@ export default function AdminPulso() {
             {retSeries.length > 1 && (
               <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-semibold text-white/80">Retenção 30d — evolução</h2>
+                  <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">Retenção 30d — evolução <InfoTooltip text="A mesma conta de retenção de hoje, medida em datas do passado: de quem estava em dia 30 dias antes daquela data, % que continuava em dia naquela data. Subindo = você está segurando mais gente. O tombo de julho coincide com a troca de meio de pagamento." /></h2>
                   <span className="text-xs text-white/45">quem estava em dia 30 dias antes e continuou em dia naquela data</span>
                 </div>
                 <AreaChart
@@ -553,7 +571,7 @@ export default function AdminPulso() {
 
             {/* funil */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
-              <h2 className="text-sm font-semibold text-white/80 mb-1">Funil de lealdade</h2>
+              <h2 className="text-sm font-semibold text-white/80 mb-1 flex items-center gap-1">Funil de lealdade <InfoTooltip text="Cada degrau = em quantos MESES diferentes a pessoa já renovou (pagamento duplicado/reprocessado conta 1x). Barra = quantos da base ativa estão em cada degrau. A % colorida à direita = quantos daquele degrau continuam em dia (janela móvel de 30 dias): verde acima de 60%, âmbar acima de 40%, vermelho abaixo." /></h2>
               <p className="text-xs text-white/45 mb-3">
                 Cada degrau = meses distintos em que a pessoa renovou. Quanto mais alto o degrau, mais "grudado" o assinante — a % à direita é quem segue em dia (janela móvel de 30 dias).
               </p>
@@ -591,7 +609,7 @@ export default function AdminPulso() {
             {/* projeção */}
             <div className="rounded-2xl bg-gradient-to-br from-purple-500/10 to-white/5 border border-purple-400/20 p-4">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-                <h2 className="text-sm font-semibold text-white/90">Simulador de projeção — próximos 12 meses</h2>
+                <h2 className="text-sm font-semibold text-white/90 flex items-center gap-1">Simulador de projeção — próximos 12 meses <InfoTooltip text="Simulação por coortes: parte da tua base real de hoje (separada por degrau do funil) e avança mês a mês — cada grupo renova com a taxa do próprio degrau, quem sobrevive sobe de degrau e retém mais. Os botões de cenário e os 3 controles mudam as entradas; tudo recalcula na hora." /></h2>
                 <div className="flex items-center gap-1.5">
                   {[["pessimista", "Pessimista"], ["atual", "Ritmo atual"], ["otimista", "Otimista"]].map(([k, l]) => (
                     <button key={k} onClick={() => setCenario(k)}
@@ -609,40 +627,40 @@ export default function AdminPulso() {
 
               <div className="grid md:grid-cols-3 gap-4 mb-4">
                 <label className="block text-xs text-white/60">
-                  Novos assinantes/mês: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtInt(novos)}</span>
+                  <span className="inline-flex items-center gap-1">Novos assinantes/mês <InfoTooltip text="Quantas pessoas fazem o PRIMEIRO pagamento por mês no cenário. Começa no teu ritmo real dos últimos 30 dias. É a torneira: quase tudo no futuro depende dela." /></span>: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtInt(novos)}</span>
                   <input type="range" min="100" max="3000" step="25" value={novos} onChange={(e) => setPNovos(Number(e.target.value))} className="w-full accent-sky-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
-                  Retenção (ajuste em todos os degraus): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{adj > 0 ? "+" : ""}{adj}pp</span>
+                  <span className="inline-flex items-center gap-1">Retenção (ajuste em todos os degraus) <InfoTooltip text="Soma/tira pontos de retenção em TODOS os degraus do funil ao mesmo tempo. Em 0pp o cenário usa as taxas reais de agora (22% no 1º ciclo etc.). Ex.: +5pp = o degrau de 22% vai a 27%, o de 49% vai a 54%, e assim por diante." /></span>: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{adj > 0 ? "+" : ""}{adj}pp</span>
                   <input type="range" min="-15" max="25" step="1" value={adj} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
-                  Ticket médio (R$/mês): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.toFixed(2).replace(".", ",")}</span>
+                  <span className="inline-flex items-center gap-1">Ticket médio (R$/mês) <InfoTooltip text="Quanto cada assinante paga por mês em média (trimestral já dividido por 3, Stripe antigo pelo preço da época). Começa no teu ticket real. Serve pra simular mudança de preço." /></span>: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.toFixed(2).replace(".", ",")}</span>
                   <input type="range" min="10" max="50" step="0.5" value={ticket} onChange={(e) => setPTicket(Number(e.target.value))} className="w-full accent-emerald-400 mt-1" />
                 </label>
               </div>
 
               {/* ✅ 20/08 — PONTO DE EQUILÍBRIO (pedido do Stefano) */}
               <div className="rounded-xl bg-white/5 border border-white/10 p-3 mb-4">
-                <div className="text-xs font-semibold text-white/80 mb-2">🎯 Ponto de equilíbrio de entrada (reage ao slider de retenção)</div>
+                <div className="text-xs font-semibold text-white/80 mb-2 flex items-center gap-1">🎯 Ponto de equilíbrio de entrada (reage ao slider de retenção) <InfoTooltip text="Os números mágicos: quantos assinantes novos por mês você precisa. ESTANCAR = empatar com quem sai neste mês (a queda para agora). SEGURAR = o ritmo que mantém a base atual pra sempre — qualquer coisa acima disso é crescimento. MULTIPLICADOR = quanto de base cada novo gera ao longo da vida dele (teto da base = novos vezes multiplicador)." /></div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
                   <div>
-                    <div className="text-[11px] text-white/50 uppercase">Ritmo atual</div>
+                    <div className="text-[11px] text-white/50 uppercase flex items-center gap-1">Ritmo atual <InfoTooltip text="Primeiros pagamentos dos últimos 30 dias — a tua torneira de verdade, medida no banco agora." /></div>
                     <div className="text-lg font-bold text-sky-300">{fmtInt(Number(kpis.novos_30d) || 0)}<span className="text-xs font-normal text-white/50">/mês</span></div>
                     <div className="text-[11px] text-white/45">≈ {Math.round((Number(kpis.novos_30d) || 0) / 30)}/dia</div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-white/50 uppercase">Estancar a queda</div>
+                    <div className="text-[11px] text-white/50 uppercase flex items-center gap-1">Estancar a queda <InfoTooltip text="Quantos precisariam entrar ESTE mês pra empatar com as saídas previstas da base atual (cada degrau do funil perdendo a % dele). Abaixo disso a base encolhe já no próximo mês." /></div>
                     <div className="text-lg font-bold text-amber-300">{fmtInt(equil.estancar)}<span className="text-xs font-normal text-white/50">/mês</span></div>
                     <div className="text-[11px] text-white/45">≈ {Math.round(equil.estancar / 30)}/dia — empata com as saídas deste mês</div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-white/50 uppercase">Segurar a base ({fmtInt(kpis.active_now)})</div>
+                    <div className="text-[11px] text-white/50 uppercase flex items-center gap-1"><InfoTooltip text="O equilíbrio de longo prazo: entrada mensal cujo teto (novos vezes multiplicador) é exatamente a base de hoje. Sustentar esse ritmo mantém a base pra sempre; acima disso ela cresce mês após mês." />Segurar a base ({fmtInt(kpis.active_now)})</div>
                     <div className="text-lg font-bold text-emerald-300">{fmtInt(equil.segurar)}<span className="text-xs font-normal text-white/50">/mês</span></div>
                     <div className="text-[11px] text-white/45">≈ {Math.round(equil.segurar / 30)}/dia — acima disso a base CRESCE</div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-white/50 uppercase">Multiplicador do funil</div>
+                    <div className="text-[11px] text-white/50 uppercase flex items-center gap-1">Multiplicador do funil <InfoTooltip text="O rastro que 1 pessoa nova deixa: 1 mês garantido + os sobreviventes de cada degrau (0,22 + 0,11 + ...). Teto da base = novos/mês vezes esse número. Melhorar retenção aumenta o multiplicador — cada novo passa a valer mais." /></div>
                     <div className="text-lg font-bold text-purple-300">×{equil.mult.toFixed(2)}</div>
                     <div className="text-[11px] text-white/45">teto da base = novos × {equil.mult.toFixed(2)}</div>
                   </div>
@@ -698,7 +716,7 @@ export default function AdminPulso() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4" style={{ fontVariantNumeric: "tabular-nums" }}>
                 <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-                  <div className="text-[11px] text-white/50 uppercase">Em 3 meses</div>
+                  <div className="text-[11px] text-white/50 uppercase flex items-center gap-1">Em 3 meses <InfoTooltip text="Base de assinantes e receita mensal que o cenário prevê daqui a 3, 6 e 12 meses." /></div>
                   <div className="text-lg font-bold">{fmtInt(proj.meses[3].base)}</div>
                   <div className="text-xs text-white/50">{fmtBRL(proj.meses[3].receita)}/mês</div>
                 </div>
@@ -713,7 +731,7 @@ export default function AdminPulso() {
                   <div className="text-xs text-white/50">{fmtBRL(proj.meses[12].receita)}/mês</div>
                 </div>
                 <div className="rounded-xl bg-purple-500/10 border border-purple-400/25 p-3">
-                  <div className="text-[11px] text-purple-200/70 uppercase">Receita acumulada 12m</div>
+                  <div className="text-[11px] text-purple-200/70 uppercase flex items-center gap-1">Receita acumulada 12m <InfoTooltip text="Soma da receita mensal projetada dos 12 meses do cenário. O teto da base é onde a curva estaciona se nada mudar (simulado 60 meses à frente)." /></div>
                   <div className="text-lg font-bold text-purple-100">{fmtBRL(proj.acumulado)}</div>
                   <div className="text-xs text-white/50">teto da base: {Number.isFinite(proj.equilibrio) ? fmtInt(proj.equilibrio) : "∞"}</div>
                 </div>
