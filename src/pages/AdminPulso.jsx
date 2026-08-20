@@ -883,9 +883,17 @@ export default function AdminPulso() {
                           {fmtInt(qtd)} <span className="text-white/45 ml-1.5 font-normal">({pct.toFixed(1)}%)</span>
                         </span>
                       </div>
-                      <div className="w-24 shrink-0 text-right text-xs" style={{ fontVariantNumeric: "tabular-nums" }}>
-                        {taxa != null ? (
-                          <span className={taxa >= 60 ? "text-emerald-300" : taxa >= 40 ? "text-amber-300" : "text-rose-300"}>{taxa.toFixed(0)}% renova</span>
+                      <div className="w-40 shrink-0 text-right text-xs" style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {/* ✅ 20/08 — flagrado pelo Stefano: 5x mostrava "50%"
+                            em vermelho... com amostra de 2 pessoas. Agora
+                            mostra (x/y) e acinzenta amostra < 20 — e o
+                            simulador já ignora degrau com menos de 8. */}
+                        {taxa != null && Number(ref.cohort) >= 20 ? (
+                          <span className={taxa >= 60 ? "text-emerald-300" : taxa >= 40 ? "text-amber-300" : "text-rose-300"}>
+                            {taxa.toFixed(0)}% renova <span className="text-white/35">({ref.retidos}/{ref.cohort})</span>
+                          </span>
+                        ) : taxa != null ? (
+                          <span className="text-white/35">{taxa.toFixed(0)}% ({ref.retidos}/{ref.cohort}) · amostra pequena</span>
                         ) : (
                           <span className="text-white/30">—</span>
                         )}
