@@ -189,6 +189,101 @@ function Bars({ labels, data, color, fmt = fmtInt, height = 160, compare }) {
   );
 }
 
+// ---------- barras empilhadas (origem dos novos) -----------------------------
+function StackedBars({ labels, groups, height = 190 }) {
+  const [hover, setHover] = useState(null);
+  const W = 640;
+  const H = height;
+  const padL = 40, padR = 10, padT = 10, padB = 22;
+  const n = Math.max(1, labels.length);
+  const totals = labels.map((_, i) => groups.reduce((a, g) => a + (Number(g.data[i]) || 0), 0));
+  const maxV = Math.max(1, ...totals);
+  const slot = (W - padL - padR) / n;
+  const bw = Math.max(4, slot * 0.6);
+  const y = (v) => padT + (1 - v / maxV) * (H - padT - padB);
+
+  return (
+    <div className="relative" onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
+        {[0.5, 1].map((f, i) => (
+          <g key={i}>
+            <line x1={padL} x2={W - padR} y1={y(f * maxV)} y2={y(f * maxV)} stroke="rgba(255,255,255,0.07)" />
+            <text x={padL - 6} y={y(f * maxV) + 3} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.38)" style={{ fontVariantNumeric: "tabular-nums" }}>{fmtAxis(f * maxV)}</text>
+          </g>
+        ))}
+        {labels.map((l, i) => {
+          const x0 = padL + i * slot + (slot - bw) / 2;
+          let acc = 0;
+          return (
+            <g key={i} onMouseEnter={() => setHover(i)}>
+              <rect x={padL + i * slot} y={padT} width={slot} height={H - padT - padB} fill="transparent" />
+              {groups.map((g, gi) => {
+                const v = Number(g.data[i]) || 0;
+                const y1 = y(acc + v);
+                const h = y(acc) - y1;
+                acc += v;
+                // 2px de respiro entre segmentos (cartilha)
+                return v > 0 ? <rect key={gi} x={x0} y={y1 + 1} width={bw} height={Math.max(0, h - 2)} rx="2" fill={g.color} opacity={hover === i ? 1 : 0.85} /> : null;
+              })}
+              <text x={x0 + bw / 2} y={H - 6} textAnchor="middle" fontSize="10" fill="rgba(255,255,255,0.38)">{l}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {hover != null && (
+        <div className="pointer-events-none absolute top-1 -translate-x-1/2 rounded-lg bg-slate-950/95 border border-white/10 px-2.5 py-1.5 text-xs shadow-xl z-10 whitespace-nowrap"
+          style={{ left: `${Math.min(88, Math.max(12, ((padL + hover * slot + slot / 2) / W) * 100))}%`, fontVariantNumeric: "tabular-nums" }}>
+          <div className="text-white/50 mb-0.5">semana {labels[hover]}</div>
+          {groups.map((g, gi) => (
+            <div key={gi} className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full" style={{ background: g.color }} />
+              <span className="text-white/70">{g.label}:</span>
+              <span className="font-semibold text-white">{fmtInt(g.data[hover] || 0)}</span>
+            </div>
+          ))}
+          <div className="text-white/60 mt-0.5">Total: <b className="text-white">{fmtInt(totals[hover])}</b></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- curvas de sobrevivência por coorte (séries de tamanhos diferentes)
+function CohortChart({ series, maxK, height = 200 }) {
+  const W = 640, H = height;
+  const padL = 40, padR = 14, padT = 12, padB = 22;
+  const n = maxK + 1; // 0..maxK
+  const x = (i) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
+  const y = (v) => padT + (1 - v / 100) * (H - padT - padB);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
+      {[25, 50, 75, 100].map((v) => (
+        <g key={v}>
+          <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="rgba(255,255,255,0.07)" />
+          <text x={padL - 6} y={y(v) + 3} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.38)" style={{ fontVariantNumeric: "tabular-nums" }}>{v}%</text>
+        </g>
+      ))}
+      {series.map((sr, si) => {
+        const pts = sr.data.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
+        const path = pts.map((pt, i) => `${i === 0 ? "M" : "L"}${pt}`).join(" ");
+        const lastIdx = sr.data.reduce((a, v, i) => (v == null ? a : i), 0);
+        return (
+          <g key={si}>
+            <path d={path} fill="none" stroke={sr.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+            <circle cx={x(lastIdx)} cy={y(sr.data[lastIdx])} r="3" fill={sr.color} stroke="#0b0f17" strokeWidth="1.5" />
+            <text x={x(lastIdx) + 5} y={y(sr.data[lastIdx]) + 3} fontSize="9" fill={sr.color} style={{ fontVariantNumeric: "tabular-nums" }}>{Math.round(sr.data[lastIdx])}%</text>
+          </g>
+        );
+      })}
+      {Array.from({ length: n }, (_, i) => (
+        <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="10" fill="rgba(255,255,255,0.38)">
+          {i === 0 ? "entrada" : `+${i}m`}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 // ---------- tooltip de ajuda (mesmo estilo do Analytics) ---------------------
 function InfoTooltip({ text }) {
   if (!text) return null;
@@ -282,6 +377,11 @@ export default function AdminPulso() {
   const funnel = d?.funnel || [];
   const funnelRet = d?.funnel_retention || [];
   const retSeries = d?.retention_series || [];
+  const risco = d?.risco || {};
+  const novosHoje = Number(d?.novos_hoje) || 0;
+  const origemSemanal = d?.origem_semanal || [];
+  const coortesRaw = d?.coortes || [];
+  const venc = d?.vencimentos || {};
   const kpis = d?.kpis || {};
 
   const fatArr = daily.map((r) => Number(r.fat) || 0);
@@ -370,6 +470,24 @@ export default function AdminPulso() {
     // "a base vai amadurecendo": depende da torneira, e agora dá pra VER.
     return { out, state };
   };
+
+  // curvas de sobrevivência por coorte (entrada = 100%; só até onde o mês já viveu)
+  const coorte = useMemo(() => {
+    const meses = [...new Set(coortesRaw.map((r) => r.mes))].sort();
+    const cores = ["#64748b", "#38bdf8", "#34d399", "#a855f7", "#f59e0b", "#fb7185"];
+    let maxK = 1;
+    const series = meses.map((m, i) => {
+      const rows = coortesRaw.filter((r) => r.mes === m).sort((a, b) => Number(a.k) - Number(b.k));
+      maxK = Math.max(maxK, ...rows.map((r) => Number(r.k)));
+      const data = [100];
+      for (let k = 1; k <= 5; k++) {
+        const row = rows.find((r) => Number(r.k) === k);
+        data.push(row && Number(row.cohort) > 0 ? (Number(row.vivos) / Number(row.cohort)) * 100 : null);
+      }
+      return { label: mesCurto(m), color: cores[i % cores.length], data };
+    });
+    return { series, maxK: Math.min(5, maxK) };
+  }, [coortesRaw]);
 
   const proj = useMemo(() => {
     // mês 0 = HOJE (composição real do funil); 12 meses por coortes.
@@ -499,6 +617,90 @@ export default function AdminPulso() {
                 tip="Média de faturamento por dia dos últimos 7 dias. O '≈ no mês' é só essa média × 30 — um termômetro de curto prazo pra ver se a semana tá acima ou abaixo do normal." />
             </div>
 
+            {/* ✅ 20/08 v4 — META DO DIA (os 43/dia ao vivo) */}
+            {(() => {
+              const metaDia = Math.max(1, Math.round(equil.segurar / 30));
+              const brt = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+              const frac = Math.max(0.08, (brt.getHours() + brt.getMinutes() / 60) / 24);
+              const proj_dia = Math.round(novosHoje / frac);
+              const ok = proj_dia >= metaDia;
+              return (
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                    <div className="text-sm font-semibold text-white/80 flex items-center gap-1">
+                      🎯 Meta do dia: {metaDia} novos assinantes
+                      <InfoTooltip text="A meta vem do ponto de equilíbrio (novos/mês pra segurar a base ÷ 30). Conta primeiros pagamentos de HOJE em horário de Brasília. O 'ritmo aponta' divide o que já entrou pela fração do dia que passou — de manhã cedo ele oscila muito, à tarde fica confiável." />
+                    </div>
+                    <div className="text-xs" style={{ fontVariantNumeric: "tabular-nums" }}>
+                      <span className="text-white/60">hoje: </span>
+                      <b className="text-white">{fmtInt(novosHoje)}</b>
+                      <span className="text-white/60"> · ritmo aponta </span>
+                      <b className={ok ? "text-emerald-300" : "text-amber-300"}>{fmtInt(proj_dia)}</b>
+                      <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[11px] font-semibold ${ok ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+                        {ok ? "no ritmo de crescer ✓" : `faltam ~${fmtInt(Math.max(0, metaDia - proj_dia))} no ritmo`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="relative h-4 rounded-md bg-white/5 overflow-hidden">
+                    <div className={`absolute inset-y-0 left-0 rounded-md ${ok ? "bg-emerald-500/50" : "bg-sky-500/45"}`} style={{ width: `${Math.min(100, (novosHoje / metaDia) * 100)}%` }} />
+                    <div className="absolute inset-y-0 w-0.5 bg-emerald-400" style={{ left: "100%" , transform: "translateX(-2px)"}} />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ✅ 20/08 v4 — EM RISCO + RECEITA EM RISCO */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                  🚨 Assinantes em risco (sem dar play)
+                  <InfoTooltip text="Gente PAGANDO agora mas que parou de assistir. A régua vem da tua análise real: quem fica 14 dias sem assistir renova só 14%; quem volta a assistir renova 59%. Cada pessoa trazida de volta pro play quase quadruplica a chance de renovar — é o alvo nº 1 de push e WhatsApp." />
+                </div>
+                <div className="grid grid-cols-3 gap-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">7-13 dias</div>
+                    <div className="text-xl font-bold text-amber-300">{fmtInt(risco.d7)}</div>
+                    <div className="text-[11px] text-white/45">ainda dá tempo fácil</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">14+ dias</div>
+                    <div className="text-xl font-bold text-rose-300">{fmtInt(risco.d14)}</div>
+                    <div className="text-[11px] text-white/45">renovam só ~14%</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Nunca assistiu</div>
+                    <div className="text-xl font-bold text-white/70">{fmtInt(risco.nunca)}</div>
+                    <div className="text-[11px] text-white/45">pagou e não estreou</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-white/50" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  MRR em risco (14d+ e nunca): ~{fmtBRL((Number(risco.d14 || 0) + Number(risco.nunca || 0)) * (Number(kpis.arpu) || 17.9))}/mês · alvo perfeito de push "dorama novo" e WhatsApp
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-1">
+                  💰 Renovações em jogo (próximos 14 dias)
+                  <InfoTooltip text="Assinaturas ativas cujo vencimento cai nos próximos dias, com o valor cheio do plano de cada uma. É a previsão de caixa das renovações — e o público exato dos lembretes de renovação por WhatsApp/e-mail." />
+                </div>
+                <div className="grid grid-cols-2 gap-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Vencem em 7 dias</div>
+                    <div className="text-xl font-bold text-white">{fmtInt(venc.vence_7d)}</div>
+                    <div className="text-xs text-emerald-300">{fmtBRL(venc.reais_7d)} em jogo</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Vencem em 8-14 dias</div>
+                    <div className="text-xl font-bold text-white">{fmtInt(venc.vence_8_14d)}</div>
+                    <div className="text-xs text-emerald-300">{fmtBRL(venc.reais_8_14d)} em jogo</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-white/50">
+                  Régua atual: só ~36% renovam sozinhos — cada ponto ganho aqui é dinheiro direto. Lembretes já cobrem esse público.
+                </div>
+              </div>
+            </div>
+
             {/* faturamento diário */}
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
               <div className="flex items-center justify-between mb-2">
@@ -545,6 +747,49 @@ export default function AdminPulso() {
                 </div>
                 <Bars labels={monthly.map((m) => mesCurto(m.mes))} data={monthly.map((m) => Number(m.novos))} color="#38bdf8" height={190}
                   compare={{ label: "Renovadores", data: monthly.map((m) => Number(m.renovadores)), color: "#34d399" }} />
+              </div>
+            </div>
+
+            {/* ✅ 20/08 v4 — ORIGEM DOS NOVOS + QUALIDADE DAS COORTES */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">
+                    De onde vêm os novos (por semana)
+                    <InfoTooltip text="Novos assinantes por semana, separados pelo canal do 1º pagamento: SITE (checkout direto, e-mails, Dora, Stripe), BOT (fechou na conversa do WhatsApp) e ADS (chegou com etiqueta de campanha — utm). A última semana ainda está incompleta. É aqui que a campanha da Meta vai aparecer crescendo." />
+                  </h2>
+                  <div className="flex items-center gap-3 text-[11px] text-white/50">
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: "#38bdf8" }} />Site</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: "#34d399" }} />Bot</span>
+                    <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: "#f59e0b" }} />Ads</span>
+                  </div>
+                </div>
+                <StackedBars
+                  labels={origemSemanal.map((r) => r.semana)}
+                  groups={[
+                    { label: "Site", color: "#38bdf8", data: origemSemanal.map((r) => Number(r.site)) },
+                    { label: "Bot", color: "#34d399", data: origemSemanal.map((r) => Number(r.bot)) },
+                    { label: "Ads", color: "#f59e0b", data: origemSemanal.map((r) => Number(r.ads)) },
+                  ]}
+                />
+              </div>
+
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">
+                    Qualidade das coortes (sobrevivência)
+                    <InfoTooltip text="Cada linha = a turma que entrou naquele mês. O eixo mostra quantos % da turma ainda tinham assinatura válida 1, 2, 3... meses depois de entrar. Linha mais alta = turma melhor. Se as linhas novas ficarem POR BAIXO das antigas, os assinantes recentes estão desistindo mais rápido — olhar preço, origem do tráfego e primeira semana de uso." />
+                  </h2>
+                  <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap justify-end">
+                    {coorte.series.map((sr) => (
+                      <span key={sr.label} className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: sr.color }} />{sr.label}</span>
+                    ))}
+                  </div>
+                </div>
+                <CohortChart series={coorte.series} maxK={coorte.maxK} />
+                <p className="text-[11px] text-white/45 mt-1.5">
+                  ⚠️ Leitura atual: as turmas novas estão sobrevivendo MENOS (mar: 36% após 1 mês · jul: 20%) — a queda de entrada veio junto com queda de qualidade. De olho se ads/winback invertem isso.
+                </p>
               </div>
             </div>
 

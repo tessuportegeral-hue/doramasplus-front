@@ -210,16 +210,113 @@ Deno.serve(async (req) => {
              or coalesce(s.end_at, s.current_period_end) > now())
     `;
 
-    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes] = await Promise.all([
+
+    // ---- ✅ 20/08 v4 — 5 fontes novas (pedido: "pode por todos") ---------
+
+    // Assinantes em risco: ativo mas sem dar play há 7-13d / 14d+ / nunca.
+    // Base da tese "sumiu 14d renova 14%, voltou renova 59%".
+    const riscoQuery = `
+      with ativos as (
+        select s.user_id from subscriptions s
+        where s.status in ('active','trialing','paid')
+          and ((coalesce(s.end_at, s.current_period_end) is null and s.provider is null)
+               or coalesce(s.end_at, s.current_period_end) > now())
+      ),
+      last_play as (select user_id, max(updated_at) mx from watch_history group by 1)
+      select
+        count(*) as ativos,
+        count(*) filter (where lp.mx is null) as nunca,
+        count(*) filter (where lp.mx < now() - interval '14 days') as d14,
+        count(*) filter (where lp.mx >= now() - interval '14 days' and lp.mx < now() - interval '7 days') as d7
+      from ativos a left join last_play lp on lp.user_id = a.user_id
+    `;
+
+    // Meta do dia: primeiros pagamentos de HOJE (Brasília).
+    const hojeQuery = `
+      select count(distinct user_id) as novos_hoje
+      from subscription_renewals
+      where is_renewal = false
+        and renewed_at >= (date_trunc('day', now() at time zone 'America/Sao_Paulo')) at time zone 'America/Sao_Paulo'
+    `;
+
+    // Origem dos novos por semana (8 semanas): canal do 1º pagamento PIX
+    // (bot / ads via utm / site); quem só tem Stripe conta como site.
+    const origemQuery = `
+      with novos as (
+        select sr.user_id, min(sr.renewed_at) as first_at
+        from subscription_renewals sr group by 1
+        having min(sr.renewed_at) > now() - interval '56 days'
+      ),
+      canal as (
+        select n.user_id, date_trunc('week', n.first_at) as sem,
+          coalesce((select case when p.source = 'whatsapp_sales_bot' then 'bot'
+                                when coalesce(p.utm_source,'') <> '' then 'ads'
+                                else 'site' end
+            from pix_payments p where p.user_id = n.user_id and p.status = 'paid'
+            order by p.created_at asc limit 1), 'site') as ch
+        from novos n)
+      select to_char(sem,'DD/MM') as semana,
+        count(*) filter (where ch='site') as site,
+        count(*) filter (where ch='bot') as bot,
+        count(*) filter (where ch='ads') as ads
+      from canal group by sem order by sem
+    `;
+
+    // Sobrevivência por coorte de entrada: % cuja COBERTURA passou de k
+    // meses (last end_at > f + k meses) — monotônica, imune ao padrão de
+    // renovação atrasada (checar "coberto no instante" dava curva serrote).
+    const coortesQuery = `
+      with firsts as (select user_id, min(renewed_at) f from subscription_renewals group by 1),
+      lastend as (
+        select user_id,
+          max(case when end_at is not null then end_at
+                   when provider is null then now() + interval '100 years' end) le
+        from subscription_renewals group by 1
+      ),
+      coortes as (
+        select fi.user_id, fi.f, to_char(date_trunc('month', fi.f),'YYYY-MM') mes, l.le
+        from firsts fi join lastend l on l.user_id = fi.user_id
+        where fi.f >= '2026-03-01' and fi.f < date_trunc('month', now())
+      ),
+      ks as (select generate_series(1,5) k)
+      select c.mes, k.k, count(*) as cohort,
+        count(*) filter (where c.le > c.f + (k.k || ' months')::interval) as vivos
+      from coortes c cross join ks k
+      where c.f + (k.k || ' months')::interval <= now()
+      group by 1,2 order by 1,2
+    `;
+
+    // Receita em risco: assinaturas ativas vencendo em 7d / 8-14d.
+    const vencQuery = `
+      with base as (
+        select coalesce(s.end_at, s.current_period_end) fim,
+          case when coalesce(plan_interval,'')='quarter' or coalesce(plan_name,'') ilike '%trimestral%' then ${PRICE_QUARTERLY} else ${PRICE_MONTHLY} end val
+        from subscriptions s
+        where s.status in ('active','trialing','paid') and coalesce(s.end_at, s.current_period_end) > now()
+      )
+      select
+        count(*) filter (where fim <= now() + interval '7 days') as vence_7d,
+        round(coalesce(sum(val) filter (where fim <= now() + interval '7 days'),0)::numeric,0) as reais_7d,
+        count(*) filter (where fim > now() + interval '7 days' and fim <= now() + interval '14 days') as vence_8_14d,
+        round(coalesce(sum(val) filter (where fim > now() + interval '7 days' and fim <= now() + interval '14 days'),0)::numeric,0) as reais_8_14d
+      from base
+    `;
+
+    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes, riscoRes, hojeRes, origemRes, coortesRes, vencRes] = await Promise.all([
       admin.rpc('exec_sql', { q: dailyQuery }),
       admin.rpc('exec_sql', { q: monthlyQuery }),
       admin.rpc('exec_sql', { q: funnelQuery }),
       admin.rpc('exec_sql', { q: funnelRetQuery }),
       admin.rpc('exec_sql', { q: kpiQuery }),
       admin.rpc('exec_sql', { q: retSeriesQuery }),
+      admin.rpc('exec_sql', { q: riscoQuery }),
+      admin.rpc('exec_sql', { q: hojeQuery }),
+      admin.rpc('exec_sql', { q: origemQuery }),
+      admin.rpc('exec_sql', { q: coortesQuery }),
+      admin.rpc('exec_sql', { q: vencQuery }),
     ]);
 
-    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes]] as const) {
+    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes], ['risco', riscoRes], ['hoje', hojeRes], ['origem', origemRes], ['coortes', coortesRes], ['venc', vencRes]] as const) {
       if ((res as any).error) return json({ error: `${name}_query_failed`, details: (res as any).error }, 500);
     }
 
@@ -240,6 +337,11 @@ Deno.serve(async (req) => {
       funnel: funnelRes.data || [],
       funnel_retention: funnelRetRes.data || [],
       retention_series: retSeriesRes.data || [],
+      risco: ((riscoRes.data as any[]) || [])[0] || {},
+      novos_hoje: Number((((hojeRes.data as any[]) || [])[0] || {}).novos_hoje || 0),
+      origem_semanal: origemRes.data || [],
+      coortes: coortesRes.data || [],
+      vencimentos: ((vencRes.data as any[]) || [])[0] || {},
       kpis: {
         active_now: total,
         active_monthly: mensal,
