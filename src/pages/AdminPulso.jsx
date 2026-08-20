@@ -243,6 +243,22 @@ export default function AdminPulso() {
     if (checked && isAdmin) fetchData();
   }, [checked, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ✅ 20/08 (pedido do Stefano): o painel se atualiza SOZINHO — a cada 60s
+  // com a aba visível, e na hora em que a aba volta a ficar visível. O
+  // payload antigo fica na tela durante o refetch (nada pisca).
+  useEffect(() => {
+    if (!checked || !isAdmin) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") fetchData();
+    };
+    const id = setInterval(tick, 60000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [checked, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---------- derivados ------------------------------------------------------
   const d = payload;
   const daily = d?.daily || [];
@@ -522,7 +538,7 @@ export default function AdminPulso() {
             </div>
 
             <div className="text-xs text-white/35 pb-6">
-              Fontes: pix_payments (valor real InfinityPay/Asaas, sem venda avulsa) + Stripe estimado pelo preço da época · base ativa segue a mesma regra do acesso premium · renovações dedupadas por mês (retry de webhook/remigração/provider duplicado contam 1x). Gerado {d.generated_at ? new Date(d.generated_at).toLocaleString("pt-BR") : ""}.
+              Fontes: pix_payments (valor real InfinityPay/Asaas, sem venda avulsa) + Stripe estimado pelo preço da época · base ativa segue a mesma regra do acesso premium · renovações dedupadas por mês (retry de webhook/remigração/provider duplicado contam 1x). Atualizado {d.generated_at ? new Date(d.generated_at).toLocaleTimeString("pt-BR") : ""} — se atualiza sozinho a cada 1 min com a aba aberta.
             </div>
           </>
         )}
