@@ -343,7 +343,7 @@ function PedirDoramaCard({ user }) {
       setLoadingPedidos(true);
       const { data } = await supabase
         .from('dorama_requests')
-        .select('id, dorama_name, dorama_id, notified_at, dismissed_at, created_at')
+        .select('id, dorama_name, dorama_id, notified_at, dismissed_at, acknowledged_at, indefinite_at, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(LIMITE_PEDIDOS);
@@ -523,6 +523,13 @@ function PedirDoramaCard({ user }) {
                   <span className="text-emerald-400 font-semibold flex-shrink-0">Adicionado</span>
                 ) : p.dismissed_at ? (
                   <span className="text-slate-600 flex-shrink-0">Não disponível</span>
+                ) : p.indefinite_at ? (
+                  /* ✅ 20/08 (bug reportado pelo Stefano): marcado como "tempo
+                     indeterminado" no admin continuava aparecendo "Em análise"
+                     pro cliente — parecia que ninguém tinha olhado o pedido. */
+                  <span className="text-amber-400/90 flex-shrink-0">♾️ Sem previsão</span>
+                ) : p.acknowledged_at ? (
+                  <span className="text-sky-400/90 flex-shrink-0">Na fila ✓</span>
                 ) : (
                   <span className="text-slate-500 flex-shrink-0">Em análise</span>
                 )}
