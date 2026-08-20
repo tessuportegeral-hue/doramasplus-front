@@ -324,7 +324,44 @@ Deno.serve(async (req) => {
       group by 1 order by 1
     `;
 
-    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes, riscoRes, hojeRes, origemRes, coortesRes, vencRes, emailFxRes] = await Promise.all([
+
+    // ✅ 20/08 v7 — evolução POR DEGRAU do funil (pergunta do Stefano:
+    // "como sei se TODAS as etapas estão melhorando?"). Mesmas âncoras
+    // quinzenais; faixa limitada a 3+ (least(3,...)) pra amostra não virar
+    // ruído. A média geral esconde degrau piorando — esta série não.
+    const funnelRetSeriesQuery = `
+      with anchors as (
+        select generate_series('2026-05-30'::date, (now() at time zone 'America/Sao_Paulo')::date, interval '15 days')::timestamptz as t
+      )
+      select to_char(a.t,'YYYY-MM-DD') as data, stats.faixa, stats.cohort, stats.retidos
+      from anchors a
+      cross join lateral (
+        with cohort_a as (
+          select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+          from subscription_renewals sr where sr.renewed_at <= a.t - interval '30 days'
+          order by sr.user_id, sr.renewed_at desc),
+        ativos30 as (
+          select user_id from cohort_a
+          where (end_at is null and provider is null) or end_at > a.t - interval '30 days'),
+        tiered as (
+          select ca.user_id,
+            least(3, (select count(distinct date_trunc('month', sr.renewed_at)) from subscription_renewals sr
+              where sr.user_id = ca.user_id and sr.is_renewal = true and sr.renewed_at <= a.t - interval '30 days')) as faixa
+          from ativos30 ca),
+        agora as (
+          select d.user_id from (
+            select distinct on (sr.user_id) sr.user_id, sr.end_at, sr.provider
+            from subscription_renewals sr where sr.renewed_at <= a.t
+            order by sr.user_id, sr.renewed_at desc) d
+          where (d.end_at is null and d.provider is null) or d.end_at > a.t)
+        select t2.faixa, count(*) as cohort,
+          count(*) filter (where exists (select 1 from agora ag where ag.user_id = t2.user_id)) as retidos
+        from tiered t2 group by t2.faixa
+      ) stats
+      order by a.t, stats.faixa
+    `;
+
+    const [dailyRes, monthlyRes, funnelRes, funnelRetRes, kpiRes, retSeriesRes, riscoRes, hojeRes, origemRes, coortesRes, vencRes, emailFxRes, tierEvoRes] = await Promise.all([
       admin.rpc('exec_sql', { q: dailyQuery }),
       admin.rpc('exec_sql', { q: monthlyQuery }),
       admin.rpc('exec_sql', { q: funnelQuery }),
@@ -337,9 +374,10 @@ Deno.serve(async (req) => {
       admin.rpc('exec_sql', { q: coortesQuery }),
       admin.rpc('exec_sql', { q: vencQuery }),
       admin.rpc('exec_sql', { q: emailFxQuery }),
+      admin.rpc('exec_sql', { q: funnelRetSeriesQuery }),
     ]);
 
-    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes], ['risco', riscoRes], ['hoje', hojeRes], ['origem', origemRes], ['coortes', coortesRes], ['venc', vencRes], ['email_fx', emailFxRes]] as const) {
+    for (const [name, res] of [['daily', dailyRes], ['monthly', monthlyRes], ['funnel', funnelRes], ['funnel_ret', funnelRetRes], ['kpi', kpiRes], ['ret_series', retSeriesRes], ['risco', riscoRes], ['hoje', hojeRes], ['origem', origemRes], ['coortes', coortesRes], ['venc', vencRes], ['email_fx', emailFxRes], ['tier_evo', tierEvoRes]] as const) {
       if ((res as any).error) return json({ error: `${name}_query_failed`, details: (res as any).error }, 500);
     }
 
@@ -366,6 +404,7 @@ Deno.serve(async (req) => {
       coortes: coortesRes.data || [],
       vencimentos: ((vencRes.data as any[]) || [])[0] || {},
       emails_efeito: emailFxRes.data || [],
+      funnel_ret_series: tierEvoRes.data || [],
       kpis: {
         active_now: total,
         active_monthly: mensal,

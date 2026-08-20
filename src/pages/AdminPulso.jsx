@@ -249,10 +249,10 @@ function StackedBars({ labels, groups, height = 190 }) {
 }
 
 // ---------- curvas de sobrevivência por coorte (séries de tamanhos diferentes)
-function CohortChart({ series, maxK, height = 200 }) {
+function CohortChart({ series, maxK, height = 200, labels }) {
   const W = 640, H = height;
   const padL = 40, padR = 14, padT = 12, padB = 22;
-  const n = maxK + 1; // 0..maxK
+  const n = labels ? labels.length : maxK + 1; // 0..maxK ou labels custom
   const x = (i) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
   const y = (v) => padT + (1 - v / 100) * (H - padT - padB);
   return (
@@ -277,7 +277,7 @@ function CohortChart({ series, maxK, height = 200 }) {
       })}
       {Array.from({ length: n }, (_, i) => (
         <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize="10" fill="rgba(255,255,255,0.38)">
-          {i === 0 ? "entrada" : `+${i}m`}
+          {labels ? labels[i] : i === 0 ? "entrada" : `+${i}m`}
         </text>
       ))}
     </svg>
@@ -383,6 +383,21 @@ export default function AdminPulso() {
   const coortesRaw = d?.coortes || [];
   const venc = d?.vencimentos || {};
   const emailsFx = d?.emails_efeito || [];
+  const tierEvoRaw = d?.funnel_ret_series || [];
+  const tierEvo = useMemo(() => {
+    const datas = [...new Set(tierEvoRaw.map((r) => r.data))].sort();
+    const nomes = ["1º ciclo", "1x", "2x", "3x+"];
+    const cores = ["#fb7185", "#f59e0b", "#38bdf8", "#34d399"];
+    const series = [0, 1, 2, 3].map((f) => ({
+      label: nomes[f],
+      color: cores[f],
+      data: datas.map((dt) => {
+        const r = tierEvoRaw.find((x) => x.data === dt && Number(x.faixa) === f);
+        return r && Number(r.cohort) >= 15 ? (Number(r.retidos) / Number(r.cohort)) * 100 : null;
+      }),
+    })).filter((sr) => sr.data.some((v) => v != null));
+    return { labels: datas.map(diaCurto), series };
+  }, [tierEvoRaw]); // eslint-disable-line react-hooks/exhaustive-deps
   const kpis = d?.kpis || {};
 
   const fatArr = daily.map((r) => Number(r.fat) || 0);
@@ -903,6 +918,27 @@ export default function AdminPulso() {
                 })}
               </div>
             </div>
+
+            {/* ✅ 20/08 v7 — EVOLUÇÃO POR DEGRAU (todas as etapas melhorando?) */}
+            {tierEvo.series.length > 1 && (
+              <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <h2 className="text-sm font-semibold text-white/80 flex items-center gap-1">
+                    Funil ao longo do tempo — cada degrau
+                    <InfoTooltip text="A retenção de CADA degrau medida a cada 15 dias (mesma conta do funil acima, no passado). É aqui que você vê se TODAS as etapas estão melhorando — a média geral esconde um degrau piorando enquanto outro melhora. 3x+ agrupa os degraus altos; pontos com menos de 15 pessoas são omitidos." />
+                  </h2>
+                  <div className="flex items-center gap-3 text-[11px] text-white/50">
+                    {tierEvo.series.map((sr) => (
+                      <span key={sr.label} className="flex items-center gap-1"><i className="w-2 h-2 rounded-full inline-block" style={{ background: sr.color }} />{sr.label}</span>
+                    ))}
+                  </div>
+                </div>
+                <CohortChart series={tierEvo.series} labels={tierEvo.labels} height={210} />
+                <p className="text-[11px] text-white/45 mt-1.5">
+                  Como ler: cada linha subindo = aquela etapa segurando mais gente (melhoria REAL, independente da mistura da base). Estreia/winback devem mexer a linha do 1º ciclo; qualidade de catálogo e lembretes mexem as de cima.
+                </p>
+              </div>
+            )}
 
             {/* projeção */}
             <div className="rounded-2xl bg-gradient-to-br from-purple-500/10 to-white/5 border border-purple-400/20 p-4">
