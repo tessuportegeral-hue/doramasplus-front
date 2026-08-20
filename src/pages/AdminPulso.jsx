@@ -374,6 +374,32 @@ export default function AdminPulso() {
     return { meses, equilibrio, acumulado, pctNovataFim, retMediaFim };
   }, [funnel, tierRates, novos, adj, ticket]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ✅ 20/08 (pedido do Stefano): PONTO DE EQUILÍBRIO na tela.
+  // - multiplicador do funil: rastro que 1 novo deixa ao longo da vida
+  //   (1 + sobreviventes degrau a degrau) → teto da base = novos × mult
+  // - estancar: saídas do MÊS ATUAL com a composição real do funil
+  // - segurar: novos/mês pra base atual virar o próprio equilíbrio
+  // Tudo reage ao slider de retenção (rateFor com adj).
+  const equil = useMemo(() => {
+    let mult = 1, s = 1;
+    for (let k = 0; k < 60; k++) {
+      s *= rateFor(Math.min(12, k), adj);
+      mult += s;
+      if (s < 0.0001) break;
+    }
+    const baseNow = Number(kpis.active_now) || 0;
+    let exits = 0;
+    for (const row of funnel) {
+      const k = Math.min(12, Number(row.faixa) || 0);
+      exits += (Number(row.qtd) || 0) * (1 - rateFor(k, adj));
+    }
+    return {
+      mult,
+      estancar: Math.round(exits),
+      segurar: mult > 0 ? Math.round(baseNow / mult) : 0,
+    };
+  }, [funnel, tierRates, adj, kpis.active_now]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setCenario = (tipo) => {
     if (tipo === "atual") { setPNovos(null); setPRet(null); setPTicket(null); }
     if (tipo === "pessimista") { setPNovos(Math.round(novosDefault * 0.7)); setPRet(-5); setPTicket(Math.round(ticketDefault * 10) / 10); }
@@ -550,6 +576,49 @@ export default function AdminPulso() {
                   Ticket médio (R$/mês): <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.toFixed(2).replace(".", ",")}</span>
                   <input type="range" min="10" max="50" step="0.5" value={ticket} onChange={(e) => setPTicket(Number(e.target.value))} className="w-full accent-emerald-400 mt-1" />
                 </label>
+              </div>
+
+              {/* ✅ 20/08 — PONTO DE EQUILÍBRIO (pedido do Stefano) */}
+              <div className="rounded-xl bg-white/5 border border-white/10 p-3 mb-4">
+                <div className="text-xs font-semibold text-white/80 mb-2">🎯 Ponto de equilíbrio de entrada (reage ao slider de retenção)</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Ritmo atual</div>
+                    <div className="text-lg font-bold text-sky-300">{fmtInt(Number(kpis.novos_30d) || 0)}<span className="text-xs font-normal text-white/50">/mês</span></div>
+                    <div className="text-[11px] text-white/45">≈ {Math.round((Number(kpis.novos_30d) || 0) / 30)}/dia</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Estancar a queda</div>
+                    <div className="text-lg font-bold text-amber-300">{fmtInt(equil.estancar)}<span className="text-xs font-normal text-white/50">/mês</span></div>
+                    <div className="text-[11px] text-white/45">≈ {Math.round(equil.estancar / 30)}/dia — empata com as saídas deste mês</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Segurar a base ({fmtInt(kpis.active_now)})</div>
+                    <div className="text-lg font-bold text-emerald-300">{fmtInt(equil.segurar)}<span className="text-xs font-normal text-white/50">/mês</span></div>
+                    <div className="text-[11px] text-white/45">≈ {Math.round(equil.segurar / 30)}/dia — acima disso a base CRESCE</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-white/50 uppercase">Multiplicador do funil</div>
+                    <div className="text-lg font-bold text-purple-300">×{equil.mult.toFixed(2)}</div>
+                    <div className="text-[11px] text-white/45">teto da base = novos × {equil.mult.toFixed(2)}</div>
+                  </div>
+                </div>
+                {/* régua: ritmo atual vs marcos */}
+                {(() => {
+                  const pace = Number(kpis.novos_30d) || 0;
+                  const escala = Math.max(equil.segurar * 1.25, pace * 1.1, 1);
+                  const pct = (v) => `${Math.min(100, (v / escala) * 100)}%`;
+                  return (
+                    <div className="relative h-6 rounded-md bg-white/5 overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 bg-sky-500/40 rounded-md" style={{ width: pct(pace) }} />
+                      <div className="absolute inset-y-0 w-0.5 bg-amber-400" style={{ left: pct(equil.estancar) }} title="estancar" />
+                      <div className="absolute inset-y-0 w-0.5 bg-emerald-400" style={{ left: pct(equil.segurar) }} title="segurar/crescer" />
+                      <span className="absolute inset-y-0 left-2 flex items-center text-[11px] text-white/70" style={{ fontVariantNumeric: "tabular-nums" }}>
+                        você está aqui: {fmtInt(pace)} — faltam {fmtInt(Math.max(0, equil.segurar - pace))}/mês pra crescer
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="grid lg:grid-cols-2 gap-4">
