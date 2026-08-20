@@ -524,12 +524,14 @@ function PedirDoramaCard({ user }) {
                 ) : p.dismissed_at ? (
                   <span className="text-slate-600 flex-shrink-0">Não disponível</span>
                 ) : p.indefinite_at ? (
-                  /* ✅ 20/08 (bug reportado pelo Stefano): marcado como "tempo
-                     indeterminado" no admin continuava aparecendo "Em análise"
-                     pro cliente — parecia que ninguém tinha olhado o pedido. */
-                  <span className="text-amber-400/90 flex-shrink-0">♾️ Sem previsão</span>
+                  /* ✅ 20/08 (bug reportado pelo Stefano): status do cliente
+                     agora ESPELHA o painel admin — mesmos nomes das abas
+                     (⏳ Aguardando / ♾️ Tempo indeterminado). Antes tudo que
+                     não era adicionado/indisponível ficava "Em análise" e
+                     parecia que ninguém tinha olhado o pedido. */
+                  <span className="text-slate-400 flex-shrink-0">♾️ Tempo indeterminado</span>
                 ) : p.acknowledged_at ? (
-                  <span className="text-sky-400/90 flex-shrink-0">Na fila ✓</span>
+                  <span className="text-amber-400/90 flex-shrink-0">⏳ Aguardando</span>
                 ) : (
                   <span className="text-slate-500 flex-shrink-0">Em análise</span>
                 )}
