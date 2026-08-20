@@ -631,7 +631,7 @@ export default function AdminPulso() {
                   <input type="range" min="100" max="3000" step="25" value={novos} onChange={(e) => setPNovos(Number(e.target.value))} className="w-full accent-sky-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
-                  <span className="inline-flex items-center gap-1">Retenção (ajuste em todos os degraus) <InfoTooltip text="Soma/tira pontos de retenção em TODOS os degraus do funil ao mesmo tempo. Em 0pp o cenário usa as taxas reais de agora (22% no 1º ciclo etc.). Ex.: +5pp = o degrau de 22% vai a 27%, o de 49% vai a 54%, e assim por diante." /></span>: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{adj > 0 ? "+" : ""}{adj}pp</span>
+                  <span className="inline-flex items-center gap-1">Retenção (pontos a somar em cada degrau) <InfoTooltip text="Soma/tira pontos de retenção em TODOS os degraus do funil ao mesmo tempo. Em 0pp o cenário usa as taxas reais de agora (22% no 1º ciclo etc.). Pontos = soma direta na porcentagem (não é multiplicar): +5 pontos faz o degrau de 22% virar 27%, o de 49% virar 54%, e assim por diante." /></span>: <span className="text-white font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{adj > 0 ? "+" : ""}{adj} pontos</span>
                   <input type="range" min="-15" max="25" step="1" value={adj} onChange={(e) => setPRet(Number(e.target.value))} className="w-full accent-purple-400 mt-1" />
                 </label>
                 <label className="block text-xs text-white/60">
@@ -692,12 +692,12 @@ export default function AdminPulso() {
                     series={[
                       { label: "Base (cenário dos sliders)", data: proj.meses.map((x) => x.base), color: "#a855f7" },
                       ...(holdTarget
-                        ? [{ label: `Manter a base (retenção +${holdTarget.adj.toFixed(0)}pp)`, data: holdTarget.curva.map((v) => Math.round(v)), color: "#f59e0b", dashed: true }]
+                        ? [{ label: `Manter a base (retenção +${holdTarget.adj.toFixed(0)} pontos)`, data: holdTarget.curva.map((v) => Math.round(v)), color: "#f59e0b", dashed: true }]
                         : []),
                     ]} />
                   {holdTarget ? (
                     <p className="text-[11px] text-amber-200/80 mt-1.5" style={{ fontVariantNumeric: "tabular-nums" }}>
-                      ─ ─ Pra MANTER a base com a entrada atual ({fmtInt(Number(kpis.novos_30d) || 0)}/mês), a retenção teria que subir <b>+{holdTarget.adj.toFixed(0)}pp em todos os degraus</b> — 1º ciclo de {(rateFor(0, 0) * 100).toFixed(0)}% pra {holdTarget.primeiroCiclo.toFixed(0)}%.
+                      ─ ─ Pra MANTER a base com a entrada atual ({fmtInt(Number(kpis.novos_30d) || 0)}/mês), a retenção teria que subir <b>+{holdTarget.adj.toFixed(0)} pontos em cada degrau</b> (soma direta: 22% vira {(22 + holdTarget.adj).toFixed(0)}%, e assim por diante) — 1º ciclo de {(rateFor(0, 0) * 100).toFixed(0)}% pra {holdTarget.primeiroCiclo.toFixed(0)}%.
                     </p>
                   ) : (
                     <p className="text-[11px] text-amber-200/80 mt-1.5">
