@@ -145,19 +145,15 @@ function MatchCard({ m, onAcao, busy }) {
                 <X className="w-4 h-4 mr-1" /> Cancelar (não subir)
               </Button>
             )}
-            {m.status !== 'achei' && (
-              <>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_aguardando')} className={btnOutline}>
-                  Aguardando
-                </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_indeterminado')} className={btnOutline}>
-                  Tempo indeterminado
-                </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'dismiss')} className={btnOutline}>
-                  Não tenho
-                </Button>
-              </>
-            )}
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_aguardando')} className={btnOutline}>
+              Aguardando
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_indeterminado')} className={btnOutline}>
+              Tempo indeterminado
+            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'dismiss')} className={btnOutline}>
+              Não tenho
+            </Button>
           </>
         )}
       </div>
