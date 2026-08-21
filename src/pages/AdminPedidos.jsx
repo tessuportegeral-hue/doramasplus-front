@@ -29,9 +29,21 @@ const STATUS_META = {
   recusado: { label: 'Recusado', cls: 'bg-slate-600/20 text-slate-400 border-slate-600/40' },
   nao_achei: { label: 'Não achei', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
   erro: { label: 'Erro', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
+  aguardando: { label: 'Aguardando (na fila)', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+  indeterminado: { label: 'Tempo indeterminado', cls: 'bg-orange-500/15 text-orange-300 border-orange-500/40' },
+  dispensado: { label: 'Não tenho (avisado)', cls: 'bg-slate-600/20 text-slate-400 border-slate-600/40' },
 };
 
 const pct = (s) => (s == null ? '' : `${Math.round(Number(s) * 100)}%`);
+
+const fmtData = (iso) => {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  } catch {
+    return '';
+  }
+};
 
 function StatusBadge({ status }) {
   const meta = STATUS_META[status] || { label: status, cls: 'bg-slate-700/30 text-slate-300 border-slate-600/40' };
@@ -42,8 +54,17 @@ function StatusBadge({ status }) {
   );
 }
 
-function MatchCard({ m, onApprove, onReject, busy }) {
+function MatchCard({ m, onAcao, busy }) {
   const temCandidato = !!m.candidate_link;
+  const acionavel = ['duvidoso', 'achei', 'nao_achei', 'erro'].includes(m.status);
+  const dataTxt =
+    m.primeiro_em && m.ultimo_em && fmtData(m.primeiro_em) !== fmtData(m.ultimo_em)
+      ? `pedido entre ${fmtData(m.primeiro_em)} e ${fmtData(m.ultimo_em)}`
+      : m.ultimo_em
+      ? `pedido em ${fmtData(m.ultimo_em)}`
+      : '';
+  const btnOutline =
+    'h-8 border-slate-700 text-slate-300 hover:bg-slate-800';
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -64,6 +85,7 @@ function MatchCard({ m, onApprove, onReject, busy }) {
               <span className="text-xs text-slate-400">match {pct(m.score)}</span>
             )}
           </div>
+          {dataTxt && <p className="text-xs text-slate-500 mt-1">🗓️ {dataTxt}</p>}
           {m.candidate_caption && (
             <p className="text-sm text-slate-400 mt-1 break-words">
               Candidato: <span className="text-slate-300">{m.candidate_caption}</span>
@@ -84,28 +106,31 @@ function MatchCard({ m, onApprove, onReject, busy }) {
             <ExternalLink className="w-3.5 h-3.5" /> Ver no Telegram
           </a>
         )}
-        {['duvidoso', 'achei', 'nao_achei', 'erro'].includes(m.status) && (
+        {acionavel && (
           <>
             {temCandidato && m.status === 'duvidoso' && (
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() => onApprove(m)}
-                className="bg-emerald-600 hover:bg-emerald-500 h-8"
-              >
+              <Button size="sm" disabled={busy} onClick={() => onAcao(m, 'approve')} className="bg-emerald-600 hover:bg-emerald-500 h-8">
                 <Check className="w-4 h-4 mr-1" /> Aprovar (subir)
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => onReject(m)}
-              className="h-8 border-slate-700 text-slate-300 hover:bg-slate-800"
-            >
-              <X className="w-4 h-4 mr-1" />
-              {m.status === 'achei' ? 'Cancelar (não subir)' : temCandidato ? 'Recusar' : 'Dispensar'}
-            </Button>
+            {m.status === 'achei' && (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'reject')} className={btnOutline}>
+                <X className="w-4 h-4 mr-1" /> Cancelar (não subir)
+              </Button>
+            )}
+            {m.status !== 'achei' && (
+              <>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_aguardando')} className={btnOutline}>
+                  Aguardando
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_indeterminado')} className={btnOutline}>
+                  Tempo indeterminado
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'dismiss')} className={btnOutline}>
+                  Não tenho
+                </Button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -177,7 +202,14 @@ export default function AdminPedidos() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'falha');
       setMatches((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: data.status } : x)));
-      toast({ title: action === 'approve' ? 'Aprovado ✓' : 'Recusado', description: m.dorama_name });
+      const LABEL = {
+        approve: 'Aprovado ✓ (vai subir)',
+        reject: 'Cancelado',
+        set_aguardando: 'Marcado como aguardando — pessoa avisada',
+        set_indeterminado: 'Tempo indeterminado — pessoa avisada',
+        dismiss: 'Marcado "não tenho" — pessoa avisada',
+      };
+      toast({ title: LABEL[action] || 'Feito', description: m.dorama_name });
     } catch (e) {
       toast({ title: 'Erro', description: String(e), variant: 'destructive' });
     } finally {
@@ -190,8 +222,10 @@ export default function AdminPedidos() {
     achei: matches.filter((m) => m.status === 'achei'),
     fila: matches.filter((m) => ['aprovado', 'subindo'].includes(m.status)),
     subido: matches.filter((m) => m.status === 'subido'),
+    aguardando: matches.filter((m) => m.status === 'aguardando'),
+    indeterminado: matches.filter((m) => m.status === 'indeterminado'),
     nao_achei: matches.filter((m) => m.status === 'nao_achei'),
-    recusado: matches.filter((m) => m.status === 'recusado'),
+    dispensado: matches.filter((m) => ['dispensado', 'recusado'].includes(m.status)),
   };
 
   const Secao = ({ titulo, itens, dica }) =>
@@ -203,13 +237,7 @@ export default function AdminPedidos() {
         {dica && <p className="text-sm text-slate-500 mb-3">{dica}</p>}
         <div className="grid gap-3 md:grid-cols-2">
           {itens.map((m) => (
-            <MatchCard
-              key={m.id}
-              m={m}
-              busy={busyId === m.id}
-              onApprove={(x) => decidir(x, 'approve')}
-              onReject={(x) => decidir(x, 'reject')}
-            />
+            <MatchCard key={m.id} m={m} busy={busyId === m.id} onAcao={decidir} />
           ))}
         </div>
       </section>
@@ -277,9 +305,19 @@ export default function AdminPedidos() {
             <Secao
               titulo="❌ Não achei (garimpo manual)"
               itens={grupos.nao_achei}
-              dica="Não tem no grupo da menina (ou o nome está muito diferente). Precisa você achar na mão."
+              dica="Não tem no grupo da menina (ou a pessoa escreveu muito diferente). Você acha na mão — e pode marcar Aguardando / Tempo indeterminado / Não tenho pra avisar quem pediu."
             />
-            <Secao titulo="🗑️ Recusados" itens={grupos.recusado} />
+            <Secao
+              titulo="⏳ Aguardando (você marcou)"
+              itens={grupos.aguardando}
+              dica="Marcados manualmente como na fila. Se a menina postar, o bot acha e sobe sozinho."
+            />
+            <Secao
+              titulo="🕓 Tempo indeterminado"
+              itens={grupos.indeterminado}
+              dica="Sem previsão — pessoa avisada. Se aparecer no grupo depois, o bot pega sozinho e vira aguardando."
+            />
+            <Secao titulo="🗑️ Descartados / recusados" itens={grupos.dispensado} />
           </>
         )}
       </div>
