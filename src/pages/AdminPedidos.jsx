@@ -45,6 +45,17 @@ const fmtData = (iso) => {
   }
 };
 
+const fmtDataHora = (iso) => {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+};
+
 function StatusBadge({ status }) {
   const meta = STATUS_META[status] || { label: status, cls: 'bg-slate-700/30 text-slate-300 border-slate-600/40' };
   return (
@@ -91,6 +102,21 @@ function MatchCard({ m, onAcao, busy }) {
             <p className="text-sm text-slate-400 mt-1 break-words">
               Candidato: <span className="text-slate-300">{m.candidate_caption}</span>
             </p>
+          )}
+          {Array.isArray(m.pessoas) && m.pessoas.length > 0 && (
+            <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
+              {m.pessoas.map((p, i) => (
+                <div key={i} className="text-xs text-slate-400 break-words">
+                  <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
+                  {p.email && <span> · {p.email}</span>}
+                  {p.telefone && <span> · 📞 {p.telefone}</span>}
+                  <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
+                  {p.entregue_em && (
+                    <span className="text-emerald-400"> · ✓ entregue {fmtDataHora(p.entregue_em)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
         <StatusBadge status={m.status} />
@@ -302,7 +328,11 @@ export default function AdminPedidos() {
               dica="Match quase exato. Vão subir automaticamente com o Vision confirmando a capa. Se algum estiver errado, recuse."
             />
             <Secao titulo="🚀 Na fila do bot" itens={grupos.fila} />
-            <Secao titulo="🎉 Já subidos" itens={grupos.subido} />
+            <Secao
+              titulo="🎉 Entregues (histórico)"
+              itens={grupos.subido}
+              dica="Já subidos/disponíveis. Mostra quem pediu e a hora que foi entregue."
+            />
             <Secao
               titulo="❌ Não achei (garimpo manual)"
               itens={grupos.nao_achei}
@@ -318,7 +348,11 @@ export default function AdminPedidos() {
               itens={grupos.indeterminado}
               dica="Sem previsão — pessoa avisada. Se aparecer no grupo depois, o bot pega sozinho e vira aguardando."
             />
-            <Secao titulo="🗑️ Descartados / recusados" itens={grupos.dispensado} />
+            <Secao
+              titulo="🚫 Rejeitados (histórico)"
+              itens={grupos.dispensado}
+              dica="Descartados ('não tenho') ou recusados. Mostra quem tinha pedido."
+            />
           </>
         )}
       </div>
