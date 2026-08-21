@@ -86,7 +86,7 @@ function MatchCard({ m, onApprove, onReject, busy }) {
         )}
         {['duvidoso', 'achei', 'nao_achei', 'erro'].includes(m.status) && (
           <>
-            {temCandidato && (
+            {temCandidato && m.status === 'duvidoso' && (
               <Button
                 size="sm"
                 disabled={busy}
@@ -103,7 +103,8 @@ function MatchCard({ m, onApprove, onReject, busy }) {
               onClick={() => onReject(m)}
               className="h-8 border-slate-700 text-slate-300 hover:bg-slate-800"
             >
-              <X className="w-4 h-4 mr-1" /> {temCandidato ? 'Recusar' : 'Dispensar'}
+              <X className="w-4 h-4 mr-1" />
+              {m.status === 'achei' ? 'Cancelar (não subir)' : temCandidato ? 'Recusar' : 'Dispensar'}
             </Button>
           </>
         )}
