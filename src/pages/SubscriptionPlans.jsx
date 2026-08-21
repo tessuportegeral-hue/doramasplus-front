@@ -307,13 +307,14 @@ const SubscriptionPlans = () => {
       fireInitiateCheckout({ planType, planName, value, eventId: event_id });
 
       // UTMs + fbclid salvos pelo TrafficSourceTracker (first-touch)
-      let utm_source = '', utm_medium = '', utm_campaign = '', utm_content = '', fbclid = '';
+      let utm_source = '', utm_medium = '', utm_campaign = '', utm_content = '', utm_term = '', fbclid = '';
 
       try {
         utm_source = localStorage.getItem('dp_utm_source') || '';
         utm_medium = localStorage.getItem('dp_utm_medium') || '';
         utm_campaign = localStorage.getItem('dp_utm_campaign') || '';
         utm_content = localStorage.getItem('dp_utm_content') || '';
+        utm_term = localStorage.getItem('dp_utm_term') || '';
       } catch {}
 
       // fbclid: 1º URL atual, 2º cookie (7d), 3º localStorage (sem TTL)
@@ -366,6 +367,7 @@ const SubscriptionPlans = () => {
             utm_medium,
             utm_campaign,
             utm_content,
+            utm_term,
             fbclid,
             fbp,
           },

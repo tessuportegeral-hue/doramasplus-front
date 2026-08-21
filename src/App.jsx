@@ -392,7 +392,7 @@ function TrafficSourceTracker() {
       }
 
       // ===== UTMs (first-touch, TTL 7 dias por campo) =====
-      const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'];
+      const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
       for (const key of utmKeys) {
         const val = (params.get(key) || '').trim();
         if (!val) continue;

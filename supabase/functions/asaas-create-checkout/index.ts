@@ -81,10 +81,15 @@ Deno.serve(async (req) => {
     const utm_medium = typeof body?.utm_medium === "string" ? body.utm_medium.trim() : "";
     const utm_campaign = typeof body?.utm_campaign === "string" ? body.utm_campaign.trim() : "";
     const utm_content = typeof body?.utm_content === "string" ? body.utm_content.trim() : "";
+    // ✅ 21/08: nivel extra de atribuicao (ex.: {{placement}} do Meta no Advantage+
+    // = Feed/Reels/Stories, ou {{adset.name}} se publico manual).
+    const utm_term = typeof body?.utm_term === "string" ? body.utm_term.trim() : "";
     const fbclid = typeof body?.fbclid === "string" ? body.fbclid.trim() : "";
     const fbp = typeof body?.fbp === "string" ? body.fbp.trim() : "";
 
-    const amountCents = plan === "quarterly" ? 4790 : 1790;
+    // ✅ 04/08: trimestral R$47,90 → R$49,90 (já era o valor real cobrado no
+    // cartão via Stripe — só o Pix/Asaas e a tela estavam desatualizados).
+    const amountCents = plan === "quarterly" ? 4990 : 1790;
     const amount = amountCents / 100;
     const description = plan === "quarterly" ? "DoramasPlus Trimestral" : "DoramasPlus Padrao";
 
@@ -198,6 +203,7 @@ Deno.serve(async (req) => {
         utm_medium: utm_medium || null,
         utm_campaign: utm_campaign || null,
         utm_content: utm_content || null,
+        utm_term: utm_term || null,
         fbclid: fbclid || null,
         fbp: fbp || null,
       });
