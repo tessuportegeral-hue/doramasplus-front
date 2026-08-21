@@ -55,6 +55,11 @@ function MatchCard({ m, onApprove, onReject, busy }) {
                 <Users className="w-3 h-3" /> {m.pedidos_count} pessoas
               </span>
             )}
+            {m.lang_pedida && (
+              <span className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
+                pediram {m.lang_pedida}
+              </span>
+            )}
             {m.score != null && (
               <span className="text-xs text-slate-400">match {pct(m.score)}</span>
             )}
