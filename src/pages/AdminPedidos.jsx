@@ -86,6 +86,7 @@ function MatchCard({ m, onAcao, busy }) {
             )}
           </div>
           {dataTxt && <p className="text-xs text-slate-500 mt-1">🗓️ {dataTxt}</p>}
+          {m.note && <p className="text-xs text-orange-300 mt-1">⚠️ {m.note}</p>}
           {m.candidate_caption && (
             <p className="text-sm text-slate-400 mt-1 break-words">
               Candidato: <span className="text-slate-300">{m.candidate_caption}</span>
