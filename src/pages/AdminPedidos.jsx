@@ -5,6 +5,7 @@ import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
+import AdminTabs from '@/components/AdminTabs';
 import {
   ArrowLeft,
   RefreshCw,
@@ -212,6 +213,7 @@ export default function AdminPedidos() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
       <Helmet><title>Pedidos — Admin DoramasPlus</title></Helmet>
+      <AdminTabs />
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

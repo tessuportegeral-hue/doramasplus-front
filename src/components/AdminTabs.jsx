@@ -21,6 +21,7 @@ import {
   Sparkles,
   Bell,
   MonitorPlay,
+  Inbox,
 } from "lucide-react";
 import { supabase } from "@/lib/customSupabaseClient";
 
@@ -36,6 +37,7 @@ const GROUPS = [
     items: [
       { path: "/admin/users", label: "Usuários", icon: Users },
       { path: "/admin/doramas", label: "Doramas", icon: Clapperboard },
+      { path: "/admin/pedidos", label: "Pedidos", icon: Inbox },
     ],
   },
   {
