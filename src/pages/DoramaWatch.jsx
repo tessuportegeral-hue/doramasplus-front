@@ -26,6 +26,19 @@ import useSessionGuard from "@/hooks/useSessionGuard";
 // Espelho do gate em supabase/functions/get-stream-url/index.ts.
 const STREAM_TOKEN_TEST_EMAIL = null;
 
+// ✅ ROLLOUT GATEADO (20/08) — player do iframe via Player.js OFICIAL do Bunny.
+// No caminho iframe, o resume/progresso hoje depende de ler postMessage cru
+// (frágil) + counter local que chama saveProgress(t, 0) com duração 0 — e como
+// saveProgress ignora duração <= 0, no iframe o "continuar assistindo" quase
+// nunca persistia. O Player.js do Bunny entrega timeupdate {seconds, duration}
+// de verdade + setCurrentTime pra retomar, então o save passa a funcionar.
+// Enquanto for != null, SÓ este email usa o Player.js; todos os outros ficam
+// no caminho legado (postMessage cru), intocado. Testar com tesagencia antes de
+// abrir geral. Origem do método: bundle do concorrente Dramio (memória
+// project-dramio-player-bunny-playerjs-resume).
+const PLAYERJS_TEST_EMAIL = "tesagencia@gmail.com";
+const PLAYERJS_SRC = "https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js";
+
 export default function DoramaWatch() {
   const { id: slugFromUrl } = useParams();
   const navigate = useNavigate();
@@ -47,6 +60,7 @@ export default function DoramaWatch() {
 
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const iframeRef = useRef(null); // usado pelo Player.js do Bunny (gate tesagencia)
 
   // device_id lido/gerado uma única vez e mantido estável durante toda a sessão
   const deviceIdRef = useRef(null);
@@ -67,6 +81,10 @@ export default function DoramaWatch() {
 
   // ✅ Tempo salvo vs tempo atual (não deixar virar "espelho" do tempo)
   const [savedSeconds, setSavedSeconds] = useState(0); // vem do banco
+  // espelho do savedSeconds em ref: o Player.js (Bunny) lê o ponto de retomada
+  // no evento "ready" sem precisar ter savedSeconds nas deps do effect (senão o
+  // effect recriaria o player a cada progresso salvo).
+  const savedSecondsRef = useRef(0);
   // ✅ 20/08 (INP) — liveSeconds REMOVIDO: era um useState que nenhum JSX
   // renderizava, mas o onTime (timeupdate, ~4x/s) fazia setLiveSeconds a cada
   // segundo = re-render da página INTEIRA do player 1x/s durante toda a
@@ -205,6 +223,10 @@ export default function DoramaWatch() {
   // intocado em relação ao que está em produção hoje.
   const useStreamToken =
     !STREAM_TOKEN_TEST_EMAIL || user?.email === STREAM_TOKEN_TEST_EMAIL;
+
+  // ✅ Gate do Player.js do Bunny — só tesagencia usa o player oficial no
+  // caminho iframe; os demais seguem no rastreio legado (postMessage cru).
+  const usePlayerJs = !!user?.email && user.email === PLAYERJS_TEST_EMAIL;
 
   const [signedVideoUrl, setSignedVideoUrl] = useState("");
 
@@ -609,6 +631,8 @@ export default function DoramaWatch() {
 
   // PLAYER FIX: mantém claimAllowedRef em sincronia com o estado
   useEffect(() => { claimAllowedRef.current = claimAllowed; }, [claimAllowed]);
+  // mantém savedSecondsRef em sincronia (lido pelo Player.js no "ready")
+  useEffect(() => { savedSecondsRef.current = savedSeconds; }, [savedSeconds]);
   // PLAYER FIX: marca que o player já subiu; reseta ao trocar de dorama
   useEffect(() => { playerReadyRef.current = false; }, [dorama?.id]);
   useEffect(() => {
@@ -829,6 +853,7 @@ export default function DoramaWatch() {
 
   // ✅ TRACKING DO IFRAME (Bunny embed) — postMessage + fallback contador local
   useEffect(() => {
+    if (usePlayerJs) return; // tesagencia usa o Player.js do Bunny (effect abaixo)
     if (!allowContinue) return;
     if (playerType !== "iframe") return;
     if (!user?.id || !dorama?.id) return;
@@ -896,7 +921,104 @@ export default function DoramaWatch() {
       flush();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowContinue, playerType, dorama?.id, user?.id, claimAllowed]);
+  }, [usePlayerJs, allowContinue, playerType, dorama?.id, user?.id, claimAllowed]);
+
+  // ✅ TRACKING DO IFRAME via Player.js OFICIAL do Bunny (gate: tesagencia)
+  // Substitui a leitura crua de postMessage: o Player.js faz o handshake certo
+  // com o embed do Bunny e entrega timeupdate {seconds, duration} + setCurrentTime.
+  // Com a duração real, o saveProgress finalmente persiste no iframe (o caminho
+  // legado passava duração 0 e o upsert era descartado).
+  useEffect(() => {
+    if (!usePlayerJs) return;
+    if (!allowContinue) return;
+    if (playerType !== "iframe") return;
+    if (!user?.id || !dorama?.id) return;
+    if (!claimAllowed) return;
+    if (!iframeRef.current) return;
+
+    let player = null;
+    let cancelled = false;
+    let lastSaveAt = 0;
+    let appliedResume = false;
+
+    const loadPlayerJs = () =>
+      new Promise((resolve, reject) => {
+        if (window.playerjs) { resolve(window.playerjs); return; }
+        const existing = document.querySelector("script[data-bunny-playerjs]");
+        if (existing) {
+          existing.addEventListener("load", () => resolve(window.playerjs));
+          existing.addEventListener("error", reject);
+          return;
+        }
+        const s = document.createElement("script");
+        s.src = PLAYERJS_SRC;
+        s.async = true;
+        s.setAttribute("data-bunny-playerjs", "1");
+        s.onload = () => resolve(window.playerjs);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+
+    const flush = () => {
+      if (iframeLocalCounterRef.current > 0) {
+        saveProgress(iframeLocalCounterRef.current, latestDurationRef.current || 0);
+      }
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    const onBeforeUnload = () => flush();
+
+    loadPlayerJs()
+      .then((playerjs) => {
+        if (cancelled || !playerjs || !iframeRef.current) return;
+
+        player = new playerjs.Player(iframeRef.current);
+
+        player.on("ready", () => {
+          // resume real: setCurrentTime no ponto salvo (não depende do ?t= da URL)
+          const resumeAt = savedSecondsRef.current;
+          if (!appliedResume && resumeAt >= 10) {
+            appliedResume = true;
+            try { player.setCurrentTime(resumeAt); } catch {}
+          }
+          try { player.play && player.play(); } catch {}
+        });
+
+        player.on("timeupdate", (d) => {
+          const seconds = d && d.seconds;
+          const duration = d && d.duration;
+          if (typeof seconds !== "number" || !isFinite(seconds) || seconds <= 0) return;
+          iframeLocalCounterRef.current = Math.floor(seconds);
+          if (typeof duration === "number" && duration > 0) {
+            latestDurationRef.current = duration;
+          }
+          const now = Date.now();
+          if (now - lastSaveAt < 5_000) return;
+          lastSaveAt = now;
+          saveProgress(seconds, latestDurationRef.current || 0);
+        });
+      })
+      .catch(() => {
+        // Player.js não carregou (rede/CSP): sem crash. O resume via ?t= da URL
+        // continua valendo; só não teremos o progresso fino via timeupdate.
+      });
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      flush();
+      try {
+        if (player) {
+          player.off && player.off("timeupdate");
+          player.off && player.off("ready");
+        }
+      } catch {}
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usePlayerJs, allowContinue, playerType, dorama?.id, user?.id, claimAllowed, videoUrl]);
 
   const canResume = allowContinue && savedSeconds >= 10;
 
@@ -1110,6 +1232,7 @@ export default function DoramaWatch() {
                 </div>
               ) : playerType === "iframe" ? (
                 <iframe
+                  ref={iframeRef}
                   src={iframeSrc || videoUrl}
                   title={dorama.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
