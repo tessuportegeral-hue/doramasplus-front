@@ -122,8 +122,8 @@ export default function AdminPedidos() {
   const [matches, setMatches] = useState([]);
   const [busyId, setBusyId] = useState(null);
 
-  const carregar = useCallback(async () => {
-    setLoading(true);
+  const carregar = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
@@ -142,9 +142,9 @@ export default function AdminPedidos() {
       if (!res.ok || !data.ok) throw new Error(data.error || 'falha ao listar');
       setMatches(data.matches || []);
     } catch (e) {
-      toast({ title: 'Erro ao carregar', description: String(e), variant: 'destructive' });
+      if (!silent) toast({ title: 'Erro ao carregar', description: String(e), variant: 'destructive' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -154,6 +154,13 @@ export default function AdminPedidos() {
       else carregar();
     }
   }, [authLoading, isAuthorized, navigate, carregar]);
+
+  // atualiza sozinho a cada 20s (silencioso) pra acompanhar os uploads ao vivo
+  useEffect(() => {
+    if (!isAuthorized) return;
+    const t = setInterval(() => carregar(true), 20000);
+    return () => clearInterval(t);
+  }, [isAuthorized, carregar]);
 
   const decidir = async (m, action) => {
     setBusyId(m.id);
