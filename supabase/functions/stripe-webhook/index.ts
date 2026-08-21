@@ -254,6 +254,43 @@ serve(async (req) => {
         return;
       }
 
+      // ✅ 21/08: NÃO deixar um evento Stripe NÃO-ativo (past_due/canceled/
+      // unpaid/incomplete...) REBAIXAR um acesso que veio de outro meio
+      // (PIX Asaas/InfinityPay/manual) e ainda está VÁLIDO. Como a tabela é
+      // 1 linha por usuário (onConflict user_id), quem tem uma assinatura
+      // Stripe zumbi (cartão morto) e depois pagou no PIX ficava sendo
+      // atropelado pra past_due toda vez que o Stripe reprocessava o cartão
+      // velho — bug real que derrubava assinante pagante (ws.loj132 e outros
+      // ~51 em risco). Renovação REAL no Stripe (status active/trialing)
+      // segue entrando normal; só bloqueamos o rebaixamento.
+      const incomingActive =
+        stripeSub.status === "active" || stripeSub.status === "trialing";
+      if (!incomingActive) {
+        const { data: atual } = await supabase
+          .from("subscriptions")
+          .select("provider, end_at, current_period_end")
+          .eq("user_id", finalUserId)
+          .maybeSingle();
+        const d1 = atual?.end_at ? new Date(atual.end_at).getTime() : 0;
+        const d2 = atual?.current_period_end ? new Date(atual.current_period_end).getTime() : 0;
+        const fimAtual = Math.max(d1, d2);
+        const grantNaoStripeValido =
+          !!atual && atual.provider !== null && fimAtual > Date.now();
+        if (grantNaoStripeValido) {
+          console.log(
+            "[stripe-webhook] IGNORADO (nao rebaixar): grant",
+            atual!.provider,
+            "valido ate",
+            new Date(fimAtual).toISOString(),
+            "vs evento Stripe",
+            stripeSub.status,
+            "user:",
+            finalUserId
+          );
+          return;
+        }
+      }
+
       const item = stripeSub.items?.data?.[0];
       const priceId = item?.price?.id ?? null;
 
