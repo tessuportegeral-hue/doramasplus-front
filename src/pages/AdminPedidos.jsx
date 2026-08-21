@@ -67,6 +67,30 @@ function StatusBadge({ status }) {
 
 function MatchCard({ m, onAcao, busy }) {
   const temCandidato = !!m.candidate_link;
+  const [linkMode, setLinkMode] = useState(false);
+  const [q, setQ] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+
+  const buscarCatalogo = async (texto) => {
+    setQ(texto);
+    if (texto.trim().length < 2) {
+      setResultados([]);
+      return;
+    }
+    setBuscando(true);
+    try {
+      const { data } = await supabase
+        .from('doramas')
+        .select('id, title, slug')
+        .ilike('title', `%${texto.trim()}%`)
+        .limit(8);
+      setResultados(data || []);
+    } catch {
+      setResultados([]);
+    }
+    setBuscando(false);
+  };
   const acionavel = ['duvidoso', 'achei', 'nao_achei', 'erro'].includes(m.status);
   const dataTxt =
     m.primeiro_em && m.ultimo_em && fmtData(m.primeiro_em) !== fmtData(m.ultimo_em)
@@ -154,9 +178,57 @@ function MatchCard({ m, onAcao, busy }) {
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'dismiss')} className={btnOutline}>
               Não tenho
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setLinkMode((v) => !v)}
+              className="h-8 border-purple-600/50 text-purple-300 hover:bg-purple-600/10"
+            >
+              Já tenho (linkar)
+            </Button>
           </>
         )}
       </div>
+
+      {linkMode && (
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <p className="text-xs text-slate-400 mb-2">
+            Busca no teu catálogo e clica pra linkar esse pedido ao dorama que você já tem (avisa a pessoa que chegou):
+          </p>
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => buscarCatalogo(e.target.value)}
+            placeholder="Buscar título no catálogo..."
+            className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+          />
+          {buscando && <p className="text-xs text-slate-500 mt-2">Buscando...</p>}
+          {resultados.length > 0 && (
+            <div className="mt-2 space-y-1 max-h-52 overflow-y-auto">
+              {resultados.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onAcao(m, 'link_dorama', { dorama_id: d.id });
+                    setLinkMode(false);
+                    setQ('');
+                    setResultados([]);
+                  }}
+                  className="w-full text-left text-sm text-slate-200 bg-slate-800/60 hover:bg-purple-600/20 border border-slate-700 rounded-md px-3 py-1.5"
+                >
+                  {d.title}
+                </button>
+              ))}
+            </div>
+          )}
+          {q.trim().length >= 2 && !buscando && resultados.length === 0 && (
+            <p className="text-xs text-slate-500 mt-2">Nenhum dorama com esse nome no catálogo.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -210,7 +282,7 @@ export default function AdminPedidos() {
     return () => clearInterval(t);
   }, [isAuthorized, carregar]);
 
-  const decidir = async (m, action) => {
+  const decidir = async (m, action, extra = {}) => {
     setBusyId(m.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -220,7 +292,7 @@ export default function AdminPedidos() {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ action, id: m.id }),
+        body: JSON.stringify({ action, id: m.id, ...extra }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'falha');
@@ -231,6 +303,7 @@ export default function AdminPedidos() {
         set_aguardando: 'Marcado como aguardando — pessoa avisada',
         set_indeterminado: 'Tempo indeterminado — pessoa avisada',
         dismiss: 'Marcado "não tenho" — pessoa avisada',
+        link_dorama: 'Linkado ao dorama — pessoa avisada que chegou',
       };
       toast({ title: LABEL[action] || 'Feito', description: m.dorama_name });
     } catch (e) {
