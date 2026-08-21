@@ -164,6 +164,9 @@ const AdminDora = lazy(() => import('@/pages/AdminDora'));
 // ✅ (NOVO) Disparo manual de push pra todos os assinantes
 const AdminPush = lazy(() => import('@/pages/AdminPush'));
 
+// ✅ (NOVO) Peça 2 — pedidos que o bot achou no grupo da fornecedora
+const AdminPedidos = lazy(() => import('@/pages/AdminPedidos'));
+
 // Landing
 const Landing = lazy(() => import('@/pages/Landing'));
 const Privacidade = lazy(() => import('@/pages/Privacidade'));
@@ -886,6 +889,16 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminPush />
+                    </AdminRoute>
+                  }
+                />
+
+                {/* ✅ (NOVO) ADMIN PEDIDOS (Peça 2 — busca do bot) */}
+                <Route
+                  path="/admin/pedidos"
+                  element={
+                    <AdminRoute>
+                      <AdminPedidos />
                     </AdminRoute>
                   }
                 />

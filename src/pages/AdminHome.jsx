@@ -20,6 +20,7 @@ import {
   Bot,
   Loader2,
   RefreshCw,
+  Inbox,
 } from "lucide-react";
 import { supabase } from "@/lib/customSupabaseClient";
 import AdminTabs from "@/components/AdminTabs";
@@ -279,6 +280,9 @@ export default function AdminHome() {
           </button>
           <button style={S.shortcut} onClick={() => navigate("/admin/doramas")}>
             <Clapperboard size={17} /> Gerenciar Doramas
+          </button>
+          <button style={S.shortcut} onClick={() => navigate("/admin/pedidos")}>
+            <Inbox size={17} /> Pedidos (busca do bot)
           </button>
         </div>
       </div>
