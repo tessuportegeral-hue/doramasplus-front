@@ -240,6 +240,7 @@ export default function AdminPedidos() {
 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
+  const [indeterminados, setIndeterminados] = useState([]);
   const [busyId, setBusyId] = useState(null);
 
   const carregar = useCallback(async (silent = false) => {
@@ -248,6 +249,7 @@ export default function AdminPedidos() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setMatches([]);
+        setIndeterminados([]);
         return;
       }
       const res = await fetch(FN_URL, {
@@ -261,6 +263,7 @@ export default function AdminPedidos() {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'falha ao listar');
       setMatches(data.matches || []);
+      setIndeterminados(data.indeterminados || []);
     } catch (e) {
       if (!silent) toast({ title: 'Erro ao carregar', description: String(e), variant: 'destructive' });
     } finally {
@@ -319,7 +322,6 @@ export default function AdminPedidos() {
     fila: matches.filter((m) => ['aprovado', 'subindo'].includes(m.status)),
     subido: matches.filter((m) => m.status === 'subido'),
     aguardando: matches.filter((m) => m.status === 'aguardando'),
-    indeterminado: matches.filter((m) => m.status === 'indeterminado'),
     nao_achei: matches.filter((m) => m.status === 'nao_achei'),
     dispensado: matches.filter((m) => ['dispensado', 'recusado'].includes(m.status)),
   };
@@ -412,11 +414,52 @@ export default function AdminPedidos() {
               itens={grupos.aguardando}
               dica="Marcados manualmente como na fila. Se a menina postar, o bot acha e sobe sozinho."
             />
-            <Secao
-              titulo="🕓 Tempo indeterminado"
-              itens={grupos.indeterminado}
-              dica="Sem previsão — pessoa avisada. Se aparecer no grupo depois, o bot pega sozinho e vira aguardando."
-            />
+            {indeterminados.length > 0 && (
+              <section className="mb-8">
+                <h2 className="text-lg font-semibold text-slate-100 mb-1">
+                  🕓 Tempo indeterminado{' '}
+                  <span className="text-slate-500 text-sm">({indeterminados.length})</span>
+                </h2>
+                <p className="text-sm text-slate-500 mb-3">
+                  Todos os pedidos marcados como "sem previsão" (a pessoa já foi avisada). Se algum
+                  aparecer no grupo depois, o bot pega sozinho e vira aguardando.
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {indeterminados.map((g, gi) => (
+                    <div key={gi} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-slate-100 break-words">{g.dorama_name}</span>
+                            {g.qtd > 1 && (
+                              <span className="inline-flex items-center gap-1 text-xs text-purple-300 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
+                                <Users className="w-3 h-3" /> {g.qtd} pessoas
+                              </span>
+                            )}
+                          </div>
+                          {g.marcado_em && (
+                            <p className="text-xs text-slate-500 mt-1">🕓 marcado {fmtDataHora(g.marcado_em)}</p>
+                          )}
+                          {Array.isArray(g.pessoas) && g.pessoas.length > 0 && (
+                            <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
+                              {g.pessoas.map((p, i) => (
+                                <div key={i} className="text-xs text-slate-400 break-words">
+                                  <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
+                                  {p.email && <span> · {p.email}</span>}
+                                  {p.telefone && <span> · 📞 {p.telefone}</span>}
+                                  <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <StatusBadge status="indeterminado" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
             <Secao
               titulo="🚫 Rejeitados (histórico)"
               itens={grupos.dispensado}
