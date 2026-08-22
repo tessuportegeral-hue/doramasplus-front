@@ -274,6 +274,123 @@ function SecaoPaginada({ id, titulo, itens, dica, renderItem, pageSize = 10 }) {
   );
 }
 
+// Card de TEMPO INDETERMINADO: mostra o grupo + botão pra linkar a um dorama
+// do catálogo (avisa as pessoas e tira do indeterminado — igual o bot faz).
+function IndetCard({ g, onLink }) {
+  const [linkMode, setLinkMode] = useState(false);
+  const [q, setQ] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const buscarCatalogo = async (texto) => {
+    setQ(texto);
+    if (texto.trim().length < 2) {
+      setResultados([]);
+      return;
+    }
+    setBuscando(true);
+    try {
+      const { data } = await supabase
+        .from('doramas')
+        .select('id, title, slug')
+        .ilike('title', `%${texto.trim()}%`)
+        .limit(8);
+      setResultados(data || []);
+    } catch {
+      setResultados([]);
+    }
+    setBuscando(false);
+  };
+
+  const linkar = async (doramaId) => {
+    setBusy(true);
+    await onLink(g, doramaId);
+    setBusy(false);
+    setLinkMode(false);
+    setQ('');
+    setResultados([]);
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-slate-100 break-words">{g.dorama_name}</span>
+            {g.qtd > 1 && (
+              <span className="inline-flex items-center gap-1 text-xs text-purple-300 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
+                <Users className="w-3 h-3" /> {g.qtd} pessoas
+              </span>
+            )}
+          </div>
+          {g.marcado_em && (
+            <p className="text-xs text-slate-500 mt-1">🕓 marcado {fmtDataHora(g.marcado_em)}</p>
+          )}
+          {Array.isArray(g.pessoas) && g.pessoas.length > 0 && (
+            <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
+              {g.pessoas.map((p, i) => (
+                <div key={i} className="text-xs text-slate-400 break-words">
+                  <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
+                  {p.email && <span> · {p.email}</span>}
+                  {p.telefone && <span> · 📞 {p.telefone}</span>}
+                  <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <StatusBadge status="indeterminado" />
+      </div>
+
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setLinkMode((v) => !v)}
+          className="h-8 px-2.5 text-sm rounded-md border border-purple-600/50 text-purple-300 hover:bg-purple-600/10 disabled:opacity-50"
+        >
+          {busy ? 'Linkando...' : 'Já tenho (linkar)'}
+        </button>
+      </div>
+
+      {linkMode && (
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <p className="text-xs text-slate-400 mb-2">
+            Busca no teu catálogo e clica pra linkar — avisa as {g.qtd} pessoa(s) que chegou e tira do indeterminado:
+          </p>
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => buscarCatalogo(e.target.value)}
+            placeholder="Buscar título no catálogo..."
+            className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+          />
+          {buscando && <p className="text-xs text-slate-500 mt-2">Buscando...</p>}
+          {resultados.length > 0 && (
+            <div className="mt-2 space-y-1 max-h-52 overflow-y-auto">
+              {resultados.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => linkar(d.id)}
+                  className="w-full text-left text-sm text-slate-200 bg-slate-800/60 hover:bg-purple-600/20 border border-slate-700 rounded-md px-3 py-1.5"
+                >
+                  {d.title}
+                </button>
+              ))}
+            </div>
+          )}
+          {q.trim().length >= 2 && !buscando && resultados.length === 0 && (
+            <p className="text-xs text-slate-500 mt-2">Nenhum dorama com esse nome no catálogo.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPedidos() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -355,6 +472,31 @@ export default function AdminPedidos() {
       toast({ title: 'Erro', description: String(e), variant: 'destructive' });
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // linkar um grupo de "tempo indeterminado" a um dorama do catálogo: avisa as
+  // pessoas que chegou, marca notified e tira o grupo da lista.
+  const linkarIndeterminado = async (g, doramaId) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(FN_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'link_requests', request_ids: g.request_ids, dorama_id: doramaId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'falha');
+      setIndeterminados((prev) => prev.filter((x) => x.dorama_name !== g.dorama_name));
+      toast({
+        title: `Linkado ✓ — ${data.avisados} pessoa(s) avisada(s)`,
+        description: `${g.dorama_name} → ${data.dorama}`,
+      });
+    } catch (e) {
+      toast({ title: 'Erro ao linkar', description: String(e), variant: 'destructive' });
     }
   };
 
@@ -541,38 +683,7 @@ export default function AdminPedidos() {
               titulo="🕓 Tempo indeterminado"
               itens={indeterminadosF}
               dica={'Todos os pedidos marcados como "sem previsão" (a pessoa já foi avisada). Se algum aparecer no grupo depois, o bot pega sozinho e vira aguardando.'}
-              renderItem={(g) => (
-                <div key={g.dorama_name} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-slate-100 break-words">{g.dorama_name}</span>
-                        {g.qtd > 1 && (
-                          <span className="inline-flex items-center gap-1 text-xs text-purple-300 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
-                            <Users className="w-3 h-3" /> {g.qtd} pessoas
-                          </span>
-                        )}
-                      </div>
-                      {g.marcado_em && (
-                        <p className="text-xs text-slate-500 mt-1">🕓 marcado {fmtDataHora(g.marcado_em)}</p>
-                      )}
-                      {Array.isArray(g.pessoas) && g.pessoas.length > 0 && (
-                        <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
-                          {g.pessoas.map((p, i) => (
-                            <div key={i} className="text-xs text-slate-400 break-words">
-                              <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
-                              {p.email && <span> · {p.email}</span>}
-                              {p.telefone && <span> · 📞 {p.telefone}</span>}
-                              <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <StatusBadge status="indeterminado" />
-                  </div>
-                </div>
-              )}
+              renderItem={(g) => <IndetCard key={g.dorama_name} g={g} onLink={linkarIndeterminado} />}
             />
             <SecaoPaginada
               id="sec-dispensado"
