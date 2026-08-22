@@ -175,9 +175,6 @@ function MatchCard({ m, onAcao, busy }) {
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'set_indeterminado')} className={btnOutline}>
               Tempo indeterminado
             </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => onAcao(m, 'dismiss')} className={btnOutline}>
-              Não tenho
-            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -669,7 +666,7 @@ export default function AdminPedidos() {
               id="sec-nao-achei"
               titulo="❌ Não achei (garimpo manual)"
               itens={grupos.nao_achei}
-              dica="Não tem no grupo da menina (ou a pessoa escreveu muito diferente). Você acha na mão — e pode marcar Aguardando / Tempo indeterminado / Não tenho pra avisar quem pediu."
+              dica="Não tem no grupo da menina (ou a pessoa escreveu muito diferente). O bot continua procurando sozinho; você pode marcar Aguardando / Tempo indeterminado, ou linkar se já tiver no catálogo. Se não achar em 60 dias, o pedido é descartado automático."
               renderItem={(m) => <MatchCard key={m.id} m={m} busy={busyId === m.id} onAcao={decidir} />}
             />
             <Secao
