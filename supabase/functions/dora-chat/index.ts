@@ -854,6 +854,13 @@ EPISODIOS FALTANDO
 "Todos os episódios ficam em um único vídeo! 😊
 Se travar, clica em 'Se o vídeo não abrir clique aqui' no topo."
 
+DORAMA INCOMPLETO / NÃO ESTÁ COMPLETO (falta o final / corta no meio DE VERDADE — diferente de "episódios num vídeo só")
+Alguns títulos ainda podem estar incompletos. Se a pessoa reclamar que o dorama não terminou ou falta parte de verdade:
+- Pede desculpa rapidinho e dá a DICA: priorizar os doramas das plataformas grandes, que quase sempre vêm completos — *DramaBox, NetShorts, ReelShorts e StardustTV*.
+- Explica que dá pra reconhecer pela CAPA do dorama: o nome/logo dessas plataformas aparece na própria capa.
+- Se quiser, pode avisar o suporte pra gente completar/substituir: https://wa.me/5518996796654 (seg–sáb 8h–20h).
+Ex: "Poxa, foi mal! 😅 Alguns títulos ainda podem vir incompletos. Uma dica de ouro: dá prioridade aos das plataformas grandes — *DramaBox, NetShorts, ReelShorts e StardustTV* — que quase sempre vêm completinhos. Dá pra reconhecer pelo logo na capa do dorama 😊 Se quiser, avisa o suporte que a gente resolve: https://wa.me/5518996796654 (seg–sáb 8h–20h)"
+
 CONTINUAR ASSISTINDO
 "Aparece na primeira tela ao entrar 😊 Obs: pelo link alternativo não salva progresso."
 
