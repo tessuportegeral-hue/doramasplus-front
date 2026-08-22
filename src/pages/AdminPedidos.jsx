@@ -233,6 +233,47 @@ function MatchCard({ m, onAcao, busy }) {
   );
 }
 
+function Paginador({ pag, totalPags, setPag }) {
+  return (
+    <div className="flex items-center justify-center gap-2 mt-4">
+      <button
+        onClick={() => setPag((p) => Math.max(1, p - 1))}
+        disabled={pag <= 1}
+        className="text-xs px-3 py-1 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+      >
+        ← Anterior
+      </button>
+      <span className="text-xs text-slate-400">Página {pag} de {totalPags}</span>
+      <button
+        onClick={() => setPag((p) => Math.min(totalPags, p + 1))}
+        disabled={pag >= totalPags}
+        className="text-xs px-3 py-1 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+      >
+        Próxima →
+      </button>
+    </div>
+  );
+}
+
+// Seção com paginação de 10 em 10 (pros grandes: entregues, não achei, indeterminado...)
+function SecaoPaginada({ id, titulo, itens, dica, renderItem, pageSize = 10 }) {
+  const [pag, setPag] = useState(1);
+  if (!itens.length) return null;
+  const totalPags = Math.ceil(itens.length / pageSize);
+  const p = Math.min(pag, totalPags);
+  const slice = itens.slice((p - 1) * pageSize, p * pageSize);
+  return (
+    <section id={id} className="mb-8 scroll-mt-4">
+      <h2 className="text-lg font-semibold text-slate-100 mb-1">
+        {titulo} <span className="text-slate-500 text-sm">({itens.length})</span>
+      </h2>
+      {dica && <p className="text-sm text-slate-500 mb-3">{dica}</p>}
+      <div className="grid gap-3 md:grid-cols-2">{slice.map(renderItem)}</div>
+      {totalPags > 1 && <Paginador pag={p} totalPags={totalPags} setPag={setPag} />}
+    </section>
+  );
+}
+
 export default function AdminPedidos() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -326,9 +367,12 @@ export default function AdminPedidos() {
     dispensado: matches.filter((m) => ['dispensado', 'recusado'].includes(m.status)),
   };
 
-  const Secao = ({ titulo, itens, dica }) =>
+  const irPara = (id) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const Secao = ({ id, titulo, itens, dica }) =>
     itens.length > 0 && (
-      <section className="mb-8">
+      <section id={id} className="mb-8 scroll-mt-4">
         <h2 className="text-lg font-semibold text-slate-100 mb-1">
           {titulo} <span className="text-slate-500 text-sm">({itens.length})</span>
         </h2>
@@ -388,82 +432,110 @@ export default function AdminPedidos() {
           </div>
         ) : (
           <>
+            {/* atalhos: pula direto pra seção — com mt dorama, evita rolar tudo */}
+            <div className="flex flex-wrap gap-2 mb-6 sticky top-0 z-20 bg-slate-950/95 backdrop-blur py-2">
+              {grupos.duvidoso.length > 0 && (
+                <button onClick={() => irPara('sec-duvidoso')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">❓ Confere ({grupos.duvidoso.length})</button>
+              )}
+              {grupos.achei.length > 0 && (
+                <button onClick={() => irPara('sec-achei')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">✅ Alta confiança ({grupos.achei.length})</button>
+              )}
+              {grupos.fila.length > 0 && (
+                <button onClick={() => irPara('sec-fila')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">🚀 Fila ({grupos.fila.length})</button>
+              )}
+              {grupos.aguardando.length > 0 && (
+                <button onClick={() => irPara('sec-aguardando')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">⏳ Aguardando ({grupos.aguardando.length})</button>
+              )}
+              {indeterminados.length > 0 && (
+                <button onClick={() => irPara('sec-indeterminado')} className="text-xs px-2.5 py-1 rounded-full border border-orange-500/50 text-orange-200 bg-orange-500/15 hover:bg-orange-500/25 font-semibold">🕓 Tempo indeterminado ({indeterminados.length})</button>
+              )}
+              {grupos.nao_achei.length > 0 && (
+                <button onClick={() => irPara('sec-nao-achei')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">❌ Não achei ({grupos.nao_achei.length})</button>
+              )}
+              {grupos.subido.length > 0 && (
+                <button onClick={() => irPara('sec-subido')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">🎉 Entregues ({grupos.subido.length})</button>
+              )}
+              {grupos.dispensado.length > 0 && (
+                <button onClick={() => irPara('sec-dispensado')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">🚫 Rejeitados ({grupos.dispensado.length})</button>
+              )}
+            </div>
             <Secao
+              id="sec-duvidoso"
               titulo="❓ Confere na mão"
               itens={grupos.duvidoso}
               dica="O bot achou algo parecido mas não tem certeza. Confere o link e aprove só se for o dorama certo."
             />
             <Secao
+              id="sec-achei"
               titulo="✅ Alta confiança (sobem sozinhos)"
               itens={grupos.achei}
               dica="Match quase exato. Vão subir automaticamente com o Vision confirmando a capa. Se algum estiver errado, recuse."
             />
-            <Secao titulo="🚀 Na fila do bot" itens={grupos.fila} />
-            <Secao
+            <Secao id="sec-fila" titulo="🚀 Na fila do bot" itens={grupos.fila} />
+            <SecaoPaginada
+              id="sec-subido"
               titulo="🎉 Entregues (histórico)"
               itens={grupos.subido}
               dica="Já subidos/disponíveis. Mostra quem pediu e a hora que foi entregue."
+              renderItem={(m) => <MatchCard key={m.id} m={m} busy={busyId === m.id} onAcao={decidir} />}
             />
-            <Secao
+            <SecaoPaginada
+              id="sec-nao-achei"
               titulo="❌ Não achei (garimpo manual)"
               itens={grupos.nao_achei}
               dica="Não tem no grupo da menina (ou a pessoa escreveu muito diferente). Você acha na mão — e pode marcar Aguardando / Tempo indeterminado / Não tenho pra avisar quem pediu."
+              renderItem={(m) => <MatchCard key={m.id} m={m} busy={busyId === m.id} onAcao={decidir} />}
             />
             <Secao
+              id="sec-aguardando"
               titulo="⏳ Aguardando (você marcou)"
               itens={grupos.aguardando}
               dica="Marcados manualmente como na fila. Se a menina postar, o bot acha e sobe sozinho."
             />
-            {indeterminados.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-lg font-semibold text-slate-100 mb-1">
-                  🕓 Tempo indeterminado{' '}
-                  <span className="text-slate-500 text-sm">({indeterminados.length})</span>
-                </h2>
-                <p className="text-sm text-slate-500 mb-3">
-                  Todos os pedidos marcados como "sem previsão" (a pessoa já foi avisada). Se algum
-                  aparecer no grupo depois, o bot pega sozinho e vira aguardando.
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  {indeterminados.map((g, gi) => (
-                    <div key={gi} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-slate-100 break-words">{g.dorama_name}</span>
-                            {g.qtd > 1 && (
-                              <span className="inline-flex items-center gap-1 text-xs text-purple-300 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
-                                <Users className="w-3 h-3" /> {g.qtd} pessoas
-                              </span>
-                            )}
-                          </div>
-                          {g.marcado_em && (
-                            <p className="text-xs text-slate-500 mt-1">🕓 marcado {fmtDataHora(g.marcado_em)}</p>
-                          )}
-                          {Array.isArray(g.pessoas) && g.pessoas.length > 0 && (
-                            <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
-                              {g.pessoas.map((p, i) => (
-                                <div key={i} className="text-xs text-slate-400 break-words">
-                                  <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
-                                  {p.email && <span> · {p.email}</span>}
-                                  {p.telefone && <span> · 📞 {p.telefone}</span>}
-                                  <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <StatusBadge status="indeterminado" />
+            <SecaoPaginada
+              id="sec-indeterminado"
+              titulo="🕓 Tempo indeterminado"
+              itens={indeterminados}
+              dica={'Todos os pedidos marcados como "sem previsão" (a pessoa já foi avisada). Se algum aparecer no grupo depois, o bot pega sozinho e vira aguardando.'}
+              renderItem={(g) => (
+                <div key={g.dorama_name} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-100 break-words">{g.dorama_name}</span>
+                        {g.qtd > 1 && (
+                          <span className="inline-flex items-center gap-1 text-xs text-purple-300 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
+                            <Users className="w-3 h-3" /> {g.qtd} pessoas
+                          </span>
+                        )}
                       </div>
+                      {g.marcado_em && (
+                        <p className="text-xs text-slate-500 mt-1">🕓 marcado {fmtDataHora(g.marcado_em)}</p>
+                      )}
+                      {Array.isArray(g.pessoas) && g.pessoas.length > 0 && (
+                        <div className="mt-2 border-t border-slate-800 pt-2 space-y-1">
+                          {g.pessoas.map((p, i) => (
+                            <div key={i} className="text-xs text-slate-400 break-words">
+                              <span className="text-slate-200 font-medium">{p.nome || 'Sem nome'}</span>
+                              {p.email && <span> · {p.email}</span>}
+                              {p.telefone && <span> · 📞 {p.telefone}</span>}
+                              <span className="text-slate-500"> · pediu {fmtDataHora(p.pedido_em)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    <StatusBadge status="indeterminado" />
+                  </div>
                 </div>
-              </section>
-            )}
-            <Secao
+              )}
+            />
+            <SecaoPaginada
+              id="sec-dispensado"
               titulo="🚫 Rejeitados (histórico)"
               itens={grupos.dispensado}
               dica="Descartados ('não tenho') ou recusados. Mostra quem tinha pedido."
+              renderItem={(m) => <MatchCard key={m.id} m={m} busy={busyId === m.id} onAcao={decidir} />}
             />
           </>
         )}
