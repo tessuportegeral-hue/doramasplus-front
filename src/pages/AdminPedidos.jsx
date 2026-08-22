@@ -282,6 +282,7 @@ export default function AdminPedidos() {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState([]);
   const [indeterminados, setIndeterminados] = useState([]);
+  const [busca, setBusca] = useState('');
   const [busyId, setBusyId] = useState(null);
 
   const carregar = useCallback(async (silent = false) => {
@@ -357,15 +358,26 @@ export default function AdminPedidos() {
     }
   };
 
+  // busca: normaliza (tira acento, minúsculo) e filtra por nome do dorama
+  const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const termo = norm(busca.trim());
+  const bate = (nome) => !termo || norm(nome).includes(termo);
+
+  const matchesF = termo ? matches.filter((m) => bate(m.dorama_name)) : matches;
+  const indeterminadosF = termo ? indeterminados.filter((g) => bate(g.dorama_name)) : indeterminados;
+
   const grupos = {
-    duvidoso: matches.filter((m) => m.status === 'duvidoso'),
-    achei: matches.filter((m) => m.status === 'achei'),
-    fila: matches.filter((m) => ['aprovado', 'subindo'].includes(m.status)),
-    subido: matches.filter((m) => m.status === 'subido'),
-    aguardando: matches.filter((m) => m.status === 'aguardando'),
-    nao_achei: matches.filter((m) => m.status === 'nao_achei'),
-    dispensado: matches.filter((m) => ['dispensado', 'recusado'].includes(m.status)),
+    duvidoso: matchesF.filter((m) => m.status === 'duvidoso'),
+    achei: matchesF.filter((m) => m.status === 'achei'),
+    fila: matchesF.filter((m) => ['aprovado', 'subindo'].includes(m.status)),
+    subido: matchesF.filter((m) => m.status === 'subido'),
+    aguardando: matchesF.filter((m) => m.status === 'aguardando'),
+    nao_achei: matchesF.filter((m) => m.status === 'nao_achei'),
+    dispensado: matchesF.filter((m) => ['dispensado', 'recusado'].includes(m.status)),
   };
+  const totalFiltrado =
+    grupos.duvidoso.length + grupos.achei.length + grupos.fila.length + grupos.subido.length +
+    grupos.aguardando.length + grupos.nao_achei.length + grupos.dispensado.length + indeterminadosF.length;
 
   const irPara = (id) =>
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -424,6 +436,33 @@ export default function AdminPedidos() {
           ou recusar. Rode <code className="text-slate-400">/buscar</code> no grupo do bot pra atualizar a lista.
         </p>
 
+        <div className="mb-6">
+          <div className="relative">
+            <SearchIcon className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar título em todas as seções..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-9 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                aria-label="Limpar busca"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {termo && (
+            <p className="text-xs text-slate-500 mt-1">
+              {totalFiltrado} resultado(s) para "{busca.trim()}"
+            </p>
+          )}
+        </div>
+
         {loading && matches.length === 0 ? (
           <p className="text-slate-500">Carregando...</p>
         ) : matches.length === 0 ? (
@@ -446,8 +485,8 @@ export default function AdminPedidos() {
               {grupos.aguardando.length > 0 && (
                 <button onClick={() => irPara('sec-aguardando')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">⏳ Aguardando ({grupos.aguardando.length})</button>
               )}
-              {indeterminados.length > 0 && (
-                <button onClick={() => irPara('sec-indeterminado')} className="text-xs px-2.5 py-1 rounded-full border border-orange-500/50 text-orange-200 bg-orange-500/15 hover:bg-orange-500/25 font-semibold">🕓 Tempo indeterminado ({indeterminados.length})</button>
+              {indeterminadosF.length > 0 && (
+                <button onClick={() => irPara('sec-indeterminado')} className="text-xs px-2.5 py-1 rounded-full border border-orange-500/50 text-orange-200 bg-orange-500/15 hover:bg-orange-500/25 font-semibold">🕓 Tempo indeterminado ({indeterminadosF.length})</button>
               )}
               {grupos.nao_achei.length > 0 && (
                 <button onClick={() => irPara('sec-nao-achei')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">❌ Não achei ({grupos.nao_achei.length})</button>
@@ -459,6 +498,11 @@ export default function AdminPedidos() {
                 <button onClick={() => irPara('sec-dispensado')} className="text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800">🚫 Rejeitados ({grupos.dispensado.length})</button>
               )}
             </div>
+            {termo && totalFiltrado === 0 && (
+              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 text-center text-slate-400">
+                Nenhum pedido com "{busca.trim()}".
+              </div>
+            )}
             <Secao
               id="sec-duvidoso"
               titulo="❓ Confere na mão"
@@ -495,7 +539,7 @@ export default function AdminPedidos() {
             <SecaoPaginada
               id="sec-indeterminado"
               titulo="🕓 Tempo indeterminado"
-              itens={indeterminados}
+              itens={indeterminadosF}
               dica={'Todos os pedidos marcados como "sem previsão" (a pessoa já foi avisada). Se algum aparecer no grupo depois, o bot pega sozinho e vira aguardando.'}
               renderItem={(g) => (
                 <div key={g.dorama_name} className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
